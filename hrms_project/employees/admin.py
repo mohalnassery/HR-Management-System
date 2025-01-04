@@ -40,6 +40,8 @@ class EmployeeAdmin(admin.ModelAdmin):
                 ('first_name_ar', 'middle_name_ar', 'last_name_ar'),
                 ('date_of_birth', 'gender', 'marital_status'),
                 ('nationality', 'religion'),
+                'education_category',
+                'cpr_number',
                 'email',
             )
         }),
@@ -51,16 +53,9 @@ class EmployeeAdmin(admin.ModelAdmin):
                 'is_manager',
                 ('contract_type', 'employee_category'),
                 ('joined_date', 'rejoined_date'),
-                ('in_probation', 'probation_period'),
+                'in_probation',
                 ('cost_center', 'profit_center'),
                 'payroll_group',
-            )
-        }),
-        ('Identification', {
-            'fields': (
-                'cpr_number',
-                'profession_cpr',
-                'education_category',
             )
         }),
         ('Visa & Accommodation', {
@@ -69,13 +64,6 @@ class EmployeeAdmin(admin.ModelAdmin):
                 'visa_cr_number',
                 'sponsor_name',
                 'accom_occu_date',
-            )
-        }),
-        ('Bank Details', {
-            'fields': (
-                'bank',
-                'account_number',
-                'iban',
             )
         }),
         ('Contract Details', {

@@ -81,86 +81,82 @@ class EmployeeForm(forms.ModelForm):
                 css_class='form-row'
             ),
             Row(
-                Column('profession_cpr', css_class='form-group col-md-6 mb-0'),
                 Column('email', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('designation', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('division', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('department', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('manager', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('location', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('contract_type', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('joined_date', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('rejoined_date', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('in_probation', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('is_manager', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('cost_center', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('profit_center', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('employee_category', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('payroll_group', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('company_accommodation', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('visa_cr_number', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('sponsor_name', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('accom_occu_date', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('bank', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('account_number', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('iban', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('contract_start_date', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('contract_end_date', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('notice_period', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('leave_accrual_rate', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('basic_salary', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('total_allowances', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
                 Column('total_deductions', css_class='form-group col-md-6 mb-0'),
-                css_class='form-row'
-            ),
-            Row(
                 Column('bond_amount', css_class='form-group col-md-6 mb-0'),
-                Column('guarantee_details', css_class='form-group col-md-6 mb-0'),
                 css_class='form-row'
             ),
             Row(
+                Column('guarantee_details', css_class='form-group col-md-6 mb-0'),
                 Column('is_active', css_class='form-group col-md-6 mb-0'),
                 css_class='form-row'
             ),
@@ -174,8 +170,7 @@ class EmployeeForm(forms.ModelForm):
             'employee_number', 'first_name', 'middle_name', 'last_name',
             'first_name_ar', 'middle_name_ar', 'last_name_ar',
             'date_of_birth', 'gender', 'marital_status', 'nationality',
-            'religion', 'education_category', 'cpr_number', 'profession_cpr',
-            'email',
+            'religion', 'education_category', 'cpr_number', 'email',
             
             # Employment Information
             'designation', 'division', 'department', 'manager',

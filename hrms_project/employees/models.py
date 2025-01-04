@@ -81,7 +81,6 @@ class Employee(models.Model):
     religion = models.CharField(max_length=50, blank=True, null=True)
     education_category = models.CharField(max_length=50, blank=True, null=True)
     cpr_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
-    profession_cpr = models.CharField(max_length=100, blank=True, null=True)
     email = models.EmailField(unique=True, blank=True, null=True)
 
     # Employment Information
