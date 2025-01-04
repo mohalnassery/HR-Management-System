@@ -1,0 +1,75 @@
+{% extends "employees/base.html" %}
+
+{% block title %}View Document - {{ employee.get_full_name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>View Document - {{ employee.get_full_name }}</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <p><strong>Document Type:</strong> {{ document.get_document_type_display }}</p>
+                            <p><strong>Document Number:</strong> {{ document.document_number }}</p>
+                            <p><strong>Profession/Title:</strong> {{ document.profession_title|default:"-" }}</p>
+                            <p><strong>Issue Date:</strong> {{ document.issue_date|date:"d/m/Y" }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Issue Place:</strong> {{ document.issue_place }}</p>
+                            <p><strong>Expiry Date:</strong> {{ document.expiry_date|date:"d/m/Y" }}</p>
+                            <p><strong>Status:</strong> 
+                                {% if document.is_expired %}
+                                    <span class="badge bg-danger">Expired</span>
+                                {% else %}
+                                    <span class="badge bg-success">Valid</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+
+                    {% if document.other_info %}
+                    <div class="row mb-4">
+                        <div class="col">
+                            <h5>Additional Information</h5>
+                            <p>{{ document.other_info|linebreaks }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="row">
+                        <div class="col">
+                            <h5>Document File</h5>
+                            {% if document.is_image %}
+                                <img src="{{ document.document_file.url }}" alt="Document" class="img-fluid">
+                            {% else %}
+                                <div class="d-grid gap-2">
+                                    <a href="{{ document.document_file.url }}" class="btn btn-primary" target="_blank">
+                                        <i class="fas fa-download"></i> Download Document
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <a href="{% url 'employees:employee_detail' employee.pk %}" class="btn btn-secondary">Back</a>
+                        <a href="{% url 'employees:edit_document' employee.pk document.pk %}" class="btn btn-warning">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                        <a href="{% url 'employees:delete_document' employee.pk document.pk %}" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Delete
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

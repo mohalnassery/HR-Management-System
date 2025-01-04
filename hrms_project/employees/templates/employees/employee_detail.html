@@ -1,0 +1,359 @@
+{% extends "employees/base.html" %}
+
+{% block title %}{{ employee.get_full_name }} - Employee Details{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2>{{ employee.get_full_name }}</h2>
+        <p class="text-muted">Employee #{{ employee.employee_number }}</p>
+    </div>
+    <div class="col text-end">
+        <a href="{% url 'employees:employee_update' employee.pk %}" class="btn btn-warning">
+            <i class="fas fa-edit"></i> Edit
+        </a>
+        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+            <i class="fas fa-trash"></i> Delete
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="list-group" id="employeeTabs" role="tablist">
+            <a href="#general" class="list-group-item list-group-item-action active" data-bs-toggle="tab" role="tab" aria-controls="general" aria-selected="true">General</a>
+            <a href="#bank" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="bank" aria-selected="false">Bank</a>
+            <a href="#documents" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="documents" aria-selected="false">Documents</a>
+            <a href="#contract" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="contract" aria-selected="false">Contract & Accruals</a>
+            <a href="#dependents" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="dependents" aria-selected="false">Dependents</a>
+            <a href="#contacts" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="contacts" aria-selected="false">Contacts</a>
+            <a href="#checklist" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="checklist" aria-selected="false">Check List</a>
+            <a href="#salary" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="salary" aria-selected="false">Salary</a>
+            <a href="#attendance" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="attendance" aria-selected="false">Attendance</a>
+            <a href="#bond" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="bond" aria-selected="false">Bond & Guarantee</a>
+            <a href="#assets" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="assets" aria-selected="false">Assets In Hand</a>
+            <a href="#education" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="education" aria-selected="false">Education</a>
+            <a href="#offences" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="offences" aria-selected="false">Offences</a>
+            <a href="#events" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="events" aria-selected="false">Life Events</a>
+        </div>
+    </div>
+
+    <div class="col-md-9">
+        <div class="tab-content mt-3" id="employeeTabContent">
+            <!-- General Information Tab -->
+            <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">General Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>First Name:</strong> {{ employee.first_name }}</p>
+                                <p><strong>Middle Name:</strong> {{ employee.middle_name|default:"-" }}</p>
+                                <p><strong>Last Name:</strong> {{ employee.last_name }}</p>
+                                <p><strong>First Name (Arabic):</strong> {{ employee.first_name_ar|default:"-" }}</p>
+                                <p><strong>Middle Name (Arabic):</strong> {{ employee.middle_name_ar|default:"-" }}</p>
+                                <p><strong>Last Name (Arabic):</strong> {{ employee.last_name_ar|default:"-" }}</p>
+                                <p><strong>Date of Birth:</strong> {{ employee.date_of_birth|date:"d/m/Y"|default:"-" }}</p>
+                                <p><strong>Gender:</strong> {{ employee.get_gender_display|default:"-" }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Marital Status:</strong> {{ employee.get_marital_status_display|default:"-" }}</p>
+                                <p><strong>Nationality:</strong> {{ employee.nationality|default:"-" }}</p>
+                                <p><strong>Religion:</strong> {{ employee.religion|default:"-" }}</p>
+                                <p><strong>Education Category:</strong> {{ employee.education_category|default:"-" }}</p>
+                                <p><strong>CPR Number:</strong> {{ employee.cpr_number|default:"-" }}</p>
+                                <p><strong>Profession in CPR:</strong> {{ employee.profession_cpr|default:"-" }}</p>
+                                <p><strong>Email:</strong> {{ employee.email|default:"-" }}</p>
+                                <tr>
+                                    <th>Designation:</th>
+                                    <td>{{ employee.designation|default:"-" }}</td>
+                                </tr>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bank Accounts Tab -->
+            <div class="tab-pane fade" id="bank" role="tabpanel" aria-labelledby="bank-tab">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Bank Accounts</h5>
+                        <a href="{% url 'employees:add_bank_account' employee.pk %}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-plus"></i> Add Bank Account
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        {% if employee.bank_accounts.exists %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Bank</th>
+                                            <th>Account Number</th>
+                                            <th>IBAN</th>
+                                            <th>Transfer Amount</th>
+                                            <th>Primary</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for account in employee.bank_accounts.all %}
+                                        <tr>
+                                            <td>{{ account.bank }}</td>
+                                            <td>{{ account.account_number }}</td>
+                                            <td>{{ account.iban }}</td>
+                                            <td>{{ account.transfer_amount|default:"-" }}</td>
+                                            <td>
+                                                {% if account.is_primary %}
+                                                    <span class="badge bg-success">Primary</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <a href="{% url 'employees:edit_bank_account' employee.pk account.pk %}" class="btn btn-sm btn-info">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <a href="{% url 'employees:delete_bank_account' employee.pk account.pk %}" class="btn btn-sm btn-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <p class="text-muted">No bank accounts added yet.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documents Tab -->
+            <div class="tab-pane fade" id="documents" role="tabpanel" aria-labelledby="documents-tab">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Documents</h5>
+                        <a href="{% url 'employees:add_document' employee.id %}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add Document
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Document Type</th>
+                                        <th>File</th>
+                                        <th>Upload Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if employee.documents.all %}
+                                        {% for document in employee.documents.all %}
+                                            <tr>
+                                                <td>{{ document.get_document_type_display }}</td>
+                                                <td>
+                                                    {% if document.document_file %}
+                                                        {% if document.is_image %}
+                                                            <img src="{{ document.document_file.url }}" alt="Document" style="height: 50px;">
+                                                        {% else %}
+                                                            <a href="{{ document.document_file.url }}" target="_blank">
+                                                                <i class="fas fa-file"></i> View Document
+                                                            </a>
+                                                        {% endif %}
+                                                    {% else %}
+                                                        No file attached
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ document.created_at|date:"d/m/Y" }}</td>
+                                                <td>
+                                                    <div class="btn-group" role="group">
+                                                        <a href="{% url 'employees:view_document' employee.id document.id %}" 
+                                                           class="btn btn-sm btn-info" title="View">
+                                                            <i class="fas fa-eye"></i>
+                                                        </a>
+                                                        <a href="{% url 'employees:edit_document' employee.id document.id %}" 
+                                                           class="btn btn-sm btn-warning" title="Edit">
+                                                            <i class="fas fa-edit"></i>
+                                                        </a>
+                                                        <a href="{% url 'employees:delete_document' employee.id document.id %}" 
+                                                           class="btn btn-sm btn-danger" title="Delete">
+                                                            <i class="fas fa-trash"></i>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="4" class="text-center">No documents found.</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contract & Accruals Tab -->
+            <div class="tab-pane fade" id="contract" role="tabpanel" aria-labelledby="contract-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Contract & Accruals</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add contract and accruals information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dependents Tab -->
+            <div class="tab-pane fade" id="dependents" role="tabpanel" aria-labelledby="dependents-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Dependents</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add dependents information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contacts Tab -->
+            <div class="tab-pane fade" id="contacts" role="tabpanel" aria-labelledby="contacts-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Contacts</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add contacts information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Check List Tab -->
+            <div class="tab-pane fade" id="checklist" role="tabpanel" aria-labelledby="checklist-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Check List</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add check list information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Salary Tab -->
+            <div class="tab-pane fade" id="salary" role="tabpanel" aria-labelledby="salary-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Salary</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add salary information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Attendance Tab -->
+            <div class="tab-pane fade" id="attendance" role="tabpanel" aria-labelledby="attendance-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Attendance</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add attendance information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bond & Guarantee Tab -->
+            <div class="tab-pane fade" id="bond" role="tabpanel" aria-labelledby="bond-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Bond & Guarantee</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add bond and guarantee information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assets In Hand Tab -->
+            <div class="tab-pane fade" id="assets" role="tabpanel" aria-labelledby="assets-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Assets In Hand</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add assets in hand information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Education Tab -->
+            <div class="tab-pane fade" id="education" role="tabpanel" aria-labelledby="education-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Education</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add education information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Offences Tab -->
+            <div class="tab-pane fade" id="offences" role="tabpanel" aria-labelledby="offences-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Offences</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add offences information here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Life Events Tab -->
+            <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Life Events</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Add life events information here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Are you sure you want to delete {{ employee.get_full_name }}?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="{% url 'employees:employee_delete' employee.pk %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
