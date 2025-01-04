@@ -41,6 +41,22 @@ class Bank(models.Model):
     def __str__(self):
         return self.name
 
+class CostProfitCenter(models.Model):
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=20, unique=True)
+    description = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.code} - {self.name}"
+
+    class Meta:
+        verbose_name = 'Cost/Profit Center'
+        verbose_name_plural = 'Cost/Profit Centers'
+        ordering = ['code']
+
 class Employee(models.Model):
     # Choice Fields
     GENDER_CHOICES = [
@@ -60,14 +76,15 @@ class Employee(models.Model):
         ('INT', 'Intern'),
     ]
     EMPLOYEE_CATEGORY_CHOICES = [
-        ('STF', 'Staff'),
-        ('WRK', 'Worker'),
+        ('GEN', 'General'),
+        ('SUP', 'Supervisor'),
         ('MGR', 'Manager'),
         ('EXE', 'Executive'),
     ]
 
     # General Information
     employee_number = models.CharField(max_length=20, unique=True, default='EMP0001')
+    profile_picture = models.ImageField(upload_to='employee_pictures/', blank=True, null=True)
     first_name = models.CharField(max_length=50, default='First')
     middle_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50, default='Last')
@@ -82,43 +99,18 @@ class Employee(models.Model):
     education_category = models.CharField(max_length=50, blank=True, null=True)
     cpr_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
     email = models.EmailField(unique=True, blank=True, null=True)
+    in_probation = models.BooleanField(default=True)
 
     # Employment Information
     designation = models.CharField(max_length=100, blank=True, null=True)
     division = models.ForeignKey(Division, on_delete=models.SET_NULL, null=True, blank=True)
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
-    manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
     location = models.ForeignKey(Location, on_delete=models.SET_NULL, null=True, blank=True)
     contract_type = models.CharField(max_length=20, choices=CONTRACT_TYPE_CHOICES, blank=True, null=True)
     joined_date = models.DateField(blank=True, null=True)
-    rejoined_date = models.DateField(blank=True, null=True)
-    in_probation = models.BooleanField(default=True)
-    is_manager = models.BooleanField(default=False)
-    cost_center = models.CharField(max_length=50, blank=True, null=True)
-    profit_center = models.CharField(max_length=50, blank=True, null=True)
+    cost_center = models.ForeignKey(CostProfitCenter, on_delete=models.SET_NULL, null=True, blank=True, related_name='cost_center_employees')
+    profit_center = models.ForeignKey(CostProfitCenter, on_delete=models.SET_NULL, null=True, blank=True, related_name='profit_center_employees')
     employee_category = models.CharField(max_length=20, choices=EMPLOYEE_CATEGORY_CHOICES, blank=True, null=True)
-    payroll_group = models.CharField(max_length=50, blank=True, null=True)
-
-    # Visa & Accommodation
-    company_accommodation = models.BooleanField(default=False)
-    visa_cr_number = models.CharField(max_length=50, blank=True, null=True)
-    sponsor_name = models.CharField(max_length=100, blank=True, null=True)
-    accom_occu_date = models.DateField(verbose_name="Accommodation Occupation Date", blank=True, null=True)
-
-    # Contract Details
-    contract_start_date = models.DateField(blank=True, null=True)
-    contract_end_date = models.DateField(blank=True, null=True)
-    notice_period = models.IntegerField(default=30, help_text="Notice period in days")
-    leave_accrual_rate = models.DecimalField(max_digits=4, decimal_places=2, default=2.5)
-
-    # Salary Information
-    basic_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_allowances = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_deductions = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-
-    # Bond Details
-    bond_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    guarantee_details = models.TextField(blank=True, null=True)
 
     # System Fields
     is_active = models.BooleanField(default=True)

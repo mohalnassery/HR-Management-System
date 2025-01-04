@@ -1,74 +1,285 @@
 {% extends "employees/base.html" %}
+{% load static %}
 
 {% block title %}{{ employee.get_full_name }} - Employee Details{% endblock %}
 
+{% block extra_css %}
+<style>
+    .profile-header {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .info-card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1.5rem;
+        border: none;
+    }
+
+    .info-card .card-header {
+        background: transparent;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 1rem 1.5rem;
+    }
+
+    .info-card .card-header h5 {
+        margin: 0;
+        color: #2c3e50;
+        font-weight: 600;
+    }
+
+    .info-section {
+        padding: 1rem;
+        background: #f8f9fc;
+        border-radius: 0.5rem;
+    }
+
+    .section-title {
+        color: #4e73df;
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .info-group {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .info-item label {
+        font-size: 0.8rem;
+        color: #858796;
+        margin-bottom: 0.25rem;
+    }
+
+    .info-item .value {
+        color: #2c3e50;
+        font-weight: 500;
+    }
+
+    .nav-pills .nav-link {
+        color: #6c757d;
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .nav-pills .nav-link.active {
+        background-color: #4e73df;
+        color: white;
+    }
+
+    .nav-pills .nav-link:hover:not(.active) {
+        background-color: #f8f9fa;
+    }
+
+    .status-badge {
+        padding: 0.5rem 1rem;
+        border-radius: 2rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        display: inline-block;
+    }
+
+    .status-active {
+        background-color: #e3fcef;
+        color: #00a854;
+    }
+
+    .status-inactive {
+        background-color: #fff1f0;
+        color: #f5222d;
+    }
+
+    .status-warning {
+        background-color: #fff7e6;
+        color: #fa8c16;
+    }
+
+    .status-success {
+        background-color: #e3fcef;
+        color: #00a854;
+    }
+
+    .table {
+        --bs-table-hover-bg: rgba(78, 115, 223, 0.05);
+    }
+
+    .btn-group .btn {
+        margin: 0 2px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row mb-4">
-    <div class="col">
-        <h2>{{ employee.get_full_name }}</h2>
-        <p class="text-muted">Employee #{{ employee.employee_number }}</p>
-    </div>
-    <div class="col text-end">
-        <a href="{% url 'employees:employee_update' employee.pk %}" class="btn btn-warning">
-            <i class="fas fa-edit"></i> Edit
-        </a>
-        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
-            <i class="fas fa-trash"></i> Delete
-        </button>
+<!-- Profile Header -->
+<div class="profile-header">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="mb-1">{{ employee.get_full_name }}</h2>
+            <p class="mb-1">Employee #{{ employee.employee_number }}</p>
+            <p class="mb-0">{{ employee.designation|default:"" }}</p>
+        </div>
+        <div class="col-auto">
+            <span class="status-badge {% if employee.is_active %}status-active{% else %}status-inactive{% endif %}">
+                {{ employee.is_active|yesno:"Active,Inactive" }}
+            </span>
+        </div>
+        <div class="col-auto">
+            <a href="{% url 'employees:employee_update' employee.pk %}" class="btn btn-light me-2">
+                <i class="fas fa-edit"></i> Edit
+            </a>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+        </div>
     </div>
 </div>
 
 <div class="row">
     <div class="col-md-3">
-        <div class="list-group" id="employeeTabs" role="tablist">
-            <a href="#general" class="list-group-item list-group-item-action active" data-bs-toggle="tab" role="tab" aria-controls="general" aria-selected="true">General</a>
-            <a href="#bank" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="bank" aria-selected="false">Bank</a>
-            <a href="#documents" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="documents" aria-selected="false">Documents</a>
-            <a href="#contract" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="contract" aria-selected="false">Contract & Accruals</a>
-            <a href="#dependents" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="dependents" aria-selected="false">Dependents</a>
-            <a href="#contacts" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="contacts" aria-selected="false">Contacts</a>
-            <a href="#checklist" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="checklist" aria-selected="false">Check List</a>
-            <a href="#salary" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="salary" aria-selected="false">Salary</a>
-            <a href="#attendance" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="attendance" aria-selected="false">Attendance</a>
-            <a href="#bond" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="bond" aria-selected="false">Bond & Guarantee</a>
-            <a href="#assets" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="assets" aria-selected="false">Assets In Hand</a>
-            <a href="#education" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="education" aria-selected="false">Education</a>
-            <a href="#offences" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="offences" aria-selected="false">Offences</a>
-            <a href="#events" class="list-group-item list-group-item-action" data-bs-toggle="tab" role="tab" aria-controls="events" aria-selected="false">Life Events</a>
+        <div class="nav flex-column nav-pills" id="employeeTabs" role="tablist">
+            <a class="nav-link active" data-bs-toggle="pill" href="#general" role="tab">
+                <i class="fas fa-user me-2"></i>General
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#bank" role="tab">
+                <i class="fas fa-university me-2"></i>Bank
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#documents" role="tab">
+                <i class="fas fa-file-alt me-2"></i>Documents
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#contract" role="tab">
+                <i class="fas fa-file-signature me-2"></i>Contract & Accruals
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#dependents" role="tab">
+                <i class="fas fa-users me-2"></i>Dependents
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#contacts" role="tab">
+                <i class="fas fa-address-book me-2"></i>Contacts
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#checklist" role="tab">
+                <i class="fas fa-tasks me-2"></i>Check List
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#salary" role="tab">
+                <i class="fas fa-money-bill-wave me-2"></i>Salary
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#attendance" role="tab">
+                <i class="fas fa-calendar-check me-2"></i>Attendance
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#bond" role="tab">
+                <i class="fas fa-handshake me-2"></i>Bond & Guarantee
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#assets" role="tab">
+                <i class="fas fa-laptop me-2"></i>Assets In Hand
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#education" role="tab">
+                <i class="fas fa-graduation-cap me-2"></i>Education
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#offences" role="tab">
+                <i class="fas fa-exclamation-triangle me-2"></i>Offences
+            </a>
+            <a class="nav-link" data-bs-toggle="pill" href="#events" role="tab">
+                <i class="fas fa-history me-2"></i>Life Events
+            </a>
         </div>
     </div>
 
     <div class="col-md-9">
-        <div class="tab-content mt-3" id="employeeTabContent">
+        <div class="tab-content" id="employeeTabContent">
             <!-- General Information Tab -->
-            <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
-                <div class="card">
+            <div class="tab-pane fade show active" id="general" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">General Information</h5>
+                        <h5><i class="fas fa-info-circle me-2"></i>Personal Information</h5>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p><strong>First Name:</strong> {{ employee.first_name }}</p>
-                                <p><strong>Middle Name:</strong> {{ employee.middle_name|default:"-" }}</p>
-                                <p><strong>Last Name:</strong> {{ employee.last_name }}</p>
-                                <p><strong>First Name (Arabic):</strong> {{ employee.first_name_ar|default:"-" }}</p>
-                                <p><strong>Middle Name (Arabic):</strong> {{ employee.middle_name_ar|default:"-" }}</p>
-                                <p><strong>Last Name (Arabic):</strong> {{ employee.last_name_ar|default:"-" }}</p>
-                                <p><strong>Date of Birth:</strong> {{ employee.date_of_birth|date:"d/m/Y"|default:"-" }}</p>
-                                <p><strong>Gender:</strong> {{ employee.get_gender_display|default:"-" }}</p>
+                        <div class="info-section">
+                            <div class="section-title">Personal Details</div>
+                            <div class="info-group">
+                                <div class="info-item">
+                                    <label>First Name</label>
+                                    <div class="value">{{ employee.first_name }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Middle Name</label>
+                                    <div class="value">{{ employee.middle_name|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Last Name</label>
+                                    <div class="value">{{ employee.last_name }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>First Name (Arabic)</label>
+                                    <div class="value">{{ employee.first_name_ar|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Middle Name (Arabic)</label>
+                                    <div class="value">{{ employee.middle_name_ar|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Last Name (Arabic)</label>
+                                    <div class="value">{{ employee.last_name_ar|default:"-" }}</div>
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                <p><strong>Marital Status:</strong> {{ employee.get_marital_status_display|default:"-" }}</p>
-                                <p><strong>Nationality:</strong> {{ employee.nationality|default:"-" }}</p>
-                                <p><strong>Religion:</strong> {{ employee.religion|default:"-" }}</p>
-                                <p><strong>Education Category:</strong> {{ employee.education_category|default:"-" }}</p>
-                                <p><strong>CPR Number:</strong> {{ employee.cpr_number|default:"-" }}</p>
-                                <p><strong>Email:</strong> {{ employee.email|default:"-" }}</p>
-                                <tr>
-                                    <th>Designation:</th>
-                                    <td>{{ employee.designation|default:"-" }}</td>
-                                </tr>
+                        </div>
+                        <div class="info-section">
+                            <div class="section-title">Contact Information</div>
+                            <div class="info-group">
+                                <div class="info-item">
+                                    <label>Date of Birth</label>
+                                    <div class="value">{{ employee.date_of_birth|date:"d/m/Y"|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Gender</label>
+                                    <div class="value">{{ employee.get_gender_display|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Marital Status</label>
+                                    <div class="value">{{ employee.get_marital_status_display|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Nationality</label>
+                                    <div class="value">{{ employee.nationality|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Religion</label>
+                                    <div class="value">{{ employee.religion|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Education Category</label>
+                                    <div class="value">{{ employee.education_category|default:"-" }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="info-section">
+                            <div class="section-title">Employee Information</div>
+                            <div class="info-group">
+                                <div class="info-item">
+                                    <label>CPR Number</label>
+                                    <div class="value">{{ employee.cpr_number|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Email</label>
+                                    <div class="value">{{ employee.email|default:"-" }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Designation</label>
+                                    <div class="value">{{ employee.designation|default:"-" }}</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -76,10 +287,10 @@
             </div>
 
             <!-- Bank Accounts Tab -->
-            <div class="tab-pane fade" id="bank" role="tabpanel" aria-labelledby="bank-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="bank" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="card-title mb-0">Bank Accounts</h5>
+                        <h5><i class="fas fa-university me-2"></i>Bank Accounts</h5>
                         <a href="{% url 'employees:add_bank_account' employee.pk %}" class="btn btn-primary btn-sm">
                             <i class="fas fa-plus"></i> Add Bank Account
                         </a>
@@ -107,16 +318,18 @@
                                             <td>{{ account.transfer_amount|default:"-" }}</td>
                                             <td>
                                                 {% if account.is_primary %}
-                                                    <span class="badge bg-success">Primary</span>
+                                                    <span class="status-badge status-active">Primary</span>
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <a href="{% url 'employees:edit_bank_account' employee.pk account.pk %}" class="btn btn-sm btn-info">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                <a href="{% url 'employees:delete_bank_account' employee.pk account.pk %}" class="btn btn-sm btn-danger">
-                                                    <i class="fas fa-trash"></i>
-                                                </a>
+                                                <div class="btn-group">
+                                                    <a href="{% url 'employees:edit_bank_account' employee.pk account.pk %}" class="btn btn-sm btn-info">
+                                                        <i class="fas fa-edit"></i>
+                                                    </a>
+                                                    <a href="{% url 'employees:delete_bank_account' employee.pk account.pk %}" class="btn btn-sm btn-danger">
+                                                        <i class="fas fa-trash"></i>
+                                                    </a>
+                                                </div>
                                             </td>
                                         </tr>
                                         {% endfor %}
@@ -131,17 +344,17 @@
             </div>
 
             <!-- Documents Tab -->
-            <div class="tab-pane fade" id="documents" role="tabpanel" aria-labelledby="documents-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="documents" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Documents</h5>
-                        <a href="{% url 'employees:add_document' employee.id %}" class="btn btn-primary">
+                        <h5><i class="fas fa-file-alt me-2"></i>Documents</h5>
+                        <a href="{% url 'employees:add_document' employee.id %}" class="btn btn-primary btn-sm">
                             <i class="fas fa-plus"></i> Add Document
                         </a>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            <table class="table table-striped">
+                            <table class="table table-hover">
                                 <thead>
                                     <tr>
                                         <th>Document Type</th>
@@ -170,7 +383,7 @@
                                                 </td>
                                                 <td>{{ document.created_at|date:"d/m/Y" }}</td>
                                                 <td>
-                                                    <div class="btn-group" role="group">
+                                                    <div class="btn-group">
                                                         <a href="{% url 'employees:view_document' employee.id document.id %}" 
                                                            class="btn btn-sm btn-info" title="View">
                                                             <i class="fas fa-eye"></i>
@@ -200,10 +413,10 @@
             </div>
 
             <!-- Contract & Accruals Tab -->
-            <div class="tab-pane fade" id="contract" role="tabpanel" aria-labelledby="contract-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="contract" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Contract & Accruals</h5>
+                        <h5><i class="fas fa-file-signature me-2"></i>Contract & Accruals</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add contract and accruals information here -->
@@ -212,10 +425,10 @@
             </div>
 
             <!-- Dependents Tab -->
-            <div class="tab-pane fade" id="dependents" role="tabpanel" aria-labelledby="dependents-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="dependents" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Dependents</h5>
+                        <h5><i class="fas fa-users me-2"></i>Dependents</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add dependents information here -->
@@ -224,10 +437,10 @@
             </div>
 
             <!-- Contacts Tab -->
-            <div class="tab-pane fade" id="contacts" role="tabpanel" aria-labelledby="contacts-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="contacts" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Contacts</h5>
+                        <h5><i class="fas fa-address-book me-2"></i>Contacts</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add contacts information here -->
@@ -236,10 +449,10 @@
             </div>
 
             <!-- Check List Tab -->
-            <div class="tab-pane fade" id="checklist" role="tabpanel" aria-labelledby="checklist-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="checklist" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Check List</h5>
+                        <h5><i class="fas fa-tasks me-2"></i>Check List</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add check list information here -->
@@ -248,10 +461,10 @@
             </div>
 
             <!-- Salary Tab -->
-            <div class="tab-pane fade" id="salary" role="tabpanel" aria-labelledby="salary-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="salary" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Salary</h5>
+                        <h5><i class="fas fa-money-bill-wave me-2"></i>Salary</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add salary information here -->
@@ -260,10 +473,10 @@
             </div>
 
             <!-- Attendance Tab -->
-            <div class="tab-pane fade" id="attendance" role="tabpanel" aria-labelledby="attendance-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="attendance" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Attendance</h5>
+                        <h5><i class="fas fa-calendar-check me-2"></i>Attendance</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add attendance information here -->
@@ -272,10 +485,10 @@
             </div>
 
             <!-- Bond & Guarantee Tab -->
-            <div class="tab-pane fade" id="bond" role="tabpanel" aria-labelledby="bond-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="bond" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Bond & Guarantee</h5>
+                        <h5><i class="fas fa-handshake me-2"></i>Bond & Guarantee</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add bond and guarantee information here -->
@@ -284,10 +497,10 @@
             </div>
 
             <!-- Assets In Hand Tab -->
-            <div class="tab-pane fade" id="assets" role="tabpanel" aria-labelledby="assets-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="assets" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Assets In Hand</h5>
+                        <h5><i class="fas fa-laptop me-2"></i>Assets In Hand</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add assets in hand information here -->
@@ -296,10 +509,10 @@
             </div>
 
             <!-- Education Tab -->
-            <div class="tab-pane fade" id="education" role="tabpanel" aria-labelledby="education-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="education" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Education</h5>
+                        <h5><i class="fas fa-graduation-cap me-2"></i>Education</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add education information here -->
@@ -308,10 +521,10 @@
             </div>
 
             <!-- Offences Tab -->
-            <div class="tab-pane fade" id="offences" role="tabpanel" aria-labelledby="offences-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="offences" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Offences</h5>
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Offences</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add offences information here -->
@@ -320,10 +533,10 @@
             </div>
 
             <!-- Life Events Tab -->
-            <div class="tab-pane fade" id="events" role="tabpanel" aria-labelledby="events-tab">
-                <div class="card">
+            <div class="tab-pane fade" id="events" role="tabpanel">
+                <div class="info-card">
                     <div class="card-header">
-                        <h5 class="card-title mb-0">Life Events</h5>
+                        <h5><i class="fas fa-history me-2"></i>Life Events</h5>
                     </div>
                     <div class="card-body">
                         <!-- Add life events information here -->

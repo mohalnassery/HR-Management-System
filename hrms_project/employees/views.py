@@ -42,7 +42,7 @@ class EmployeeListView(LoginRequiredMixin, ListView):
             is_active = status == 'active'
             queryset = queryset.filter(is_active=is_active)
 
-        return queryset.select_related('department', 'division', 'manager')
+        return queryset.select_related('department', 'division', 'location', 'cost_center', 'profit_center')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -126,7 +126,7 @@ class EmployeeDeleteView(LoginRequiredMixin, PermissionRequiredMixin, DeleteView
 # Function-based views for those who prefer them
 @login_required
 def employee_list(request):
-    employees = Employee.objects.all().select_related('department', 'division', 'manager').order_by('employee_number')
+    employees = Employee.objects.all().select_related('department', 'division', 'location', 'cost_center', 'profit_center').order_by('employee_number')
     paginator = Paginator(employees, 10)
     page = request.GET.get('page')
     employees = paginator.get_page(page)
