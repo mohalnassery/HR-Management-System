@@ -11,6 +11,15 @@ from .models import Employee, Department, Division, EmployeeBankAccount, Employe
 from .forms import EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm
 from django.http import JsonResponse
 from django.utils import timezone
+import os
+import tempfile
+from django.http import JsonResponse
+import win32com.client
+import pythoncom
+from django.views.decorators.csrf import csrf_exempt
+import base64
+import io
+from PIL import Image
 
 class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
@@ -324,3 +333,79 @@ def bulk_status_change(request):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+@csrf_exempt
+def scan_document(request, employee_id):
+    if request.method == 'POST':
+        try:
+            # Initialize COM in the current thread
+            pythoncom.CoInitialize()
+            
+            # Create WIA device manager
+            device_manager = win32com.client.Dispatch("WIA.DeviceManager")
+            devices = device_manager.DeviceInfos
+            
+            # Find first available scanner
+            scanner = None
+            for i in range(1, devices.Count + 1):
+                if devices.Item(i).Type == 1:  # 1 = Scanner
+                    scanner = devices.Item(i).Connect()
+                    break
+            
+            if not scanner:
+                return JsonResponse({'error': 'No scanner found'}, status=404)
+            
+            # Configure and perform scan
+            item = scanner.Items[1]
+            item.Properties("6146").Value = 2  # Color
+            item.Properties("6147").Value = 300  # DPI
+            
+            # Perform scan
+            image = item.Transfer()
+            
+            # Create unique temp file name
+            import uuid
+            temp_dir = tempfile.gettempdir()
+            temp_filename = f'scan_{employee_id}_{uuid.uuid4().hex}.jpg'
+            temp_path = os.path.join(temp_dir, temp_filename)
+            
+            # Ensure old file is removed if it exists
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            
+            # Save scanned image
+            try:
+                image.SaveFile(temp_path)
+                
+                # Read the image and convert to base64
+                with open(temp_path, 'rb') as img_file:
+                    img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                
+                # Clean up the temporary file
+                os.remove(temp_path)
+                
+            except Exception as save_error:
+                return JsonResponse({
+                    'error': f'Failed to save scanned image: {str(save_error)}'
+                }, status=500)
+            
+            # Clean up COM objects
+            pythoncom.CoUninitialize()
+            
+            return JsonResponse({
+                'success': True,
+                'image_data': f'data:image/jpeg;base64,{img_data}'
+            })
+            
+        except Exception as e:
+            # Clean up COM in case of error
+            try:
+                pythoncom.CoUninitialize()
+            except:
+                pass
+            
+            return JsonResponse({
+                'error': str(e)
+            }, status=500)
+            
+    return JsonResponse({'error': 'Invalid request method'}, status=400)

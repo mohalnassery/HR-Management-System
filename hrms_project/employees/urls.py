@@ -21,7 +21,7 @@ urlpatterns = [
     path('<int:employee_id>/documents/<int:document_id>/edit/', views.edit_document, name='edit_document'),
     path('<int:employee_id>/documents/<int:document_id>/delete/', views.delete_document, name='delete_document'),
     path('<int:employee_id>/documents/<int:document_id>/view/', views.view_document, name='view_document'),
-
+    path('employee/<int:employee_id>/scan-document/', views.scan_document, name='scan_document'),
 
     # Bulk Status Change
     path('bulk-status-change/', views.bulk_status_change, name='bulk_status_change'),
