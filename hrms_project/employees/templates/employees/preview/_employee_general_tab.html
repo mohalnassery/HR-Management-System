@@ -1,0 +1,239 @@
+{% load static %}
+<div class="tab-pane fade show active" id="general" role="tabpanel">
+    <div class="info-card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-user me-2"></i>Employee Information</h5>
+            <div class="status-badge {% if employee.is_active %}status-active{% else %}status-inactive{% endif %}">
+                {{ employee.is_active|yesno:"Active,Inactive" }}
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Basic Information -->
+            <div class="info-section mb-4">
+                <div class="section-title">Basic Information</div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Employee Number</label>
+                            <div class="value">{{ employee.employee_number }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Profile Picture</label>
+                            <div class="value">
+                                {% if employee.profile_picture %}
+                                    <img src="{{ employee.profile_picture.url }}" alt="Profile Picture" class="img-thumbnail" style="max-width: 150px;">
+                                {% else %}
+                                    <span class="text-muted">No profile picture</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Personal Information (English) -->
+            <div class="info-section mb-4">
+                <div class="section-title">Personal Information (English)</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>First Name</label>
+                            <div class="value">{{ employee.first_name }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Middle Name</label>
+                            <div class="value">{{ employee.middle_name|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Last Name</label>
+                            <div class="value">{{ employee.last_name }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Personal Information (Arabic) -->
+            <div class="info-section mb-4">
+                <div class="section-title">Personal Information (Arabic)</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>First Name (Arabic)</label>
+                            <div class="value">{{ employee.first_name_ar|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Middle Name (Arabic)</label>
+                            <div class="value">{{ employee.middle_name_ar|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Last Name (Arabic)</label>
+                            <div class="value">{{ employee.last_name_ar|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demographics -->
+            <div class="info-section mb-4">
+                <div class="section-title">Demographics</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Date of Birth</label>
+                            <div class="value">{{ employee.date_of_birth|date:"d/m/Y"|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Gender</label>
+                            <div class="value">{{ employee.get_gender_display|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Marital Status</label>
+                            <div class="value">{{ employee.get_marital_status_display|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Nationality</label>
+                            <div class="value">{{ employee.nationality|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Religion</label>
+                            <div class="value">{{ employee.religion|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Education Category</label>
+                            <div class="value">{{ employee.education_category|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact & Identification -->
+            <div class="info-section mb-4">
+                <div class="section-title">Contact & Identification</div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>CPR Number</label>
+                            <div class="value">{{ employee.cpr_number|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Email</label>
+                            <div class="value">{{ employee.email|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h5 class="mb-0"><i class="fas fa-user me-2"></i>Employment Information</h5>
+
+            <!-- Employment Information -->
+            <div class="info-section mb-4">
+                <div class="section-title">Position Details</div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Designation</label>
+                            <div class="value">{{ employee.designation|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Employee Category</label>
+                            <div class="value">{{ employee.get_employee_category_display|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Department & Location -->
+            <div class="info-section mb-4">
+                <div class="section-title">Department & Location</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Division</label>
+                            <div class="value">{{ employee.division|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Department</label>
+                            <div class="value">{{ employee.department|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Location</label>
+                            <div class="value">{{ employee.location|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contract Information -->
+            <div class="info-section mb-4">
+                <div class="section-title">Contract Information</div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Contract Type</label>
+                            <div class="value">{{ employee.get_contract_type_display|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Joined Date</label>
+                            <div class="value">{{ employee.joined_date|date:"d/m/Y"|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="info-item">
+                            <label>Probation Status</label>
+                            <div class="value">{{ employee.in_probation|yesno:"Yes,No" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Financial Centers -->
+            <div class="info-section">
+                <div class="section-title">Financial Centers</div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Cost Center</label>
+                            <div class="value">{{ employee.cost_center|default:"-" }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item">
+                            <label>Profit Center</label>
+                            <div class="value">{{ employee.profit_center|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
