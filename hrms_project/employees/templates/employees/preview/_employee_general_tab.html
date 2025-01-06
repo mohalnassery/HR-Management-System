@@ -108,7 +108,7 @@
                     <div class="col-md-4">
                         <div class="info-item">
                             <label>Nationality</label>
-                            <div class="value">{{ employee.nationality|default:"-" }}</div>
+                            <div class="value">{{ employee.get_nationality_display|default:"-" }}</div>
                         </div>
                     </div>
                     <div class="col-md-4">

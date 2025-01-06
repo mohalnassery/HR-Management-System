@@ -29,5 +29,107 @@
             new bootstrap.Tab(triggerEl)
         })
     });
+
+    $(document).ready(function() {
+        // Initialize Select2 for nationality field
+        $('#id_nationality').select2({
+            placeholder: 'Select nationality',
+            allowClear: true,
+            templateResult: formatNationality,
+            templateSelection: formatNationality
+        });
+
+        // Format nationality options with flags
+        function formatNationality(nationality) {
+            if (!nationality.id) {
+                return nationality.text;
+            }
+
+            // Map nationality values to their corresponding flag codes
+            const flagMap = {
+                'ALGERIAN': 'dz',
+                'AMERICAN': 'us',
+                'ARGENTINA': 'ar',
+                'AUSTRALIAN': 'au',
+                'BAHRAINI': 'bh',
+                'BANGLADESHI': 'bd',
+                'BELGIAN': 'be',
+                'BRAZILIAN': 'br',
+                'BRITISH': 'gb',
+                'BULGARIAN': 'bg',
+                'CAMEROONIAN': 'cm',
+                'CANADIAN': 'ca',
+                'CHILEAN': 'cl',
+                'CHINESE': 'cn',
+                'COLOMBIAN': 'co',
+                'CROATIAN': 'hr',
+                'CUBAN': 'cu',
+                'CYPRIOT': 'cy',
+                'CZECH': 'cz',
+                'DANISH': 'dk',
+                'DJIBOUTIAN': 'dj',
+                'EGYPTIAN': 'eg',
+                'FILIPINO': 'ph',
+                'FRENCH': 'fr',
+                'GERMAN': 'de',
+                'GHANAIAN': 'gh',
+                'GREEK': 'gr',
+                'DUTCH': 'nl',
+                'HONG_KONGER': 'hk',
+                'INDIAN': 'in',
+                'INDONESIAN': 'id',
+                'IRANIAN': 'ir',
+                'IRAQI': 'iq',
+                'IRISH': 'ie',
+                'ITALIAN': 'it',
+                'JAMAICAN': 'jm',
+                'JAPANESE': 'jp',
+                'JORDANIAN': 'jo',
+                'KENYAN': 'ke',
+                'KUWAITI': 'kw',
+                'LEBANESE': 'lb',
+                'MALAWIAN': 'mw',
+                'MALAYSIAN': 'my',
+                'MEXICAN': 'mx',
+                'MOROCCAN': 'ma',
+                'NEPALI': 'np',
+                'NEW_ZEALANDER': 'nz',
+                'NIGERIAN': 'ng',
+                'NORWEGIAN': 'no',
+                'OMANI': 'om',
+                'PAKISTANI': 'pk',
+                'POLISH': 'pl',
+                'PORTUGUESE': 'pt',
+                'RUSSIAN': 'ru',
+                'SAUDI': 'sa',
+                'SCOTTISH': 'gb-sct',
+                'SERBIAN': 'rs',
+                'SEYCHELLOIS': 'sc',
+                'SINGAPOREAN': 'sg',
+                'SOUTH_AFRICAN': 'za',
+                'SPANISH': 'es',
+                'SRI_LANKAN': 'lk',
+                'SUDANESE': 'sd',
+                'SWEDISH': 'se',
+                'SWISS': 'ch',
+                'SYRIAN': 'sy',
+                'TAIWANESE': 'tw',
+                'TANZANIAN': 'tz',
+                'THAI': 'th',
+                'TUNISIAN': 'tn',
+                'TURKISH': 'tr',
+                'EMIRATI': 'ae',
+                'UGANDAN': 'ug',
+                'UKRAINIAN': 'ua',
+                'VENEZUELAN': 've',
+                'VIETNAMESE': 'vn',
+                'YEMENI': 'ye',
+                'ZIMBABWEAN': 'zw'
+            };
+
+            const flagCode = flagMap[nationality.id] || 'unknown';
+            return $('<span><span class="flag-icon flag-icon-' + flagCode + '"></span> ' + nationality.text + '</span>');
+        }
+    });
 </script>
 {% endblock %}

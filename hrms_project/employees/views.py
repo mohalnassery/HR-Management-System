@@ -9,6 +9,8 @@ from django.db import transaction
 from django.db.models import Q
 from .models import Employee, Department, Division, EmployeeBankAccount, EmployeeDocument
 from .forms import EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm
+from django.http import JsonResponse
+from django.utils import timezone
 
 class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
@@ -301,3 +303,24 @@ def view_document(request, employee_id, document_id):
         'employee': employee,
         'document': document
     })
+
+@login_required
+def bulk_status_change(request):
+    if request.method == 'POST':
+        try:
+            employee_ids = request.POST.getlist('employee_ids[]')
+            status = request.POST.get('status')
+            
+            if not employee_ids or status not in ['active', 'inactive']:
+                return JsonResponse({'success': False, 'error': 'Invalid parameters'})
+            
+            # Update employee status
+            Employee.objects.filter(id__in=employee_ids).update(
+                is_active=(status == 'active')
+            )
+            
+            return JsonResponse({'success': True})
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})

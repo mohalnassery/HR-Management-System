@@ -22,6 +22,11 @@ urlpatterns = [
     path('<int:employee_id>/documents/<int:document_id>/delete/', views.delete_document, name='delete_document'),
     path('<int:employee_id>/documents/<int:document_id>/view/', views.view_document, name='view_document'),
 
+
+    # Bulk Status Change
+    path('bulk-status-change/', views.bulk_status_change, name='bulk_status_change'),
+    path('bulk-status-change/<str:status>/', views.bulk_status_change, name='bulk_status_change_with_status'),
+
     # Function-based views (alternative)
     # path('', views.employee_list, name='employee_list'),
     # path('<int:pk>/', views.employee_detail, name='employee_detail'),

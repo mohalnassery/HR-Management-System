@@ -1,42 +1,121 @@
 {% extends "employees/base.html" %}
+{% load static %}
 
 {% block title %}Employee List{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+<link href="https://cdn.datatables.net/buttons/2.2.2/css/buttons.bootstrap5.min.css" rel="stylesheet">
+<link href="https://cdn.datatables.net/select/1.3.4/css/select.bootstrap5.min.css" rel="stylesheet">
+<style>
+    .container-fluid {
+        padding: 1rem;
+    }
+    .selected {
+        background-color: #e2e6ea !important;
+    }
+    .table tbody tr {
+        cursor: pointer;
+    }
+    .card {
+        border-radius: 0;
+        border: none;
+    }
+    .card-body {
+        padding: 0;
+    }
+    .table-responsive {
+        margin: 0;
+    }
+    .header-section {
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .table thead th {
+        background-color: #f8f9fa;
+        border-top: none;
+    }
+    .table td, .table th {
+        padding: 0.75rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row mb-4">
-    <div class="col">
-        <h2>Employee List</h2>
-    </div>
-    <div class="col text-end">
-        <a href="{% url 'employees:employee_create' %}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Add Employee
-        </a>
+<div class="header-section">
+    <div class="row align-items-center">
+        <div class="col">
+            <h2 class="m-0">Employee List</h2>
+        </div>
+        <div class="col-auto">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="includeInactive">
+                <label class="form-check-label" for="includeInactive">
+                    Include Inactive Employees
+                </label>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="btn-group">
+                <button id="exportExcel" class="btn btn-success">
+                    <i class="fas fa-file-excel"></i> Export to Excel
+                </button>
+                <button id="bulkActions" class="btn btn-secondary dropdown-toggle ms-2" data-bs-toggle="dropdown" disabled>
+                    <i class="fas fa-cog"></i> Bulk Actions
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item bulk-status" data-status="active" href="#"><i class="fas fa-check-circle text-success"></i> Set Active</a></li>
+                    <li><a class="dropdown-item bulk-status" data-status="inactive" href="#"><i class="fas fa-times-circle text-danger"></i> Set Inactive</a></li>
+                </ul>
+                <a href="{% url 'employees:employee_create' %}" class="btn btn-primary ms-2">
+                    <i class="fas fa-plus"></i> Add Employee
+                </a>
+            </div>
+        </div>
     </div>
 </div>
 
 <div class="card">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
+            <table id="employeeTable" class="table table-striped table-hover mb-0">
                 <thead>
                     <tr>
+                        <th>
+                            <input type="checkbox" class="form-check-input" id="selectAll">
+                        </th>
                         <th>Employee #</th>
-                        <th>Name</th>
-                        <th>Department</th>
+                        <th>First Name</th>
+                        <th>Last Name</th>
+                        <th>CPR Number</th>
+                        <th>PassNo</th>
                         <th>Division</th>
+                        <th>Department</th>
                         <th>Designation</th>
+                        <th>Joined Date</th>
+                        <th>Re-joined Date</th>
                         <th>Status</th>
+                        <th>CreatedOn</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for employee in employees %}
-                    <tr>
+                    <tr data-employee-id="{{ employee.id }}">
+                        <td>
+                            <input type="checkbox" class="form-check-input row-checkbox">
+                        </td>
                         <td>{{ employee.employee_number }}</td>
-                        <td>{{ employee.get_full_name }}</td>
-                        <td>{{ employee.department.name|default:"-" }}</td>
-                        <td>{{ employee.division.name|default:"-" }}</td>
-                        <td>{{ employee.designation|default:"-" }}</td>
+                        <td>{{ employee.first_name }}</td>
+                        <td>{{ employee.last_name }}</td>
+                        <td>{{ employee.cpr_number|default:'-' }}</td>
+                        <td>{{ employee.passport_number|default:'-' }}</td>
+                        <td>{{ employee.division.name|default:'-' }}</td>
+                        <td>{{ employee.department.name|default:'-' }}</td>
+                        <td>{{ employee.designation|default:'-' }}</td>
+                        <td>{{ employee.joined_date|date:"d/m/Y"|default:'-' }}</td>
+                        <td>{{ employee.rejoined_date|date:"d/m/Y"|default:'-' }}</td>
                         <td>
                             {% if employee.is_active %}
                                 <span class="badge bg-success">Active</span>
@@ -44,45 +123,17 @@
                                 <span class="badge bg-danger">Inactive</span>
                             {% endif %}
                         </td>
+                        <td>{{ employee.created_at|date:"d/m/Y"|default:'-' }}</td>
                         <td>
                             <div class="btn-group">
-                                <a href="{% url 'employees:employee_detail' employee.pk %}" class="btn btn-sm btn-info">
+                                <a href="{% url 'employees:employee_detail' employee.id %}" class="btn btn-sm btn-info">
                                     <i class="fas fa-eye"></i>
                                 </a>
-                                <a href="{% url 'employees:employee_update' employee.pk %}" class="btn btn-sm btn-warning">
+                                <a href="{% url 'employees:employee_update' employee.id %}" class="btn btn-sm btn-warning">
                                     <i class="fas fa-edit"></i>
                                 </a>
-                                <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ employee.pk }}">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-
-                            <!-- Delete Modal -->
-                            <div class="modal fade" id="deleteModal{{ employee.pk }}" tabindex="-1">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title">Confirm Delete</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body">
-                                            Are you sure you want to delete {{ employee.get_full_name }}?
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                            <form action="{% url 'employees:employee_delete' employee.pk %}" method="post" class="d-inline">
-                                                {% csrf_token %}
-                                                <button type="submit" class="btn btn-danger">Delete</button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center">No employees found.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -90,40 +141,144 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
-{% if is_paginated %}
-<nav class="mt-4">
-    <ul class="pagination justify-content-center">
-        {% if page_obj.has_previous %}
-            <li class="page-item">
-                <a class="page-link" href="?page=1">&laquo; First</a>
-            </li>
-            <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
-            </li>
-        {% endif %}
+{% block extra_js %}
+<script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.2.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/select/1.3.4/js/dataTables.select.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
 
-        {% for num in page_obj.paginator.page_range %}
-            {% if page_obj.number == num %}
-                <li class="page-item active">
-                    <span class="page-link">{{ num }}</span>
-                </li>
-            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                <li class="page-item">
-                    <a class="page-link" href="?page={{ num }}">{{ num }}</a>
-                </li>
-            {% endif %}
-        {% endfor %}
+<script>
+$(document).ready(function() {
+    // Initialize the checkbox state from localStorage
+    var showInactive = localStorage.getItem('showInactiveEmployees') === 'true';
+    $('#includeInactive').prop('checked', showInactive);
 
-        {% if page_obj.has_next %}
-            <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
-            </li>
-            <li class="page-item">
-                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last &raquo;</a>
-            </li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
+    // Custom filter for active/inactive employees
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+        var showInactive = $('#includeInactive').is(':checked');
+        var status = data[11]; // Status column index (adjusted for checkbox column)
+        
+        if (!showInactive && status.includes('Inactive')) {
+            return false;
+        }
+        return true;
+    });
+
+    var table = $('#employeeTable').DataTable({
+        dom: 'Bfrtip',
+        select: false,
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel"></i> Export Selected',
+                exportOptions: {
+                    columns: ':not(:last-child)',
+                    rows: function(idx, data, node) {
+                        return $(node).find('.row-checkbox').prop('checked');
+                    }
+                }
+            }
+        ],
+        order: [[1, 'asc']],
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]]
+    });
+
+    // Apply initial filter
+    table.draw();
+
+    // Handle inactive employee toggle
+    $('#includeInactive').change(function() {
+        var showInactive = $(this).is(':checked');
+        // Save state to localStorage
+        localStorage.setItem('showInactiveEmployees', showInactive);
+        table.draw();
+    });
+
+    // Handle "Select All" checkbox
+    $('#selectAll').change(function() {
+        var isChecked = $(this).prop('checked');
+        $('.row-checkbox').prop('checked', isChecked);
+        updateSelectedState();
+    });
+
+    // Handle individual row checkboxes
+    $(document).on('change', '.row-checkbox', function() {
+        updateSelectedState();
+    });
+
+    // Update selected state and bulk actions button
+    function updateSelectedState() {
+        var selectedCount = $('.row-checkbox:checked').length;
+        var totalCount = $('.row-checkbox').length;
+        
+        // Update "Select All" checkbox
+        $('#selectAll').prop('checked', selectedCount === totalCount && totalCount > 0);
+        
+        // Enable/disable bulk actions button
+        $('#bulkActions').prop('disabled', selectedCount === 0);
+        
+        // Update row highlighting
+        $('.row-checkbox').each(function() {
+            $(this).closest('tr').toggleClass('selected', $(this).prop('checked'));
+        });
+    }
+
+    // Handle bulk status change
+    $('.bulk-status').click(function(e) {
+        e.preventDefault();
+        var status = $(this).data('status');
+        var selectedIds = [];
+        
+        $('.row-checkbox:checked').each(function() {
+            var employeeId = $(this).closest('tr').data('employee-id');
+            if (employeeId) {
+                selectedIds.push(employeeId);
+            }
+        });
+
+        if (selectedIds.length === 0) {
+            alert('Please select at least one employee');
+            return;
+        }
+
+        if (confirm('Are you sure you want to change the status of ' + selectedIds.length + ' selected employee(s)?')) {
+            var formData = new FormData();
+            selectedIds.forEach(function(id) {
+                formData.append('employee_ids[]', id);
+            });
+            formData.append('status', status);
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+            $.ajax({
+                url: '{% url "employees:bulk_status_change" %}',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while updating employee status.');
+                }
+            });
+        }
+    });
+
+    // Export to Excel button
+    $('#exportExcel').click(function() {
+        table.button('.buttons-excel').trigger();
+    });
+});
+</script>
 {% endblock %}

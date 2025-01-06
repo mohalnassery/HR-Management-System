@@ -128,8 +128,34 @@
 
 {% block content %}
 <!-- Profile Header -->
+ <div class="container-fluid p-4">
 <div class="profile-header">
     <div class="row align-items-center">
+        <div class="col-auto">
+            {% if employee.profile_picture %}
+                <a href="#" data-bs-toggle="modal" data-bs-target="#profilePictureModal">
+                    <img src="{{ employee.profile_picture.url }}" alt="Profile Picture" class="rounded-circle" style="width: 100px; height: 100px; object-fit: cover;">
+                </a>
+                <!-- Profile Picture Modal -->
+                <div class="modal fade" id="profilePictureModal" tabindex="-1" aria-labelledby="profilePictureModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="profilePictureModalLabel">{{ employee.get_full_name }}'s Profile Picture</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body text-center">
+                                <img src="{{ employee.profile_picture.url }}" alt="Profile Picture" class="img-fluid">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style="width: 100px; height: 100px;">
+                    <i class="fas fa-user fa-3x text-white"></i>
+                </div>
+            {% endif %}
+        </div>
         <div class="col">
             <h2 class="mb-1">{{ employee.get_full_name }}</h2>
             <p class="mb-1">Employee #{{ employee.employee_number }}</p>
@@ -218,6 +244,7 @@
             {% include 'employees/preview/_employee_events_tab.html' %}
         </div>
     </div>
+</div>
 </div>
 
 <!-- Delete Modal -->
