@@ -124,10 +124,10 @@
                             
                             <!-- Method buttons -->
                             <div class="method-buttons">
-                                <button type="button" class="method-button active" onclick="selectMethod('upload')">
+                                <button type="button" class="method-button active" data-method="upload">
                                     <i class="fas fa-upload"></i> Upload File
                                 </button>
-                                <button type="button" class="method-button" onclick="selectMethod('scan')">
+                                <button type="button" class="method-button" data-method="scan">
                                     <i class="fas fa-scanner"></i> Scan Document
                                 </button>
                             </div>
@@ -165,10 +165,16 @@
                                         </div>
                                     </div>
                                     
-                                    <div id="twoSideInstructions" class="scan-instructions">
+                                    <div id="twoSideInstructions" class="scan-instructions" data-side="front">
                                         <p class="mb-2">
                                             <span class="scan-side-indicator">Front Side:</span> 
                                             Place the document with the front side facing down on the scanner.
+                                        </p>
+                                    </div>
+                                    <div id="twoSideInstructionsBack" class="scan-instructions" data-side="back">
+                                        <p class="mb-2">
+                                            <span class="scan-side-indicator">Back Side:</span> 
+                                            Place the document with the back side facing down on the scanner.
                                         </p>
                                     </div>
                                 </div>
@@ -201,244 +207,123 @@
 
 {% block extra_js %}
 <script>
-// Initialize jsPDF at the start
-const { jsPDF } = window.jspdf;
+    let currentSide = 'front';
+    let frontImage = null;
+    let backImage = null;
+    let isWindows = false;
 
-function selectMethod(method) {
-    // Update buttons
-    document.querySelectorAll('.method-button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    const selectedBtn = method === 'upload' ? 
-        document.querySelector('.method-button:first-child') :
-        document.querySelector('.method-button:last-child');
-    selectedBtn.classList.add('active');
-    
-    // Show/hide content
-    const uploadContent = document.querySelector('.upload-content');
-    const scanContent = document.querySelector('.scan-content');
-    const scanPreview = document.querySelector('.scan-preview');
-    
-    if (method === 'upload') {
-        uploadContent.style.display = 'block';
-        scanContent.style.display = 'none';
-        scanPreview.style.display = 'none';
-    } else {
-        uploadContent.style.display = 'none';
-        scanContent.style.display = 'block';
-    }
-}
-
-let currentSide = 'front';
-let frontImage = null;
-let backImage = null;
-
-function updateScanInstructions() {
-    const mode = document.querySelector('input[name="scanMode"]:checked').value;
-    const instructions = document.getElementById('twoSideInstructions');
-    
-    if (mode === 'double') {
-        instructions.classList.add('active');
-        instructions.querySelector('p').innerHTML = `
-            <span class="scan-side-indicator">${currentSide === 'front' ? 'Front' : 'Back'} Side:</span> 
-            Place the document with the ${currentSide} side facing down on the scanner.
-        `;
-    } else {
-        instructions.classList.remove('active');
-    }
-}
-
-// Add event listeners for scan mode changes
-document.querySelectorAll('input[name="scanMode"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-        currentSide = 'front';
-        frontImage = null;
-        backImage = null;
-        updateScanInstructions();
-        
-        // Clear previews when changing modes
-        const previewImages = document.querySelector('.preview-images');
-        if (previewImages) {
-            previewImages.innerHTML = '';
-        }
-    });
-});
-
-async function startScanning() {
-    const scanBtn = document.querySelector('.scan-content button');
-    const spinner = document.querySelector('.scan-content .spinner');  
-    const previewContainer = document.querySelector('.scan-preview');
-    const previewImages = document.querySelector('.preview-images');
-    const scanMode = document.querySelector('input[name="scanMode"]:checked').value;
-    
-    try {
-        // Show loading state
-        scanBtn.disabled = true;
-        if (spinner) {  
-            spinner.style.display = 'inline-block';
-        }
-        
-        // Clear previews if starting fresh scan
-        if (scanMode !== 'double' || currentSide === 'front') {
-            previewImages.innerHTML = '';
-        }
-        
-        // Call our scanning endpoint
-        const response = await fetch('{% url "employees:scan_document" employee.pk %}', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                useFeeder: scanMode === 'feeder',
-                currentSide: currentSide
-            })
+    // Get system information when page loads
+    fetch('/employees/system-info/')
+        .then(response => response.json())
+        .then(data => {
+            isWindows = data.platform === 'Windows';
+            // Hide scanner option if not on Windows
+            if (!isWindows) {
+                document.querySelector('[data-method="scan"]').style.display = 'none';
+            }
         });
-        
-        if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || 'Failed to scan document');
+
+    function selectMethod(method) {
+        // Reset all buttons and content sections
+        document.querySelectorAll('.method-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector('.upload-content').style.display = 'none';
+        document.querySelector('.scan-content').style.display = 'none';
+        document.querySelector('.scan-preview').style.display = 'none';
+
+        // Activate selected method
+        document.querySelector(`[data-method="${method}"]`).classList.add('active');
+        if (method === 'upload') {
+            document.querySelector('.upload-content').style.display = 'block';
+        } else if (method === 'scan' && isWindows) {
+            document.querySelector('.scan-content').style.display = 'block';
+            updateScanInstructions();
         }
-        
-        const data = await response.json();
-        
-        if (scanMode === 'double') {
-            // Handle two-sided scanning
-            if (currentSide === 'front') {
-                frontImage = data.images[0];
-                
-                // Show front preview
-                const previewContainer = document.createElement('div');
-                previewContainer.className = 'preview-image-container';
-                
-                const pageNumber = document.createElement('div');
-                pageNumber.className = 'page-number';
-                pageNumber.textContent = 'Front Side';
-                previewContainer.appendChild(pageNumber);
-                
-                const img = document.createElement('img');
-                img.src = frontImage.data;
-                img.alt = 'Front Side';
-                previewContainer.appendChild(img);
-                
-                previewImages.appendChild(previewContainer);
-                
-                // Update instructions for back side
-                currentSide = 'back';
-                updateScanInstructions();
-                
-                // Update button text and add spinner
-                scanBtn.innerHTML = 'Scan Back Side <span class="spinner"><i class="fas fa-spinner fa-spin"></i></span>';
-                
-            } else {
-                backImage = data.images[0];
-                
-                // Show back preview
-                const previewContainer = document.createElement('div');
-                previewContainer.className = 'preview-image-container';
-                
-                const pageNumber = document.createElement('div');
-                pageNumber.className = 'page-number';
-                pageNumber.textContent = 'Back Side';
-                previewContainer.appendChild(pageNumber);
-                
-                const img = document.createElement('img');
-                img.src = backImage.data;
-                img.alt = 'Back Side';
-                previewContainer.appendChild(img);
-                
-                previewImages.appendChild(previewContainer);
-                
-                try {
-                    // Create PDF with both sides
-                    const doc = new jsPDF();
-                    
-                    // Add front side
-                    doc.addImage(frontImage.data, 'JPEG', 0, 0, 210, 297);
-                    
-                    // Add back side
-                    doc.addPage();
-                    doc.addImage(backImage.data, 'JPEG', 0, 0, 210, 297);
-                    
-                    // Convert to blob and create file
-                    const pdfBlob = doc.output('blob');
-                    const file = new File([pdfBlob], "scanned_document.pdf", { type: "application/pdf" });
-                    
-                    // Update file input
-                    const fileInput = document.querySelector('input[type="file"]');
-                    const dataTransfer = new DataTransfer();
-                    dataTransfer.items.add(file);
-                    fileInput.files = dataTransfer.files;
-                    
-                    // Reset for next scan
-                    currentSide = 'front';
-                    scanBtn.innerHTML = 'Start Scanning <span class="spinner"><i class="fas fa-spinner fa-spin"></i></span>';
-                    updateScanInstructions();
-                } catch (pdfError) {
-                    console.error('PDF Creation Error:', pdfError);
-                    throw new Error('Failed to create PDF: ' + pdfError.message);
-                }
-            }
+    }
+
+    function updateScanInstructions() {
+        // Update scan instructions based on current side
+        document.querySelectorAll('.scan-instructions').forEach(instr => {
+            instr.classList.remove('active');
+        });
+        document.querySelector(`.scan-instructions[data-side="${currentSide}"]`).classList.add('active');
+        document.querySelector('.scan-side-indicator').textContent = currentSide.charAt(0).toUpperCase() + currentSide.slice(1);
+    }
+
+    // Add event listeners for scan mode changes
+    document.querySelectorAll('input[name="scanMode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            currentSide = 'front';
+            updateScanInstructions();
+        });
+    });
+
+    async function startScanning() {
+        if (!isWindows) {
+            alert('Scanner functionality is only available on Windows systems.');
+            return;
+        }
+
+        const useFeeder = document.querySelector('input[name="scanMode"]:checked').value === 'feeder';
+        const spinner = document.querySelector('.spinner');
+        const previewSection = document.querySelector('.scan-preview');
+        const previewImages = document.querySelector('.preview-images');
+
+        try {
+            spinner.style.display = 'inline-block';
             
-        } else {
-            // Handle single-side or feeder scanning
-            try {
-                const doc = new jsPDF();
-                let firstPage = true;
-                
-                for (const image of data.images) {
-                    if (!firstPage) {
-                        doc.addPage();
-                    }
-                    doc.addImage(image.data, 'JPEG', 0, 0, 210, 297);
-                    firstPage = false;
-                    
-                    // Add preview
-                    const container = document.createElement('div');
-                    container.className = 'preview-image-container';
-                    const img = document.createElement('img');
-                    img.src = image.data;
-                    container.appendChild(img);
-                    previewImages.appendChild(container);
-                }
-                
-                // Create file from PDF
-                const pdfBlob = doc.output('blob');
-                const file = new File([pdfBlob], "scanned_document.pdf", { type: "application/pdf" });
-                
-                // Update file input
-                const fileInput = document.querySelector('input[type="file"]');
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                fileInput.files = dataTransfer.files;
-            } catch (pdfError) {
-                console.error('PDF Creation Error:', pdfError);
-                throw new Error('Failed to create PDF: ' + pdfError.message);
+            const response = await fetch(`/employees/scan/${employee.pk}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    useFeeder: useFeeder
+                })
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to scan document');
             }
-        }
-        
-        // Show preview section
-        previewContainer.style.display = 'block';
-        
-    } catch (error) {
-        alert('Error while scanning: ' + error.message);
-        console.error(error);
-    } finally {
-        // Reset loading state
-        scanBtn.disabled = false;
-        if (spinner) {  
+
+            // Clear previous preview
+            previewImages.innerHTML = '';
+            
+            // Display scanned images
+            data.images.forEach((image, index) => {
+                const container = document.createElement('div');
+                container.className = 'preview-image-container';
+                
+                const img = document.createElement('img');
+                img.src = image.data;
+                img.alt = `Scanned page ${index + 1}`;
+                
+                const pageNumber = document.createElement('div');
+                pageNumber.className = 'page-number';
+                pageNumber.textContent = `Page ${index + 1}`;
+                
+                container.appendChild(img);
+                container.appendChild(pageNumber);
+                previewImages.appendChild(container);
+            });
+            
+            previewSection.style.display = 'block';
+            
+        } catch (error) {
+            alert(error.message);
+        } finally {
             spinner.style.display = 'none';
         }
     }
-}
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    selectMethod('upload');
-    updateScanInstructions();
-});
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        selectMethod('upload');
+        updateScanInstructions();
+    });
 </script>
-<!-- Add jsPDF for PDF creation -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 {% endblock %}

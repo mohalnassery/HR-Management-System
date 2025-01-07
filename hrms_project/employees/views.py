@@ -14,13 +14,12 @@ from django.utils import timezone
 import os
 import tempfile
 from django.http import JsonResponse
-import win32com.client
-import pythoncom
-from django.views.decorators.csrf import csrf_exempt
 import base64
 import io
 from PIL import Image
 import json
+import platform
+from django.views.decorators.csrf import csrf_exempt
 
 class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
@@ -339,121 +338,142 @@ def bulk_status_change(request):
 def scan_document(request, employee_id):
     if request.method == 'POST':
         try:
-            # Get scan settings from request
-            data = json.loads(request.body)
-            use_feeder = data.get('useFeeder', False)
-            
-            # Initialize COM in the current thread
-            pythoncom.CoInitialize()
-            
-            # Create WIA device manager
-            device_manager = win32com.client.Dispatch("WIA.DeviceManager")
-            devices = device_manager.DeviceInfos
-            
-            # Find first available scanner
-            scanner = None
-            for i in range(1, devices.Count + 1):
-                if devices.Item(i).Type == 1:  # 1 = Scanner
-                    scanner = devices.Item(i).Connect()
-                    break
-            
-            if not scanner:
-                return JsonResponse({'error': 'No scanner found'}, status=404)
-            
-            # Store scanned images
-            scanned_images = []
-            
-            try:
-                if use_feeder:
-                    # Configure feeder settings
-                    scanner.Properties("Document Handling Select").Value = 2  # Use document feeder
-                    scanner.Properties("Pages").Value = 1  # Scan all pages
+            # Check if it's a file upload
+            if 'document' in request.FILES:
+                uploaded_file = request.FILES['document']
+                try:
+                    # Open the image using Pillow
+                    image = Image.open(uploaded_file)
                     
-                    # Keep scanning while there are pages in the feeder
-                    while True:
-                        try:
-                            # Configure and perform scan
-                            item = scanner.Items[1]
-                            item.Properties("6146").Value = 2  # Color
-                            item.Properties("6147").Value = 300  # DPI
-                            
-                            # Perform scan
-                            image = item.Transfer()
-                            
-                            # Create unique temp file name
-                            temp_filename = f'scan_{employee_id}_{len(scanned_images)}.jpg'
-                            temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
-                            
-                            # Save scanned image
-                            image.SaveFile(temp_path)
-                            
-                            # Read the image and convert to base64
-                            with open(temp_path, 'rb') as img_file:
-                                img_data = base64.b64encode(img_file.read()).decode('utf-8')
-                            
-                            scanned_images.append({
-                                'data': f'data:image/jpeg;base64,{img_data}',
-                                'filename': f'page_{len(scanned_images) + 1}.jpg'
-                            })
-                            
-                            # Clean up temp file
-                            os.remove(temp_path)
-                            
-                        except Exception as e:
-                            # Break if no more pages in feeder
-                            if "paper empty" in str(e).lower():
-                                break
-                            raise e
-                else:
-                    # Single page scan
-                    item = scanner.Items[1]
-                    item.Properties("6146").Value = 2  # Color
-                    item.Properties("6147").Value = 300  # DPI
+                    # Convert to RGB if necessary
+                    if image.mode != 'RGB':
+                        image = image.convert('RGB')
                     
-                    # Perform scan
-                    image = item.Transfer()
+                    # Create a buffer to store the processed image
+                    buffer = io.BytesIO()
+                    image.save(buffer, format='JPEG', quality=85)
+                    buffer.seek(0)
                     
-                    # Create unique temp file name
-                    temp_filename = f'scan_{employee_id}_0.jpg'
-                    temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                    # Convert to base64
+                    img_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
                     
-                    # Save scanned image
-                    image.SaveFile(temp_path)
-                    
-                    # Read the image and convert to base64
-                    with open(temp_path, 'rb') as img_file:
-                        img_data = base64.b64encode(img_file.read()).decode('utf-8')
-                    
-                    scanned_images.append({
-                        'data': f'data:image/jpeg;base64,{img_data}',
-                        'filename': 'page_1.jpg'
+                    return JsonResponse({
+                        'success': True,
+                        'images': [{
+                            'data': f'data:image/jpeg;base64,{img_data}',
+                            'filename': uploaded_file.name
+                        }]
                     })
                     
-                    # Clean up temp file
-                    os.remove(temp_path)
+                except Exception as process_error:
+                    return JsonResponse({
+                        'error': f'Failed to process image: {str(process_error)}'
+                    }, status=500)
+            
+            # Scanner functionality - only available on Windows
+            elif platform.system() == 'Windows':
+                # Get scan settings from request
+                data = json.loads(request.body)
+                use_feeder = data.get('useFeeder', False)
                 
-            except Exception as scan_error:
-                return JsonResponse({
-                    'error': f'Failed to scan: {str(scan_error)}'
-                }, status=500)
+                # Initialize COM in the current thread
+                pythoncom.CoInitialize()
+                
+                try:
+                    # Create WIA device manager
+                    device_manager = win32com.client.Dispatch("WIA.DeviceManager")
+                    devices = device_manager.DeviceInfos
+                    
+                    # Find first available scanner
+                    scanner = None
+                    for i in range(1, devices.Count + 1):
+                        if devices.Item(i).Type == 1:  # 1 = Scanner
+                            scanner = devices.Item(i).Connect()
+                            break
+                    
+                    if not scanner:
+                        return JsonResponse({'error': 'No scanner found'}, status=404)
+                    
+                    # Store scanned images
+                    scanned_images = []
+                    
+                    if use_feeder:
+                        # Configure feeder settings
+                        scanner.Properties("Document Handling Select").Value = 2
+                        scanner.Properties("Pages").Value = 1
+                        
+                        while True:
+                            try:
+                                item = scanner.Items[1]
+                                item.Properties("6146").Value = 2  # Color
+                                item.Properties("6147").Value = 300  # DPI
+                                
+                                image = item.Transfer()
+                                
+                                temp_filename = f'scan_{employee_id}_{len(scanned_images)}.jpg'
+                                temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                                
+                                image.SaveFile(temp_path)
+                                
+                                with open(temp_path, 'rb') as img_file:
+                                    img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                                
+                                scanned_images.append({
+                                    'data': f'data:image/jpeg;base64,{img_data}',
+                                    'filename': f'page_{len(scanned_images) + 1}.jpg'
+                                })
+                                
+                                os.remove(temp_path)
+                                
+                            except Exception as e:
+                                if "paper empty" in str(e).lower():
+                                    break
+                                raise e
+                    else:
+                        item = scanner.Items[1]
+                        item.Properties("6146").Value = 2  # Color
+                        item.Properties("6147").Value = 300  # DPI
+                        
+                        image = item.Transfer()
+                        
+                        temp_filename = f'scan_{employee_id}_0.jpg'
+                        temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                        
+                        image.SaveFile(temp_path)
+                        
+                        with open(temp_path, 'rb') as img_file:
+                            img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                        
+                        scanned_images.append({
+                            'data': f'data:image/jpeg;base64,{img_data}',
+                            'filename': 'page_1.jpg'
+                        })
+                        
+                        os.remove(temp_path)
+                    
+                    return JsonResponse({
+                        'success': True,
+                        'images': scanned_images
+                    })
+                    
+                finally:
+                    pythoncom.CoUninitialize()
             
-            # Clean up COM objects
-            pythoncom.CoUninitialize()
-            
-            return JsonResponse({
-                'success': True,
-                'images': scanned_images
-            })
-            
+            else:
+                return JsonResponse({'error': 'Scanner functionality is only available on Windows'}, status=400)
+                
         except Exception as e:
-            # Clean up COM in case of error
-            try:
-                pythoncom.CoUninitialize()
-            except:
-                pass
-            
-            return JsonResponse({
-                'error': str(e)
-            }, status=500)
+            if platform.system() == 'Windows':
+                try:
+                    pythoncom.CoUninitialize()
+                except:
+                    pass
+            return JsonResponse({'error': str(e)}, status=500)
             
     return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+def get_system_info(request):
+    """Return system information to the client"""
+    return JsonResponse({
+        'platform': platform.system()
+    })

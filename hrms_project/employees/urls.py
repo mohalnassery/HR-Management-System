@@ -27,6 +27,9 @@ urlpatterns = [
     path('bulk-status-change/', views.bulk_status_change, name='bulk_status_change'),
     path('bulk-status-change/<str:status>/', views.bulk_status_change, name='bulk_status_change_with_status'),
 
+    # System Info
+    path('system-info/', views.get_system_info, name='system_info'),
+
     # Function-based views (alternative)
     # path('', views.employee_list, name='employee_list'),
     # path('<int:pk>/', views.employee_detail, name='employee_detail'),
