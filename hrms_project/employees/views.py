@@ -21,6 +21,14 @@ import json
 import platform
 from django.views.decorators.csrf import csrf_exempt
 
+# Only import Windows-specific modules if on Windows
+if platform.system() == 'Windows':
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError:
+        pass
+
 class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
     template_name = 'employees/employee_list.html'
