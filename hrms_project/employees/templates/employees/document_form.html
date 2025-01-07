@@ -28,26 +28,46 @@
         display: none;
     }
     .scan-preview {
-        margin-top: 15px;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 15px;
     }
     .scan-preview h5 {
-        margin-bottom: 10px;
+        margin-bottom: 15px;
+        text-align: center;
     }
     .preview-images {
         display: flex;
         flex-wrap: wrap;
-        gap: 15px;
+        gap: 10px;
         margin-top: 15px;
+        justify-content: center;
+        max-width: 100%;
     }
     .preview-image-container {
-        flex: 0 0 calc(50% - 7.5px);
+        flex: 0 0 150px;
+        width: 150px;
+        height: 150px;
         position: relative;
+        margin: 5px;
+        cursor: pointer;
+        overflow: hidden;
     }
     .preview-image-container img {
-        width: 100%;
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
         border: 1px solid #ddd;
         border-radius: 4px;
-        padding: 5px;
+        padding: 3px;
+        display: block;
+        max-width: 150px !important;
+        max-height: 150px !important;
+    }
+    .thumbnail-image {
+        width: 150px !important;
+        height: 150px !important;
+        object-fit: cover !important;
     }
     .page-number {
         position: absolute;
@@ -92,6 +112,39 @@
     .scan-side-indicator {
         font-weight: bold;
         color: #0056b3;
+    }
+    .card-body {
+        padding: 1.25rem;
+        overflow: hidden;
+    }
+    /* Modal styles */
+    .image-modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.9);
+    }
+    .modal-content {
+        margin: auto;
+        display: block;
+        max-width: 90%;
+        max-height: 90vh;
+        position: relative;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+    .close-modal {
+        position: absolute;
+        right: 20px;
+        top: 20px;
+        color: #fff;
+        font-size: 30px;
+        font-weight: bold;
+        cursor: pointer;
     }
 </style>
 {% endblock %}
@@ -281,6 +334,40 @@
         });
     });
 
+    // Function to create thumbnail from image data
+    function createThumbnail(imageData, maxWidth = 150, maxHeight = 150) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Calculate new dimensions
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round(height * maxWidth / width);
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width = Math.round(width * maxHeight / height);
+                        height = maxHeight;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                resolve(canvas.toDataURL('image/jpeg', 0.7));
+            };
+            img.src = imageData;
+        });
+    }
+
     async function startScanning() {
         if (!isWindows) {
             alert('Scanner functionality is only available on Windows systems.');
@@ -330,6 +417,9 @@
                 if (currentSide === 'front') {
                     frontImage = data.images[0];
                     
+                    // Create thumbnail
+                    const thumbnailData = await createThumbnail(frontImage.data);
+                    
                     // Show front preview
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'preview-image-container';
@@ -340,8 +430,9 @@
                     previewContainer.appendChild(pageNumber);
                     
                     const img = document.createElement('img');
-                    img.src = frontImage.data;
+                    img.src = thumbnailData;
                     img.alt = 'Front Side';
+                    img.setAttribute('data-original', frontImage.data);
                     previewContainer.appendChild(img);
                     
                     previewImages.appendChild(previewContainer);
@@ -356,6 +447,9 @@
                 } else {
                     backImage = data.images[0];
                     
+                    // Create thumbnail
+                    const thumbnailData = await createThumbnail(backImage.data);
+                    
                     // Show back preview
                     const previewContainer = document.createElement('div');
                     previewContainer.className = 'preview-image-container';
@@ -366,8 +460,9 @@
                     previewContainer.appendChild(pageNumber);
                     
                     const img = document.createElement('img');
-                    img.src = backImage.data;
+                    img.src = thumbnailData;
                     img.alt = 'Back Side';
+                    img.setAttribute('data-original', backImage.data);
                     previewContainer.appendChild(img);
                     
                     previewImages.appendChild(previewContainer);
@@ -416,12 +511,24 @@
                         doc.addImage(image.data, 'JPEG', 0, 0, 210, 297);
                         firstPage = false;
                         
+                        // Create thumbnail
+                        const thumbnailData = await createThumbnail(image.data);
+                        
                         // Add preview
                         const container = document.createElement('div');
                         container.className = 'preview-image-container';
+                        
+                        const pageNumber = document.createElement('div');
+                        pageNumber.className = 'page-number';
+                        pageNumber.textContent = 'Page ' + (data.images.indexOf(image) + 1);
+                        container.appendChild(pageNumber);
+                        
                         const img = document.createElement('img');
-                        img.src = image.data;
+                        img.src = thumbnailData;
+                        img.alt = 'Page ' + (data.images.indexOf(image) + 1);
+                        img.setAttribute('data-original', image.data);
                         container.appendChild(img);
+                        
                         previewImages.appendChild(container);
                     }
                     
@@ -460,7 +567,42 @@
         selectMethod('upload');
         updateScanInstructions();
     });
+
+    // Image modal functionality
+    const modal = document.getElementById('imageModal');
+    const modalImg = document.getElementById('modalImage');
+    const closeModal = document.getElementsByClassName('close-modal')[0];
+
+    // Update modal image to show full size
+    function showImage(imgElement) {
+        modal.style.display = 'block';
+        modalImg.src = imgElement.getAttribute('data-original') || imgElement.src;
+    }
+
+    // Add click event to preview images
+    document.querySelectorAll('.preview-image-container img').forEach(img => {
+        img.onclick = function() {
+            showImage(this);
+        }
+    });
+
+    // Close modal
+    closeModal.onclick = function() {
+        modal.style.display = 'none';
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    }
 </script>
 <!-- Add jsPDF for PDF creation -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 {% endblock %}
+
+<div id="imageModal" class="image-modal">
+    <span class="close-modal">&times;</span>
+    <img class="modal-content" id="modalImage">
+</div>
