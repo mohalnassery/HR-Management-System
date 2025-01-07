@@ -20,6 +20,7 @@ from django.views.decorators.csrf import csrf_exempt
 import base64
 import io
 from PIL import Image
+import json
 
 class EmployeeListView(LoginRequiredMixin, ListView):
     model = Employee
@@ -338,6 +339,10 @@ def bulk_status_change(request):
 def scan_document(request, employee_id):
     if request.method == 'POST':
         try:
+            # Get scan settings from request
+            data = json.loads(request.body)
+            use_feeder = data.get('useFeeder', False)
+            
             # Initialize COM in the current thread
             pythoncom.CoInitialize()
             
@@ -355,38 +360,81 @@ def scan_document(request, employee_id):
             if not scanner:
                 return JsonResponse({'error': 'No scanner found'}, status=404)
             
-            # Configure and perform scan
-            item = scanner.Items[1]
-            item.Properties("6146").Value = 2  # Color
-            item.Properties("6147").Value = 300  # DPI
+            # Store scanned images
+            scanned_images = []
             
-            # Perform scan
-            image = item.Transfer()
-            
-            # Create unique temp file name
-            import uuid
-            temp_dir = tempfile.gettempdir()
-            temp_filename = f'scan_{employee_id}_{uuid.uuid4().hex}.jpg'
-            temp_path = os.path.join(temp_dir, temp_filename)
-            
-            # Ensure old file is removed if it exists
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            
-            # Save scanned image
             try:
-                image.SaveFile(temp_path)
+                if use_feeder:
+                    # Configure feeder settings
+                    scanner.Properties("Document Handling Select").Value = 2  # Use document feeder
+                    scanner.Properties("Pages").Value = 1  # Scan all pages
+                    
+                    # Keep scanning while there are pages in the feeder
+                    while True:
+                        try:
+                            # Configure and perform scan
+                            item = scanner.Items[1]
+                            item.Properties("6146").Value = 2  # Color
+                            item.Properties("6147").Value = 300  # DPI
+                            
+                            # Perform scan
+                            image = item.Transfer()
+                            
+                            # Create unique temp file name
+                            temp_filename = f'scan_{employee_id}_{len(scanned_images)}.jpg'
+                            temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                            
+                            # Save scanned image
+                            image.SaveFile(temp_path)
+                            
+                            # Read the image and convert to base64
+                            with open(temp_path, 'rb') as img_file:
+                                img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                            
+                            scanned_images.append({
+                                'data': f'data:image/jpeg;base64,{img_data}',
+                                'filename': f'page_{len(scanned_images) + 1}.jpg'
+                            })
+                            
+                            # Clean up temp file
+                            os.remove(temp_path)
+                            
+                        except Exception as e:
+                            # Break if no more pages in feeder
+                            if "paper empty" in str(e).lower():
+                                break
+                            raise e
+                else:
+                    # Single page scan
+                    item = scanner.Items[1]
+                    item.Properties("6146").Value = 2  # Color
+                    item.Properties("6147").Value = 300  # DPI
+                    
+                    # Perform scan
+                    image = item.Transfer()
+                    
+                    # Create unique temp file name
+                    temp_filename = f'scan_{employee_id}_0.jpg'
+                    temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                    
+                    # Save scanned image
+                    image.SaveFile(temp_path)
+                    
+                    # Read the image and convert to base64
+                    with open(temp_path, 'rb') as img_file:
+                        img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                    
+                    scanned_images.append({
+                        'data': f'data:image/jpeg;base64,{img_data}',
+                        'filename': 'page_1.jpg'
+                    })
+                    
+                    # Clean up temp file
+                    os.remove(temp_path)
                 
-                # Read the image and convert to base64
-                with open(temp_path, 'rb') as img_file:
-                    img_data = base64.b64encode(img_file.read()).decode('utf-8')
-                
-                # Clean up the temporary file
-                os.remove(temp_path)
-                
-            except Exception as save_error:
+            except Exception as scan_error:
                 return JsonResponse({
-                    'error': f'Failed to save scanned image: {str(save_error)}'
+                    'error': f'Failed to scan: {str(scan_error)}'
                 }, status=500)
             
             # Clean up COM objects
@@ -394,7 +442,7 @@ def scan_document(request, employee_id):
             
             return JsonResponse({
                 'success': True,
-                'image_data': f'data:image/jpeg;base64,{img_data}'
+                'images': scanned_images
             })
             
         except Exception as e:
