@@ -11,7 +11,7 @@
     {% block extra_css %}{% endblock %}
     <style>
         body {
-            padding-top: 10px; /* Height of navbar */
+            padding-top: 10px;
         }
         .navbar {
             position: fixed;
@@ -37,6 +37,13 @@
         }
         .flag-icon {
             margin-right: 8px;
+        }
+        /* Toast styling */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1060;
         }
     </style>
 </head>
@@ -73,6 +80,9 @@
         </div>
     </nav>
 
+    <!-- Toast Container -->
+    <div class="toast-container"></div>
+
     <!-- Main Content -->
     <div class="container-fluid main-content p-4">
         {% if messages %}
@@ -98,6 +108,62 @@
     <link href="https://cdn.jsdelivr.net/npm/flag-icon-css@4.1.7/css/flag-icons.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Utility Functions -->
+    <script>
+    function showToast(title, message, type = 'info') {
+        const toastContainer = document.querySelector('.toast-container');
+        const toastId = 'toast-' + Date.now();
+        const bgClass = type === 'success' ? 'bg-success' : 
+                       type === 'error' ? 'bg-danger' : 
+                       type === 'warning' ? 'bg-warning' : 'bg-info';
+        const textClass = type === 'warning' ? 'text-dark' : 'text-white';
+        
+        const toastHtml = `
+            <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header ${bgClass} ${textClass}">
+                    <strong class="me-auto">${title}</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            </div>
+        `;
+        
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement, { delay: 5000 });
+        toast.show();
+        
+        // Remove the toast element after it's hidden
+        toastElement.addEventListener('hidden.bs.toast', function () {
+            toastElement.remove();
+        });
+    }
+
+    function showFormErrors(form, errors) {
+        // Clear previous error messages
+        form.find('.invalid-feedback').remove();
+        form.find('.is-invalid').removeClass('is-invalid');
+        
+        // Add new error messages
+        for (const field in errors) {
+            const input = form.find(`[name="${field}"]`);
+            input.addClass('is-invalid');
+            
+            const errorDiv = $('<div>')
+                .addClass('invalid-feedback')
+                .text(errors[field].join(' '));
+            
+            input.after(errorDiv);
+        }
+        
+        // Show error toast
+        showToast('Error', 'Please correct the errors in the form.', 'error');
+    }
+    </script>
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

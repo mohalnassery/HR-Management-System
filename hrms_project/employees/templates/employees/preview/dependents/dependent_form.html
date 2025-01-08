@@ -1,0 +1,62 @@
+{% extends "employees/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">{% if dependent %}Edit{% else %}Add{% endif %} Dependent</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="dependentForm">
+                        {% csrf_token %}
+                        <div class="row">
+                            <div class="col-md-8 offset-md-2">
+                                {{ form|crispy }}
+                                <div class="mt-3">
+                                    <a href="{% url 'employees:employee_detail' employee.id %}" class="btn btn-secondary">Cancel</a>
+                                    <button type="submit" class="btn btn-primary">{% if dependent %}Update{% else %}Add{% endif %} Dependent</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#dependentForm').on('submit', function(e) {
+        e.preventDefault();
+        var form = $(this);
+        var url = "{% if dependent %}{% url 'employees:edit_dependent' employee.id dependent.id %}{% else %}{% url 'employees:add_dependent' employee.id %}{% endif %}";
+        
+        $.ajax({
+            url: url,
+            type: 'POST',
+            data: form.serialize(),
+            success: function(response) {
+                if (response.status === 'success') {
+                    // Show success message
+                    showToast('Success', response.message, 'success');
+                    // Redirect back to employee detail page
+                    window.location.href = "{% url 'employees:employee_detail' employee.id %}";
+                } else {
+                    // Show error message
+                    showFormErrors(form, response.errors);
+                }
+            },
+            error: function(xhr, errmsg, err) {
+                showToast('Error', 'An error occurred while processing your request.', 'error');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

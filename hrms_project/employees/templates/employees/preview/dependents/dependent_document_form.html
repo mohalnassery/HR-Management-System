@@ -1,0 +1,59 @@
+{% extends "employees/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="modal-content">
+    <div class="modal-header">
+        <h5 class="modal-title">{% if document %}Edit{% else %}Add{% endif %} Document for {{ dependent.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <form method="post" id="dependentDocumentForm" enctype="multipart/form-data" 
+          data-url="{% if document %}{% url 'employees:edit_dependent_document' employee.id dependent.id document.id %}{% else %}{% url 'employees:add_dependent_document' employee.id dependent.id %}{% endif %}">
+        <div class="modal-body">
+            {% csrf_token %}
+            {{ form|crispy }}
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="submit" class="btn btn-primary">{% if document %}Update{% else %}Add{% endif %} Document</button>
+        </div>
+    </form>
+</div>
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#dependentDocumentForm').on('submit', function(e) {
+        e.preventDefault();
+        var form = $(this);
+        var url = form.data('url');
+        var formData = new FormData(this);
+        
+        $.ajax({
+            url: url,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.status === 'success') {
+                    // Refresh the documents table
+                    refreshDependentDocuments({{ dependent.id }});
+                    // Close the modal
+                    $('#documentModal').modal('hide');
+                    // Show success message
+                    showToast('Success', response.message, 'success');
+                } else {
+                    // Show error message
+                    showFormErrors(form, response.errors);
+                }
+            },
+            error: function(xhr, errmsg, err) {
+                showToast('Error', 'An error occurred while processing your request.', 'error');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

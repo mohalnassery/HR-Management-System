@@ -82,7 +82,7 @@ in offences we will do this:
 
 
 in dependents we will do this:
-- it will list all dependents for the employee
+- it will list all dependents for the employee (table view)
 - option to add dependent: 	
     - Name
     - Relation (spouse, child, parent, sibling, other)
@@ -97,8 +97,13 @@ in dependents we will do this:
 - for each dependent we will be able to upload:
     - documents related to the dependent
         - document Name
-        - document File (upload)
-
+        - document Type (passport, ID, etc.)
+        - document Number (for passport, ID, etc.)
+        - document File (upload or scan similar to documents tab)
+        - issue date
+        - expiry date
+        - Country of origin with list of all countries
+        - Document Status (Valid, Expired, etc.) (auto update based on expiry date, if empty then valid)
 
 
 

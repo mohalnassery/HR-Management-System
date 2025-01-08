@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import (
     Department, Division, Location, Employee, EmployeeDependent,
     EmergencyContact, EmployeeDocument, EmployeeAsset, EmployeeEducation,
-    EmployeeOffence, LifeEvent, EmployeeBankAccount, CostProfitCenter
+    EmployeeOffence, LifeEvent, EmployeeBankAccount, CostProfitCenter,
+    DependentDocument
 )
 
 @admin.register(Department)
@@ -77,9 +78,15 @@ class EmployeeDocumentAdmin(admin.ModelAdmin):
 
 @admin.register(EmployeeDependent)
 class EmployeeDependentAdmin(admin.ModelAdmin):
-    list_display = ('employee', 'name', 'relationship', 'is_sponsored')
-    search_fields = ('employee__employee_number', 'name')
-    list_filter = ('relationship', 'is_sponsored')
+    list_display = ('employee', 'name', 'relation', 'date_of_birth', 'valid_passage')
+    search_fields = ('employee__employee_number', 'name', 'passport_number', 'cpr_number')
+    list_filter = ('relation', 'valid_passage')
+
+@admin.register(DependentDocument)
+class DependentDocumentAdmin(admin.ModelAdmin):
+    list_display = ('dependent', 'name', 'document_type', 'document_number', 'status')
+    search_fields = ('dependent__name', 'name', 'document_number')
+    list_filter = ('document_type', 'status', 'country_of_origin')
 
 @admin.register(EmergencyContact)
 class EmergencyContactAdmin(admin.ModelAdmin):

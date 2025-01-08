@@ -6,7 +6,7 @@ from crispy_forms.bootstrap import Tab, TabHolder
 from .models import (
     Employee, Department, Division, EmployeeDependent, 
     EmergencyContact, EmployeeDocument, EmployeeBankAccount,
-    CostProfitCenter
+    CostProfitCenter, DependentDocument
 )
 
 class EmployeeForm(forms.ModelForm):
@@ -231,7 +231,104 @@ EmployeeBankAccountFormSet = forms.inlineformset_factory(
 class EmployeeDependentForm(forms.ModelForm):
     class Meta:
         model = EmployeeDependent
-        fields = ['name', 'relationship', 'date_of_birth', 'is_sponsored']
+        fields = [
+            'name', 'relation', 'date_of_birth', 'passport_number',
+            'passport_expiry', 'cpr_number', 'cpr_expiry', 'valid_passage'
+        ]
+        widgets = {
+            'date_of_birth': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'passport_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'cpr_expiry': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.form_class = 'form-horizontal'
+        self.helper.label_class = 'col-lg-3'
+        self.helper.field_class = 'col-lg-9'
+        
+        # Add Bootstrap classes to fields
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'form-check-input'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+
+        self.helper.layout = Layout(
+            Row(
+                Column('name', css_class='form-group col-md-6 mb-0'),
+                Column('relation', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('date_of_birth', css_class='form-group col-md-6 mb-0'),
+                Column('valid_passage', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('passport_number', css_class='form-group col-md-6 mb-0'),
+                Column('passport_expiry', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('cpr_number', css_class='form-group col-md-6 mb-0'),
+                Column('cpr_expiry', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Submit('submit', 'Save Dependent', css_class='btn-primary')
+        )
+
+class DependentDocumentForm(forms.ModelForm):
+    class Meta:
+        model = DependentDocument
+        fields = [
+            'name', 'document_type', 'document_number', 'document_file',
+            'issue_date', 'expiry_date', 'country_of_origin'
+        ]
+        widgets = {
+            'issue_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'expiry_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_method = 'post'
+        self.helper.form_class = 'form-horizontal'
+        self.helper.label_class = 'col-lg-3'
+        self.helper.field_class = 'col-lg-9'
+
+        # Add Bootstrap classes to fields
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, forms.FileInput):
+                field.widget.attrs['class'] = 'form-control-file'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+
+        self.helper.layout = Layout(
+            Row(
+                Column('name', css_class='form-group col-md-6 mb-0'),
+                Column('document_type', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('document_number', css_class='form-group col-md-6 mb-0'),
+                Column('country_of_origin', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('issue_date', css_class='form-group col-md-6 mb-0'),
+                Column('expiry_date', css_class='form-group col-md-6 mb-0'),
+                css_class='form-row'
+            ),
+            Row(
+                Column('document_file', css_class='form-group col-12 mb-0'),
+                css_class='form-row'
+            ),
+            Submit('submit', 'Upload Document', css_class='btn-primary')
+        )
 
 class EmergencyContactForm(forms.ModelForm):
     class Meta:

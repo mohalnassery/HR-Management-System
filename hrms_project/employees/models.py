@@ -256,21 +256,79 @@ class EmployeeBankAccount(models.Model):
 
 class EmployeeDependent(models.Model):
     RELATIONSHIP_CHOICES = [
-        ('SP', 'Spouse'),
-        ('CH', 'Child'),
-        ('PR', 'Parent'),
-        ('SB', 'Sibling'),
+        ('spouse', 'Spouse'),
+        ('child', 'Child'),
+        ('parent', 'Parent'),
+        ('sibling', 'Sibling'),
+        ('other', 'Other'),
     ]
-
+    
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='dependents')
     name = models.CharField(max_length=100)
-    relationship = models.CharField(max_length=2, choices=RELATIONSHIP_CHOICES)
+    relation = models.CharField(max_length=20, choices=RELATIONSHIP_CHOICES)
     date_of_birth = models.DateField()
-    is_sponsored = models.BooleanField(default=False)
-    documents = models.JSONField(default=dict)
+    passport_number = models.CharField(max_length=50, blank=True, null=True)
+    passport_expiry = models.DateField(blank=True, null=True)
+    cpr_number = models.CharField(max_length=20, blank=True, null=True)
+    cpr_expiry = models.DateField(blank=True, null=True)
+    valid_passage = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Employee Dependent"
+        verbose_name_plural = "Employee Dependents"
+        ordering = ['name']
 
     def __str__(self):
-        return f"{self.name} ({self.get_relationship_display()})"
+        return f"{self.name} ({self.get_relation_display()})"
+
+class DependentDocument(models.Model):
+    DOCUMENT_TYPES = [
+        ('passport', 'Passport'),
+        ('id', 'ID'),
+        ('visa', 'Visa'),
+        ('other', 'Other'),
+    ]
+
+    DOCUMENT_STATUS = [
+        ('valid', 'Valid'),
+        ('expired', 'Expired'),
+    ]
+
+    dependent = models.ForeignKey(EmployeeDependent, on_delete=models.CASCADE, related_name='documents')
+    name = models.CharField(max_length=100)
+    document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
+    document_number = models.CharField(max_length=50, blank=True, null=True)
+    document_file = models.FileField(
+        upload_to='dependent_documents/%Y/%m/',
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=['pdf', 'jpg', 'jpeg', 'png']
+            )
+        ]
+    )
+    issue_date = models.DateField()
+    expiry_date = models.DateField(blank=True, null=True)
+    country_of_origin = models.CharField(max_length=100)
+    status = models.CharField(max_length=20, choices=DOCUMENT_STATUS, default='valid')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Dependent Document"
+        verbose_name_plural = "Dependent Documents"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} - {self.get_document_type_display()}"
+
+    def save(self, *args, **kwargs):
+        if self.expiry_date and self.expiry_date < timezone.now().date():
+            self.status = 'expired'
+        else:
+            self.status = 'valid'
+        super().save(*args, **kwargs)
 
 class EmergencyContact(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='emergency_contacts')

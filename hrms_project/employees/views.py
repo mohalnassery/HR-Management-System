@@ -7,8 +7,14 @@ from django.views.generic import ListView, DetailView, CreateView, UpdateView, D
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.db import transaction
 from django.db.models import Q
-from .models import Employee, Department, Division, EmployeeBankAccount, EmployeeDocument
-from .forms import EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm
+from .models import (
+    Employee, Department, Division, EmployeeBankAccount, EmployeeDocument,
+    EmployeeDependent, DependentDocument
+)
+from .forms import (
+    EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm,
+    EmployeeDependentForm, DependentDocumentForm
+)
 from django.http import JsonResponse
 from django.utils import timezone
 import os
@@ -208,7 +214,7 @@ def add_bank_account(request, employee_id):
     else:
         form = EmployeeBankAccountForm()
     
-    return render(request, 'employees/bank_account_form.html', {
+    return render(request, 'employees/preview/bank/bank_account_form.html', {
         'form': form,
         'employee': employee,
         'title': 'Add Bank Account'
@@ -229,7 +235,7 @@ def edit_bank_account(request, employee_id, account_id):
     else:
         form = EmployeeBankAccountForm(instance=bank_account)
     
-    return render(request, 'employees/bank_account_form.html', {
+    return render(request, 'employees/preview/bank/bank_account_form.html', {
         'form': form,
         'employee': employee,
         'bank_account': bank_account,
@@ -247,7 +253,7 @@ def delete_bank_account(request, employee_id, account_id):
         messages.success(request, 'Bank account deleted successfully.')
         return redirect('employees:employee_detail', pk=employee_id)
     
-    return render(request, 'employees/bank_account_confirm_delete.html', {
+    return render(request, 'employees/preview/bank/bank_account_confirm_delete.html', {
         'employee': employee,
         'bank_account': bank_account
     })
@@ -267,7 +273,7 @@ def add_document(request, employee_id):
     else:
         form = EmployeeDocumentForm()
     
-    return render(request, 'employees/document_form.html', {
+    return render(request, 'employees/preview/document/document_form.html', {
         'form': form,
         'employee': employee,
         'title': 'Add Document'
@@ -288,7 +294,7 @@ def edit_document(request, employee_id, document_id):
     else:
         form = EmployeeDocumentForm(instance=document)
     
-    return render(request, 'employees/document_form.html', {
+    return render(request, 'employees/preview/document/document_form.html', {
         'form': form,
         'employee': employee,
         'document': document,
@@ -306,7 +312,7 @@ def delete_document(request, employee_id, document_id):
         messages.success(request, 'Document deleted successfully.')
         return redirect('employees:employee_detail', pk=employee_id)
     
-    return render(request, 'employees/document_confirm_delete.html', {
+    return render(request, 'employees/preview/document/document_confirm_delete.html', {
         'employee': employee,
         'document': document
     })
@@ -316,7 +322,7 @@ def view_document(request, employee_id, document_id):
     employee = get_object_or_404(Employee, pk=employee_id)
     document = get_object_or_404(EmployeeDocument, pk=document_id, employee=employee)
     
-    return render(request, 'employees/document_view.html', {
+    return render(request, 'employees/preview/document/document_view.html', {
         'employee': employee,
         'document': document
     })
@@ -484,4 +490,159 @@ def get_system_info(request):
     """Return system information to the client"""
     return JsonResponse({
         'platform': platform.system()
+    })
+
+@login_required
+def add_dependent(request, employee_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    if request.method == 'POST':
+        form = EmployeeDependentForm(request.POST)
+        if form.is_valid():
+            dependent = form.save(commit=False)
+            dependent.employee = employee
+            dependent.save()
+            return JsonResponse({'status': 'success', 'message': 'Dependent added successfully'})
+        return JsonResponse({'status': 'error', 'errors': form.errors})
+    else:
+        form = EmployeeDependentForm()
+    return render(request, 'employees/preview/dependents/dependent_form.html', {
+        'form': form,
+        'employee': employee,
+    })
+
+@login_required
+def edit_dependent(request, employee_id, dependent_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    if request.method == 'POST':
+        form = EmployeeDependentForm(request.POST, instance=dependent)
+        if form.is_valid():
+            form.save()
+            return JsonResponse({'status': 'success', 'message': 'Dependent updated successfully'})
+        return JsonResponse({'status': 'error', 'errors': form.errors})
+    else:
+        form = EmployeeDependentForm(instance=dependent)
+    return render(request, 'employees/preview/dependents/dependent_form.html', {
+        'form': form,
+        'employee': employee,
+        'dependent': dependent,
+    })
+
+@login_required
+def delete_dependent(request, employee_id, dependent_id):
+    if request.method == 'POST':
+        employee = get_object_or_404(Employee, id=employee_id)
+        dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+        dependent.delete()
+        return JsonResponse({'status': 'success', 'message': 'Dependent deleted successfully'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+
+@login_required
+def add_dependent_document(request, employee_id, dependent_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    if request.method == 'POST':
+        form = DependentDocumentForm(request.POST, request.FILES)
+        if form.is_valid():
+            document = form.save(commit=False)
+            document.dependent = dependent
+            document.save()
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Document added successfully',
+                'document': {
+                    'id': document.id,
+                    'name': document.name,
+                    'document_type': document.get_document_type_display(),
+                    'document_number': document.document_number or '',
+                    'issue_date': document.issue_date.strftime('%Y-%m-%d'),
+                    'expiry_date': document.expiry_date.strftime('%Y-%m-%d') if document.expiry_date else '',
+                    'status': document.status
+                }
+            })
+        return JsonResponse({'status': 'error', 'errors': form.errors})
+    else:
+        form = DependentDocumentForm()
+    return render(request, 'employees/preview/dependents/dependent_document_form.html', {
+        'form': form,
+        'employee': employee,
+        'dependent': dependent
+    })
+
+@login_required
+def edit_dependent_document(request, employee_id, dependent_id, document_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    document = get_object_or_404(DependentDocument, id=document_id, dependent=dependent)
+    if request.method == 'POST':
+        form = DependentDocumentForm(request.POST, request.FILES, instance=document)
+        if form.is_valid():
+            document = form.save()
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Document updated successfully',
+                'document': {
+                    'id': document.id,
+                    'name': document.name,
+                    'document_type': document.get_document_type_display(),
+                    'document_number': document.document_number or '',
+                    'issue_date': document.issue_date.strftime('%Y-%m-%d'),
+                    'expiry_date': document.expiry_date.strftime('%Y-%m-%d') if document.expiry_date else '',
+                    'status': document.status
+                }
+            })
+        return JsonResponse({'status': 'error', 'errors': form.errors})
+    else:
+        form = DependentDocumentForm(instance=document)
+    return render(request, 'employees/preview/dependents/dependent_document_form.html', {
+        'form': form,
+        'employee': employee,
+        'dependent': dependent,
+        'document': document
+    })
+
+@login_required
+def delete_dependent_document(request, employee_id, dependent_id, document_id):
+    if request.method == 'POST':
+        employee = get_object_or_404(Employee, id=employee_id)
+        dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+        document = get_object_or_404(DependentDocument, id=document_id, dependent=dependent)
+        document.delete()
+        return JsonResponse({'status': 'success', 'message': 'Document deleted successfully'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+
+@login_required
+def view_dependent_document(request, employee_id, dependent_id, document_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    document = get_object_or_404(DependentDocument, id=document_id, dependent=dependent)
+    
+    if document.document_file:
+        response = JsonResponse({
+            'status': 'success',
+            'url': document.document_file.url,
+            'filename': os.path.basename(document.document_file.name)
+        })
+        return response
+    return JsonResponse({'status': 'error', 'message': 'Document not found'})
+
+@login_required
+def get_dependent_documents(request, employee_id, dependent_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    documents = dependent.documents.all().order_by('-created_at')
+    
+    documents_data = [{
+        'id': doc.id,
+        'name': doc.name,
+        'document_type': doc.get_document_type_display(),
+        'document_number': doc.document_number or '',
+        'issue_date': doc.issue_date.strftime('%Y-%m-%d'),
+        'expiry_date': doc.expiry_date.strftime('%Y-%m-%d') if doc.expiry_date else '',
+        'status': doc.status
+    } for doc in documents]
+    
+    return JsonResponse({
+        'status': 'success',
+        'documents': documents_data
     })

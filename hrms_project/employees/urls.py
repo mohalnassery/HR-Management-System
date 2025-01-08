@@ -23,6 +23,16 @@ urlpatterns = [
     path('<int:employee_id>/documents/<int:document_id>/view/', views.view_document, name='view_document'),
     path('employee/<int:employee_id>/scan-document/', views.scan_document, name='scan_document'),
 
+    # Dependent Management
+    path('<int:employee_id>/dependents/add/', views.add_dependent, name='add_dependent'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/edit/', views.edit_dependent, name='edit_dependent'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/delete/', views.delete_dependent, name='delete_dependent'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/', views.get_dependent_documents, name='get_dependent_documents'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/add/', views.add_dependent_document, name='add_dependent_document'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/edit/', views.edit_dependent_document, name='edit_dependent_document'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/delete/', views.delete_dependent_document, name='delete_dependent_document'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/view/', views.view_dependent_document, name='view_dependent_document'),
+
     # Bulk Status Change
     path('bulk-status-change/', views.bulk_status_change, name='bulk_status_change'),
     path('bulk-status-change/<str:status>/', views.bulk_status_change, name='bulk_status_change_with_status'),
