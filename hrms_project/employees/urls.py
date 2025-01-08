@@ -1,9 +1,18 @@
-from django.urls import path
-from . import views
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from . import views, api_views
 
 app_name = 'employees'
 
+# Create a router for API views
+router = DefaultRouter()
+router.register(r'api/assets', api_views.EmployeeAssetViewSet)
+router.register(r'api/asset-types', api_views.AssetTypeViewSet)
+
 urlpatterns = [
+    # Include API URLs
+    path('', include(router.urls)),
+
     # Class-based views
     path('', views.EmployeeListView.as_view(), name='employee_list'),
     path('<int:pk>/', views.EmployeeDetailView.as_view(), name='employee_detail'),

@@ -403,17 +403,40 @@ class EmployeeDocument(models.Model):
     def is_image(self):
         return self.file_extension in ['.jpg', '.jpeg', '.png']
 
+class AssetType(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Asset Type"
+        verbose_name_plural = "Asset Types"
+
 class EmployeeAsset(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='assets')
+    asset_type = models.ForeignKey(AssetType, on_delete=models.PROTECT, related_name='assets', null=True)
     asset_name = models.CharField(max_length=100)
     asset_number = models.CharField(max_length=50)
     issue_date = models.DateField()
     return_date = models.DateField(null=True, blank=True)
     condition = models.TextField()
+    return_condition = models.TextField(null=True, blank=True)
     value = models.DecimalField(max_digits=10, decimal_places=2)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.asset_name} ({self.asset_number})"
+        return f"{self.asset_name} - {self.asset_number}"
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Employee Asset"
+        verbose_name_plural = "Employee Assets"
 
 class EmployeeEducation(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='education')
