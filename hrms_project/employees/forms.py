@@ -99,8 +99,15 @@ class EmployeeForm(forms.ModelForm):
                     ),
                     Fieldset('Contact & Identification',
                         Row(
-                            Column('cpr_number', css_class='form-group col-md-6'),
+                            
+                            Column('primary_phone', css_class='form-group col-md-6'),
+                            Column('secondary_phone', css_class='form-group col-md-6'),
+
+                            css_class='form-row'
+                        ),
+                        Row(
                             Column('email', css_class='form-group col-md-6'),
+                            Column('cpr_number', css_class='form-group col-md-6'),
                             css_class='form-row'
                         ),
                     ),
@@ -169,7 +176,7 @@ class EmployeeForm(forms.ModelForm):
             'employee_number', 'profile_picture', 'first_name', 'middle_name', 'last_name',
             'first_name_ar', 'middle_name_ar', 'last_name_ar', 'date_of_birth',
             'gender', 'marital_status', 'nationality', 'religion', 'education_category',
-            'cpr_number', 'email', 'in_probation',
+            'cpr_number', 'email', 'primary_phone', 'secondary_phone', 'in_probation',
             # Employment Information
             'designation', 'division', 'department', 'location', 'contract_type',
             'joined_date', 'cost_center', 'profit_center', 'employee_category',
@@ -283,17 +290,19 @@ class EmployeeDependentForm(forms.ModelForm):
 class DependentDocumentForm(forms.ModelForm):
     class Meta:
         model = DependentDocument
-        fields = [
-            'name', 'document_type', 'document_number', 'document_file',
-            'issue_date', 'expiry_date', 'country_of_origin'
-        ]
+        fields = ['document_type', 'document_number', 'name', 'issue_date', 'expiry_date', 'nationality', 'document_file']
         widgets = {
-            'issue_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'expiry_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'issue_date': forms.DateInput(attrs={'type': 'date'}),
+            'expiry_date': forms.DateInput(attrs={'type': 'date'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['document_number'].required = False
+        self.fields['issue_date'].required = False
+        self.fields['expiry_date'].required = False
+        self.fields['nationality'].required = False
+        self.fields['document_file'].required = False
         self.helper = FormHelper()
         self.helper.form_method = 'post'
         self.helper.form_class = 'form-horizontal'
@@ -309,13 +318,13 @@ class DependentDocumentForm(forms.ModelForm):
 
         self.helper.layout = Layout(
             Row(
-                Column('name', css_class='form-group col-md-6 mb-0'),
                 Column('document_type', css_class='form-group col-md-6 mb-0'),
+                Column('document_number', css_class='form-group col-md-6 mb-0'),
                 css_class='form-row'
             ),
             Row(
-                Column('document_number', css_class='form-group col-md-6 mb-0'),
-                Column('country_of_origin', css_class='form-group col-md-6 mb-0'),
+                Column('name', css_class='form-group col-md-6 mb-0'),
+                Column('nationality', css_class='form-group col-md-6 mb-0'),
                 css_class='form-row'
             ),
             Row(

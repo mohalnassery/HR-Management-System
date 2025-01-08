@@ -17,17 +17,23 @@ urlpatterns = [
     path('<int:employee_id>/bank-accounts/<int:account_id>/delete/', views.delete_bank_account, name='delete_bank_account'),
 
     # Document Management
+    path('<int:employee_id>/documents/', views.employee_documents, name='employee_documents'),
     path('<int:employee_id>/documents/add/', views.add_document, name='add_document'),
     path('<int:employee_id>/documents/<int:document_id>/edit/', views.edit_document, name='edit_document'),
     path('<int:employee_id>/documents/<int:document_id>/delete/', views.delete_document, name='delete_document'),
     path('<int:employee_id>/documents/<int:document_id>/view/', views.view_document, name='view_document'),
-    path('employee/<int:employee_id>/scan-document/', views.scan_document, name='scan_document'),
+
+    # Scanner functionality
+    path('scan-document/', views.scan_document, name='scan_document_universal'),  # Universal scanner endpoint
+    path('<int:employee_id>/scan-document/', views.scan_document, name='scan_document'),  # For backward compatibility
+    path('<int:employee_id>/dependents/<int:dependent_id>/scan-document/', views.scan_document, name='scan_dependent_document'),  # For dependent documents
 
     # Dependent Management
     path('<int:employee_id>/dependents/add/', views.add_dependent, name='add_dependent'),
     path('<int:employee_id>/dependents/<int:dependent_id>/edit/', views.edit_dependent, name='edit_dependent'),
     path('<int:employee_id>/dependents/<int:dependent_id>/delete/', views.delete_dependent, name='delete_dependent'),
-    path('<int:employee_id>/dependents/<int:dependent_id>/documents/', views.get_dependent_documents, name='get_dependent_documents'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/', views.dependent_documents, name='dependent_documents'),
+    path('<int:employee_id>/dependents/<int:dependent_id>/documents/list/', views.get_dependent_documents, name='get_dependent_documents'),
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/add/', views.add_dependent_document, name='add_dependent_document'),
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/edit/', views.edit_dependent_document, name='edit_dependent_document'),
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/delete/', views.delete_dependent_document, name='delete_dependent_document'),
@@ -38,7 +44,7 @@ urlpatterns = [
     path('bulk-status-change/<str:status>/', views.bulk_status_change, name='bulk_status_change_with_status'),
 
     # System Info
-    path('system-info/', views.get_system_info, name='system_info'),
+    path('system-info/', views.system_info, name='system_info'),
 
     # Function-based views (alternative)
     # path('', views.employee_list, name='employee_list'),

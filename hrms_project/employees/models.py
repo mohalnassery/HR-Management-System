@@ -186,7 +186,10 @@ class Employee(models.Model):
     religion = models.CharField(max_length=50, blank=True, null=True)
     education_category = models.CharField(max_length=50, blank=True, null=True)
     cpr_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
-    email = models.EmailField(unique=True, blank=True, null=True)
+    email = models.EmailField(max_length=254, blank=True, null=True)
+    primary_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Primary Number')
+    secondary_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Secondary Number')
+    address = models.TextField(blank=True, null=True)
     in_probation = models.BooleanField(default=True)
 
     # Employment Information
@@ -285,50 +288,27 @@ class EmployeeDependent(models.Model):
 
 class DependentDocument(models.Model):
     DOCUMENT_TYPES = [
-        ('passport', 'Passport'),
-        ('id', 'ID'),
-        ('visa', 'Visa'),
-        ('other', 'Other'),
-    ]
-
-    DOCUMENT_STATUS = [
-        ('valid', 'Valid'),
-        ('expired', 'Expired'),
+        ('PASSPORT', 'Passport'),
+        ('CPR', 'CPR'),
+        ('BIRTH_CERTIFICATE', 'Birth Certificate'),
+        ('MARRIAGE_CERTIFICATE', 'Marriage Certificate'),
+        ('OTHER', 'Other'),
     ]
 
     dependent = models.ForeignKey(EmployeeDependent, on_delete=models.CASCADE, related_name='documents')
-    name = models.CharField(max_length=100)
-    document_type = models.CharField(max_length=20, choices=DOCUMENT_TYPES)
+    document_type = models.CharField(max_length=50, choices=DOCUMENT_TYPES)
     document_number = models.CharField(max_length=50, blank=True, null=True)
-    document_file = models.FileField(
-        upload_to='dependent_documents/%Y/%m/',
-        validators=[
-            FileExtensionValidator(
-                allowed_extensions=['pdf', 'jpg', 'jpeg', 'png']
-            )
-        ]
-    )
-    issue_date = models.DateField()
+    name = models.CharField(max_length=255)
+    issue_date = models.DateField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
-    country_of_origin = models.CharField(max_length=100)
-    status = models.CharField(max_length=20, choices=DOCUMENT_STATUS, default='valid')
+    nationality = models.CharField(max_length=50, choices=Employee.NATIONALITY_CHOICES, blank=True, null=True)
+    document_file = models.FileField(upload_to='dependent_documents/', blank=True, null=True)
+    status = models.CharField(max_length=20, default='active')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        verbose_name = "Dependent Document"
-        verbose_name_plural = "Dependent Documents"
-        ordering = ['-created_at']
-
     def __str__(self):
-        return f"{self.name} - {self.get_document_type_display()}"
-
-    def save(self, *args, **kwargs):
-        if self.expiry_date and self.expiry_date < timezone.now().date():
-            self.status = 'expired'
-        else:
-            self.status = 'valid'
-        super().save(*args, **kwargs)
+        return f"{self.dependent.name} - {self.get_document_type_display()}"
 
 class EmergencyContact(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='emergency_contacts')
@@ -391,6 +371,22 @@ class EmployeeDocument(models.Model):
     def save(self, *args, **kwargs):
         if not self.pk:  # Only set created_at for new instances
             self.created_at = timezone.now()
+            
+        if self.document_file:
+            # Get file extension
+            _, ext = os.path.splitext(self.document_file.name)
+            
+            # Create new filename
+            new_filename = f"{self.employee.employee_number}_{self.employee.get_full_name().replace(' ', '_')}_{self.get_document_type_display()}_{self.document_number}{ext}"
+            
+            # Set the new filename
+            self.document_file.name = os.path.join(
+                'employee_documents',
+                timezone.now().strftime('%Y'),
+                timezone.now().strftime('%m'),
+                new_filename
+            )
+            
         self.full_clean()
         super().save(*args, **kwargs)
 

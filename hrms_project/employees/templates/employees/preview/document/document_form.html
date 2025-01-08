@@ -1,251 +1,188 @@
 {% extends "employees/base.html" %}
-{% load crispy_forms_tags %}
+
 {% load static %}
+{% load crispy_forms_tags %}
 
-{% block title %}{{ title }} - {{ employee.get_full_name }}{% endblock %}
-
-{% block extra_head %}
+{% block extra_css %}
 <style>
-    .document-section {
-        margin: 20px 0;
-    }
-    .method-buttons {
-        margin-bottom: 15px;
-    }
     .method-button {
-        padding: 8px 16px;
-        margin-right: 10px;
-        border: 1px solid #ccc;
-        background-color: #f8f9fa;
-        border-radius: 4px;
+        padding: 10px 20px;
+        margin: 5px;
+        border: 1px solid #ddd;
+        cursor: pointer;
     }
     .method-button.active {
         background-color: #007bff;
         color: white;
-        border-color: #0056b3;
     }
-    .scan-content, .scan-preview {
-        display: none;
-    }
-    .scan-preview {
-        max-width: 100%;
-        overflow: hidden;
-        padding: 15px;
-    }
-    .scan-preview h5 {
-        margin-bottom: 15px;
-        text-align: center;
+    .upload-content, .scan-content, .scan-preview {
+        margin-top: 20px;
     }
     .preview-images {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
-        margin-top: 15px;
-        justify-content: center;
-        max-width: 100%;
+        margin-top: 10px;
     }
     .preview-image-container {
-        flex: 0 0 150px;
-        width: 150px;
-        height: 150px;
         position: relative;
-        margin: 5px;
-        cursor: pointer;
-        overflow: hidden;
+        max-width: 150px;
     }
     .preview-image-container img {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 3px;
-        display: block;
-        max-width: 150px !important;
-        max-height: 150px !important;
-    }
-    .thumbnail-image {
-        width: 150px !important;
-        height: 150px !important;
-        object-fit: cover !important;
+        width: 100%;
+        height: auto;
+        cursor: pointer;
     }
     .page-number {
         position: absolute;
-        top: 10px;
-        left: 10px;
-        background: rgba(0, 0, 0, 0.7);
+        top: 5px;
+        left: 5px;
+        background: rgba(0,0,0,0.7);
         color: white;
-        padding: 2px 8px;
-        border-radius: 3px;
+        padding: 2px 5px;
         font-size: 12px;
     }
-    .spinner {
+    #twoSideInstructions {
         display: none;
-        margin-left: 5px;
-    }
-    .scan-options {
-        margin: 15px 0;
-        padding: 15px;
-        background: #f8f9fa;
-        border-radius: 4px;
-    }
-    .scan-options label {
-        margin-bottom: 0;
-        cursor: pointer;
-    }
-    .scan-mode {
-        margin-bottom: 10px;
-        padding-bottom: 10px;
-        border-bottom: 1px solid #dee2e6;
-    }
-    .scan-instructions {
-        display: none;
-        margin-top: 10px;
         padding: 10px;
-        background: #e9ecef;
-        border-radius: 4px;
-        color: #495057;
+        margin: 10px 0;
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
     }
-    .scan-instructions.active {
+    #twoSideInstructions.active {
         display: block;
     }
     .scan-side-indicator {
         font-weight: bold;
-        color: #0056b3;
-    }
-    .card-body {
-        padding: 1.25rem;
-        overflow: hidden;
-    }
-    /* Modal styles */
-    .image-modal {
-        display: none;
-        position: fixed;
-        z-index: 1000;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.9);
-    }
-    .modal-content {
-        margin: auto;
-        display: block;
-        max-width: 90%;
-        max-height: 90vh;
-        position: relative;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-    .close-modal {
-        position: absolute;
-        right: 20px;
-        top: 20px;
-        color: #fff;
-        font-size: 30px;
-        font-weight: bold;
-        cursor: pointer;
+        color: #007bff;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="row mb-4">
-        <div class="col">
-            <h2>{{ title }} - {{ employee.get_full_name }}</h2>
-        </div>
-    </div>
-
+<div class="container-fluid">
     <div class="row">
-        <div class="col-md-8 offset-md-2">
+        <div class="col-12">
             <div class="card">
-                <div class="card-body">
-                    <form method="post" enctype="multipart/form-data" id="document-form">
-                        {% csrf_token %}
-                        
-                        <!-- Form fields except document -->
-                        {% for field in form %}
-                            {% if field.name != 'document' %}
-                                {{ field|as_crispy_field }}
-                            {% endif %}
-                        {% endfor %}
-                        
-                        <!-- Document section -->
-                        <div class="document-section">
-                            <label>Document file</label>
-                            
-                            <!-- Method buttons -->
-                            <div class="method-buttons">
-                                <button type="button" class="method-button active" onclick="selectMethod('upload')">
-                                    <i class="fas fa-upload"></i> Upload File
-                                </button>
-                                <button type="button" class="method-button" onclick="selectMethod('scan')">
-                                    <i class="fas fa-scanner"></i> Scan Document
-                                </button>
-                            </div>
-                            
-                            <!-- Upload content -->
-                            <div class="upload-content">
-                                {% for field in form %}
-                                    {% if field.name == 'document' %}
-                                        {{ field|as_crispy_field }}
-                                    {% endif %}
-                                {% endfor %}
-                            </div>
-                            
-                            <!-- Scan content -->
-                            <div class="scan-content">
-                                <div class="scan-options">
-                                    <div class="scan-mode">
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="radio" name="scanMode" id="singleSide" value="single" checked>
-                                            <label class="form-check-label" for="singleSide">
-                                                Single Side
-                                            </label>
-                                        </div>
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="radio" name="scanMode" id="twoSides" value="double">
-                                            <label class="form-check-label" for="twoSides">
-                                                Two Sides (Manual Flip)
-                                            </label>
-                                        </div>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="scanMode" id="useFeeder" value="feeder">
-                                            <label class="form-check-label" for="useFeeder">
-                                                Document Feeder (Multiple Pages)
-                                            </label>
-                                        </div>
-                                    </div>
-                                    
-                                    <div id="twoSideInstructions" class="scan-instructions" data-side="front">
-                                        <p class="mb-2">
-                                            <span class="scan-side-indicator">Front Side:</span> 
-                                            Place the document with the front side facing down on the scanner.
-                                        </p>
-                                    </div>
-                                </div>
-                                
-                                <button type="button" class="btn btn-primary" onclick="startScanning()">
-                                    Start Scanning
-                                    <span class="spinner">
-                                        <i class="fas fa-spinner fa-spin"></i>
-                                    </span>
-                                </button>
-                                
-                                <div class="scan-preview">
-                                    <h5>Scanned Document Preview</h5>
-                                    <div class="preview-images"></div>
-                                </div>
-                            </div>
-
-                            <div class="mt-3">
-                                <a href="{% url 'employees:employee_detail' employee.pk %}" class="btn btn-secondary">Cancel</a>
-                                <button type="submit" class="btn btn-primary">Save Document</button>
-                            </div>
-                        </form>
+                <div class="card-header">
+                    <h3 class="card-title">{% if document %}Edit{% else %}Add{% endif %} Document for {{ employee.name }}</h3>
+                    <div class="card-tools">
+                        <a href="{% url 'employees:employee_detail' employee.id %}" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> Back to Employee
+                        </a>
                     </div>
                 </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data" id="documentForm">
+                        {% csrf_token %}
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                {{ form.document_type|as_crispy_field }}
+                            </div>
+                            <div class="col-md-6">
+                                {{ form.document_number|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                {{ form.profession_title|as_crispy_field }}
+                            </div>
+                            <div class="col-md-6">
+                                {{ form.issue_place|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                {{ form.issue_date|as_crispy_field }}
+                            </div>
+                            <div class="col-md-6">
+                                {{ form.expiry_date|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                {{ form.other_info|as_crispy_field }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-12">
+                                <label class="form-label">Document Upload Method</label>
+                                <div class="d-flex">
+                                    <button type="button" class="method-button active" onclick="selectMethod('upload')">
+                                        <i class="fas fa-upload"></i> Upload File
+                                    </button>
+                                    <button type="button" class="method-button" onclick="selectMethod('scan')">
+                                        <i class="fas fa-scanner"></i> Scan Document
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="upload-content">
+                            {{ form.document_file|as_crispy_field }}
+                        </div>
+
+                        <div class="scan-content" style="display: none;">
+                            <div class="form-group">
+                                <label>Scan Mode</label>
+                                <div class="form-check">
+                                    <input type="radio" id="singleSide" name="scanMode" value="single" class="form-check-input" checked>
+                                    <label class="form-check-label" for="singleSide">Single Side</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="radio" id="doubleSide" name="scanMode" value="double" class="form-check-input">
+                                    <label class="form-check-label" for="doubleSide">Double Side</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="radio" id="feeder" name="scanMode" value="feeder" class="form-check-input">
+                                    <label class="form-check-label" for="feeder">Document Feeder</label>
+                                </div>
+                            </div>
+
+                            <div id="twoSideInstructions" class="alert alert-info">
+                                <p></p>
+                            </div>
+
+                            <button type="button" class="btn btn-primary" onclick="startScanning()">
+                                Start Scanning <span class="spinner" style="display: none;"><i class="fas fa-spinner fa-spin"></i></span>
+                            </button>
+                        </div>
+
+                        <div class="scan-preview" style="display: none;">
+                            <h5>Scanned Pages</h5>
+                            <div class="preview-images"></div>
+                        </div>
+
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Document
+                            </button>
+                            <a href="{% url 'employees:employee_detail' employee.id %}" class="btn btn-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div id="imageModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Image Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <img id="modalImage" class="img-fluid" src="" alt="Preview">
             </div>
         </div>
     </div>
@@ -253,356 +190,70 @@
 {% endblock %}
 
 {% block extra_js %}
+{% load static %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="{% static 'employees/utilities/scanning.js' %}"></script>
 <script>
-    const { jsPDF } = window.jspdf;
-    let isWindows = false;
-
-    // Get system information when page loads
-    fetch('/employees/system-info/')
-        .then(response => response.json())
-        .then(data => {
-            isWindows = data.platform === 'Windows';
-            // Hide scanner option if not on Windows
-            if (!isWindows) {
-                const scanButton = document.querySelector('[onclick="selectMethod(\'scan\')"]');
-                if (scanButton) {
-                    scanButton.style.display = 'none';
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error checking system:', error);
-        });
-
+    // Handle upload/scan method selection
     function selectMethod(method) {
         // Update buttons
         document.querySelectorAll('.method-button').forEach(btn => {
             btn.classList.remove('active');
         });
-        const selectedBtn = method === 'upload' ? 
-            document.querySelector('.method-button:first-child') :
-            document.querySelector('.method-button:last-child');
-        selectedBtn.classList.add('active');
-        
-        // Show/hide content
+        const selectedBtn = document.querySelector(`.method-button[onclick*="${method}"]`);
+        if (selectedBtn) {
+            selectedBtn.classList.add('active');
+        }
+
+        // Show/hide content sections
         const uploadContent = document.querySelector('.upload-content');
         const scanContent = document.querySelector('.scan-content');
         const scanPreview = document.querySelector('.scan-preview');
-        
+
         if (method === 'upload') {
             uploadContent.style.display = 'block';
             scanContent.style.display = 'none';
             scanPreview.style.display = 'none';
-        } else if (method === 'scan' && isWindows) {
+        } else {
             uploadContent.style.display = 'none';
             scanContent.style.display = 'block';
-        }
-    }
-
-    let currentSide = 'front';
-    let frontImage = null;
-    let backImage = null;
-
-    function updateScanInstructions() {
-        const mode = document.querySelector('input[name="scanMode"]:checked').value;
-        const instructions = document.getElementById('twoSideInstructions');
-        
-        if (mode === 'double') {
-            instructions.classList.add('active');
-            instructions.querySelector('p').innerHTML = `
-                <span class="scan-side-indicator">${currentSide === 'front' ? 'Front' : 'Back'} Side:</span> 
-                Place the document with the ${currentSide} side facing down on the scanner.
-            `;
-        } else {
-            instructions.classList.remove('active');
-        }
-    }
-
-    // Add event listeners for scan mode changes
-    document.querySelectorAll('input[name="scanMode"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            currentSide = 'front';
-            frontImage = null;
-            backImage = null;
-            updateScanInstructions();
-            
-            // Clear previews when changing modes
-            const previewImages = document.querySelector('.preview-images');
-            if (previewImages) {
-                previewImages.innerHTML = '';
-            }
-        });
-    });
-
-    // Function to create thumbnail from image data
-    function createThumbnail(imageData, maxWidth = 150, maxHeight = 150) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = function() {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                
-                // Calculate new dimensions
-                if (width > height) {
-                    if (width > maxWidth) {
-                        height = Math.round(height * maxWidth / width);
-                        width = maxWidth;
-                    }
-                } else {
-                    if (height > maxHeight) {
-                        width = Math.round(width * maxHeight / height);
-                        height = maxHeight;
-                    }
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                resolve(canvas.toDataURL('image/jpeg', 0.7));
-            };
-            img.src = imageData;
-        });
-    }
-
-    async function startScanning() {
-        if (!isWindows) {
-            alert('Scanner functionality is only available on Windows systems.');
-            return;
-        }
-
-        const scanBtn = document.querySelector('.scan-content button');
-        const spinner = document.querySelector('.scan-content .spinner');  
-        const previewContainer = document.querySelector('.scan-preview');
-        const previewImages = document.querySelector('.preview-images');
-        const scanMode = document.querySelector('input[name="scanMode"]:checked').value;
-        
-        try {
-            // Show loading state
-            scanBtn.disabled = true;
-            if (spinner) {  
-                spinner.style.display = 'inline-block';
-            }
-            
-            // Clear previews if starting fresh scan
-            if (scanMode !== 'double' || currentSide === 'front') {
-                previewImages.innerHTML = '';
-            }
-            
-            // Call our scanning endpoint
-            const response = await fetch('{% url "employees:scan_document" employee.pk %}', {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    useFeeder: scanMode === 'feeder',
-                    currentSide: currentSide
-                })
-            });
-            
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Failed to scan document');
-            }
-            
-            const data = await response.json();
-            
-            if (scanMode === 'double') {
-                // Handle two-sided scanning
-                if (currentSide === 'front') {
-                    frontImage = data.images[0];
-                    
-                    // Create thumbnail
-                    const thumbnailData = await createThumbnail(frontImage.data);
-                    
-                    // Show front preview
-                    const previewContainer = document.createElement('div');
-                    previewContainer.className = 'preview-image-container';
-                    
-                    const pageNumber = document.createElement('div');
-                    pageNumber.className = 'page-number';
-                    pageNumber.textContent = 'Front Side';
-                    previewContainer.appendChild(pageNumber);
-                    
-                    const img = document.createElement('img');
-                    img.src = thumbnailData;
-                    img.alt = 'Front Side';
-                    img.setAttribute('data-original', frontImage.data);
-                    previewContainer.appendChild(img);
-                    
-                    previewImages.appendChild(previewContainer);
-                    
-                    // Update instructions for back side
-                    currentSide = 'back';
-                    updateScanInstructions();
-                    
-                    // Update button text and add spinner
-                    scanBtn.innerHTML = 'Scan Back Side <span class="spinner"><i class="fas fa-spinner fa-spin"></i></span>';
-                    
-                } else {
-                    backImage = data.images[0];
-                    
-                    // Create thumbnail
-                    const thumbnailData = await createThumbnail(backImage.data);
-                    
-                    // Show back preview
-                    const previewContainer = document.createElement('div');
-                    previewContainer.className = 'preview-image-container';
-                    
-                    const pageNumber = document.createElement('div');
-                    pageNumber.className = 'page-number';
-                    pageNumber.textContent = 'Back Side';
-                    previewContainer.appendChild(pageNumber);
-                    
-                    const img = document.createElement('img');
-                    img.src = thumbnailData;
-                    img.alt = 'Back Side';
-                    img.setAttribute('data-original', backImage.data);
-                    previewContainer.appendChild(img);
-                    
-                    previewImages.appendChild(previewContainer);
-                    
-                    try {
-                        // Create PDF with both sides
-                        const doc = new jsPDF();
-                        
-                        // Add front side
-                        doc.addImage(frontImage.data, 'JPEG', 0, 0, 210, 297);
-                        
-                        // Add back side
-                        doc.addPage();
-                        doc.addImage(backImage.data, 'JPEG', 0, 0, 210, 297);
-                        
-                        // Convert to blob and create file
-                        const pdfBlob = doc.output('blob');
-                        const file = new File([pdfBlob], "scanned_document.pdf", { type: "application/pdf" });
-                        
-                        // Update file input
-                        const fileInput = document.querySelector('input[type="file"]');
-                        const dataTransfer = new DataTransfer();
-                        dataTransfer.items.add(file);
-                        fileInput.files = dataTransfer.files;
-                        
-                        // Reset for next scan
-                        currentSide = 'front';
-                        scanBtn.innerHTML = 'Start Scanning <span class="spinner"><i class="fas fa-spinner fa-spin"></i></span>';
-                        updateScanInstructions();
-                    } catch (pdfError) {
-                        console.error('PDF Creation Error:', pdfError);
-                        throw new Error('Failed to create PDF: ' + pdfError.message);
-                    }
-                }
-                
-            } else {
-                // Handle single-side or feeder scanning
-                try {
-                    const doc = new jsPDF();
-                    let firstPage = true;
-                    
-                    for (const image of data.images) {
-                        if (!firstPage) {
-                            doc.addPage();
-                        }
-                        doc.addImage(image.data, 'JPEG', 0, 0, 210, 297);
-                        firstPage = false;
-                        
-                        // Create thumbnail
-                        const thumbnailData = await createThumbnail(image.data);
-                        
-                        // Add preview
-                        const container = document.createElement('div');
-                        container.className = 'preview-image-container';
-                        
-                        const pageNumber = document.createElement('div');
-                        pageNumber.className = 'page-number';
-                        pageNumber.textContent = 'Page ' + (data.images.indexOf(image) + 1);
-                        container.appendChild(pageNumber);
-                        
-                        const img = document.createElement('img');
-                        img.src = thumbnailData;
-                        img.alt = 'Page ' + (data.images.indexOf(image) + 1);
-                        img.setAttribute('data-original', image.data);
-                        container.appendChild(img);
-                        
-                        previewImages.appendChild(container);
-                    }
-                    
-                    // Create file from PDF
-                    const pdfBlob = doc.output('blob');
-                    const file = new File([pdfBlob], "scanned_document.pdf", { type: "application/pdf" });
-                    
-                    // Update file input
-                    const fileInput = document.querySelector('input[type="file"]');
-                    const dataTransfer = new DataTransfer();
-                    dataTransfer.items.add(file);
-                    fileInput.files = dataTransfer.files;
-                } catch (pdfError) {
-                    console.error('PDF Creation Error:', pdfError);
-                    throw new Error('Failed to create PDF: ' + pdfError.message);
-                }
-            }
-            
-            // Show preview section
-            previewContainer.style.display = 'block';
-            
-        } catch (error) {
-            alert('Error while scanning: ' + error.message);
-            console.error(error);
-        } finally {
-            // Reset loading state
-            scanBtn.disabled = false;
-            if (spinner) {  
-                spinner.style.display = 'none';
-            }
         }
     }
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
         selectMethod('upload');
-        updateScanInstructions();
+        
+        // Set scan endpoint for the scanning.js
+        window.scanEndpoint = '{% url "employees:scan_document" employee.id %}';
+        
+        // Check if we're on Windows
+        fetch('{% url "employees:system_info" %}')
+            .then(response => response.json())
+            .then(data => {
+                const isWindows = data.platform === 'Windows';
+                if (!isWindows) {
+                    const scanButton = document.querySelector('[onclick="selectMethod(\'scan\')"]');
+                    if (scanButton) {
+                        scanButton.style.display = 'none';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking system:', error);
+            });
     });
 
-    // Image modal functionality
-    const modal = document.getElementById('imageModal');
-    const modalImg = document.getElementById('modalImage');
-    const closeModal = document.getElementsByClassName('close-modal')[0];
-
-    // Update modal image to show full size
-    function showImage(imgElement) {
-        modal.style.display = 'block';
-        modalImg.src = imgElement.getAttribute('data-original') || imgElement.src;
-    }
-
-    // Add click event to preview images
-    document.querySelectorAll('.preview-image-container img').forEach(img => {
-        img.onclick = function() {
-            showImage(this);
+    // Handle image preview modal
+    document.addEventListener('click', function(e) {
+        if (e.target.matches('.preview-image-container img')) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            const originalSrc = e.target.getAttribute('data-original') || e.target.src;
+            
+            modalImg.src = originalSrc;
+            new bootstrap.Modal(modal).show();
         }
     });
-
-    // Close modal
-    closeModal.onclick = function() {
-        modal.style.display = 'none';
-    }
-
-    // Close modal when clicking outside
-    window.onclick = function(event) {
-        if (event.target == modal) {
-            modal.style.display = 'none';
-        }
-    }
 </script>
-<!-- Add jsPDF for PDF creation -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 {% endblock %}
-
-<div id="imageModal" class="image-modal">
-    <span class="close-modal">&times;</span>
-    <img class="modal-content" id="modalImage">
-</div>

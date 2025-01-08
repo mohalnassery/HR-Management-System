@@ -1,59 +1,336 @@
 {% extends "employees/base.html" %}
+
+{% load static %}
 {% load crispy_forms_tags %}
 
+{% block extra_css %}
+<style>
+    .method-button {
+        padding: 10px 20px;
+        margin: 5px;
+        border: 1px solid #ddd;
+        cursor: pointer;
+    }
+    .method-button.active {
+        background-color: #007bff;
+        color: white;
+    }
+    .upload-content, .scan-content, .scan-preview {
+        margin-top: 20px;
+    }
+    .preview-images {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .preview-image-container {
+        position: relative;
+        max-width: 150px;
+    }
+    .preview-image-container img {
+        width: 100%;
+        height: auto;
+        cursor: pointer;
+    }
+    .page-number {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        padding: 2px 5px;
+        font-size: 12px;
+    }
+    .document-field {
+        display: none;
+    }
+    .document-field.show {
+        display: block;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="modal-content">
-    <div class="modal-header">
-        <h5 class="modal-title">{% if document %}Edit{% else %}Add{% endif %} Document for {{ dependent.name }}</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">{% if document %}Edit{% else %}Add{% endif %} Document for {{ dependent.name }}</h3>
+                    <div class="card-tools">
+                        <a href="{% url 'employees:dependent_documents' employee.id dependent.id %}" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> Back to Documents
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data" id="documentForm">
+                        {% csrf_token %}
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="document_type">Document Type</label>
+                                    <select class="form-control" id="document_type" name="document_type" required onchange="toggleDocumentFields()">
+                                        <option value="">Select Document Type</option>
+                                        <option value="PASSPORT">Passport</option>
+                                        <option value="CPR">CPR</option>
+                                        <option value="BIRTH_CERTIFICATE">Birth Certificate</option>
+                                        <option value="MARRIAGE_CERTIFICATE">Marriage Certificate</option>
+                                        <option value="OTHER">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="name">Document Name</label>
+                                    <input type="text" class="form-control" id="name" name="name" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="document_number">Document Number</label>
+                                    <input type="text" class="form-control" id="document_number" name="document_number">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dynamic fields based on document type -->
+                        <div class="row mb-3">
+                            <!-- Issue Date - for Passport -->
+                            <div class="col-md-6 document-field" data-document-types="PASSPORT">
+                                <div class="form-group">
+                                    <label for="issue_date">Issue Date</label>
+                                    <input type="date" class="form-control" id="issue_date" name="issue_date">
+                                </div>
+                            </div>
+
+                            <!-- Expiry Date - for Passport and CPR -->
+                            <div class="col-md-6 document-field" data-document-types="PASSPORT,CPR">
+                                <div class="form-group">
+                                    <label for="expiry_date">Expiry Date</label>
+                                    <input type="date" class="form-control" id="expiry_date" name="expiry_date">
+                                </div>
+                            </div>
+
+                            <!-- Nationality - for Passport and CPR -->
+                            <div class="col-md-6 document-field" data-document-types="PASSPORT,CPR">
+                                <div class="form-group">
+                                    <label for="nationality">Nationality</label>
+                                    <select class="form-control" id="nationality" name="nationality">
+                                        <option value="">Select Nationality</option>
+                                        {% for code, name in nationality_choices %}
+                                            <option value="{{ code }}">{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Method Selection -->
+                        <div class="btn-group mb-4" role="group" aria-label="Document upload method">
+                            <button type="button" class="btn btn-outline-primary method-button active" onclick="selectMethod('upload')">
+                                <i class="fas fa-upload"></i> Upload File
+                            </button>
+                            <button type="button" class="btn btn-outline-primary method-button" onclick="selectMethod('scan')">
+                                <i class="fas fa-scanner"></i> Scan Document
+                            </button>
+                        </div>
+
+                        <!-- Upload Content -->
+                        <div class="upload-content">
+                            <div class="form-group">
+                                <label for="document_file">Upload Document</label>
+                                <input type="file" class="form-control-file" id="document_file" name="document_file" accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                        </div>
+
+                        <!-- Scan Content -->
+                        <div class="scan-content" style="display: none;">
+                            <div class="form-group">
+                                <label>Scan Mode</label>
+                                <div class="form-check">
+                                    <input type="radio" id="singleSide" name="scanMode" value="single" class="form-check-input" checked>
+                                    <label class="form-check-label" for="singleSide">Single Side</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="radio" id="doubleSide" name="scanMode" value="double" class="form-check-input">
+                                    <label class="form-check-label" for="doubleSide">Double Side</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="radio" id="feeder" name="scanMode" value="feeder" class="form-check-input">
+                                    <label class="form-check-label" for="feeder">Document Feeder</label>
+                                </div>
+                            </div>
+                            
+                            <div id="scanInstructions" class="alert alert-info mb-3">
+                                Place your document on the scanner and click 'Start Scanning'
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary" onclick="startScanning()">
+                                Start Scanning <span class="spinner" style="display: none;"><i class="fas fa-spinner fa-spin"></i></span>
+                            </button>
+                        </div>
+
+                        <!-- Scan Preview -->
+                        <div class="scan-preview" style="display: none;">
+                            <h4 class="mt-4">Preview</h4>
+                            <div class="preview-images"></div>
+                        </div>
+
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Save Document
+                            </button>
+                            <a href="{% url 'employees:dependent_documents' employee.id dependent.id %}" class="btn btn-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
-    <form method="post" id="dependentDocumentForm" enctype="multipart/form-data" 
-          data-url="{% if document %}{% url 'employees:edit_dependent_document' employee.id dependent.id document.id %}{% else %}{% url 'employees:add_dependent_document' employee.id dependent.id %}{% endif %}">
-        <div class="modal-body">
-            {% csrf_token %}
-            {{ form|crispy }}
-        </div>
-        <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            <button type="submit" class="btn btn-primary">{% if document %}Update{% else %}Add{% endif %} Document</button>
-        </div>
-    </form>
 </div>
 
+<!-- Image Preview Modal -->
+<div id="imageModal" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Image Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" class="img-fluid" src="" alt="Preview">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
 {% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="{% static 'employees/utilities/scanning.js' %}"></script>
 <script>
-$(document).ready(function() {
-    $('#dependentDocumentForm').on('submit', function(e) {
-        e.preventDefault();
-        var form = $(this);
-        var url = form.data('url');
-        var formData = new FormData(this);
+    function toggleDocumentFields() {
+        const documentType = document.getElementById('document_type').value;
+        const fields = document.querySelectorAll('.document-field');
         
-        $.ajax({
-            url: url,
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.status === 'success') {
-                    // Refresh the documents table
-                    refreshDependentDocuments({{ dependent.id }});
-                    // Close the modal
-                    $('#documentModal').modal('hide');
-                    // Show success message
-                    showToast('Success', response.message, 'success');
-                } else {
-                    // Show error message
-                    showFormErrors(form, response.errors);
-                }
-            },
-            error: function(xhr, errmsg, err) {
-                showToast('Error', 'An error occurred while processing your request.', 'error');
+        fields.forEach(field => {
+            const documentTypes = field.getAttribute('data-document-types').split(',');
+            if (documentTypes.includes(documentType)) {
+                field.classList.add('show');
+                const inputs = field.querySelectorAll('input, select');
+                inputs.forEach(input => {
+                    if (documentType === 'PASSPORT') {
+                        input.required = true;
+                    } else if (documentType === 'CPR') {
+                        input.required = documentType === 'CPR' && input.name === 'expiry_date';
+                    } else {
+                        input.required = false;
+                    }
+                });
+            } else {
+                field.classList.remove('show');
+                const inputs = field.querySelectorAll('input, select');
+                inputs.forEach(input => input.required = false);
             }
         });
+    }
+
+    // Handle upload/scan method selection
+    function selectMethod(method) {
+        // Update buttons
+        document.querySelectorAll('.method-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        const selectedBtn = document.querySelector(`.method-button[onclick="selectMethod('${method}')"]`);
+        if (selectedBtn) {
+            selectedBtn.classList.add('active');
+        }
+        
+        // Show/hide content
+        const uploadContent = document.querySelector('.upload-content');
+        const scanContent = document.querySelector('.scan-content');
+        
+        if (method === 'upload') {
+            uploadContent.style.display = 'block';
+            scanContent.style.display = 'none';
+        } else {
+            uploadContent.style.display = 'none';
+            scanContent.style.display = 'block';
+        }
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        selectMethod('upload');
+        toggleDocumentFields();
+        
+        // Set scan endpoint and CSRF token for scanning.js
+        window.scanEndpoint = '{% url "employees:scan_dependent_document" employee.id dependent.id %}';
+        window.csrfToken = '{{ csrf_token }}';
+        
+        // Check if we're on Windows
+        fetch('{% url "employees:system_info" %}')
+            .then(response => response.json())
+            .then(data => {
+                const isWindows = data.platform === 'Windows';
+                if (!isWindows) {
+                    const scanButton = document.querySelector('[onclick="selectMethod(\'scan\')"]');
+                    if (scanButton) {
+                        scanButton.style.display = 'none';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking system:', error);
+            });
     });
-});
+
+    // Handle image preview modal
+    document.addEventListener('click', function(e) {
+        if (e.target.matches('.preview-image-container img')) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImage');
+            const originalSrc = e.target.getAttribute('data-original') || e.target.src;
+            
+            modalImg.src = originalSrc;
+            new bootstrap.Modal(modal).show();
+        }
+    });
+
+    // Handle form submission
+    document.getElementById('documentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': window.csrfToken
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                window.location.href = '{% url "employees:dependent_documents" employee.id dependent.id %}';
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while saving the document');
+        });
+    });
 </script>
-{% endblock %}
 {% endblock %}

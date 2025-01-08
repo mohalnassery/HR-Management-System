@@ -84,9 +84,10 @@ class EmployeeDependentAdmin(admin.ModelAdmin):
 
 @admin.register(DependentDocument)
 class DependentDocumentAdmin(admin.ModelAdmin):
-    list_display = ('dependent', 'name', 'document_type', 'document_number', 'status')
-    search_fields = ('dependent__name', 'name', 'document_number')
-    list_filter = ('document_type', 'status', 'country_of_origin')
+    list_display = ['name', 'document_type', 'document_number', 'issue_date', 'expiry_date', 'status']
+    list_filter = ['document_type', 'status', 'nationality']
+    search_fields = ['name', 'document_number']
+    date_hierarchy = 'created_at'
 
 @admin.register(EmergencyContact)
 class EmergencyContactAdmin(admin.ModelAdmin):

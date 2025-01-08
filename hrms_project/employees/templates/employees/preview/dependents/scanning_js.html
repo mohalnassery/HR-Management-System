@@ -1,0 +1,362 @@
+<script>
+const { jsPDF } = window.jspdf;
+let isWindows = false;
+
+// Get system information when page loads
+fetch('/employees/system-info/')
+    .then(response => response.json())
+    .then(data => {
+        isWindows = data.platform === 'Windows';
+        if (!isWindows) {
+            document.querySelector('[onclick="selectMethod(\'scan\')"]').style.display = 'none';
+        }
+    });
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    selectMethod('upload');
+    updateScanInstructions();
+});
+
+function selectMethod(method) {
+    // Update buttons
+    document.querySelectorAll('.method-button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    const selectedBtn = method === 'upload' ? 
+        document.querySelector('.method-button:first-child') :
+        document.querySelector('.method-button:last-child');
+    selectedBtn.classList.add('active');
+    
+    // Show/hide content
+    const uploadContent = document.querySelector('.upload-content');
+    const scanContent = document.querySelector('.scan-content');
+    const scanPreview = document.querySelector('.scan-preview');
+    
+    if (method === 'upload') {
+        uploadContent.style.display = 'block';
+        scanContent.style.display = 'none';
+        scanPreview.style.display = 'none';
+    } else if (method === 'scan' && isWindows) {
+        uploadContent.style.display = 'none';
+        scanContent.style.display = 'block';
+    }
+}
+
+let currentSide = 'front';
+let frontImage = null;
+let backImage = null;
+
+function updateScanInstructions() {
+    const mode = document.querySelector('input[name="scanMode"]:checked').value;
+    const instructions = document.getElementById('twoSideInstructions');
+    
+    if (mode === 'double') {
+        instructions.classList.add('active');
+        instructions.querySelector('p').innerHTML = `
+            <span class="scan-side-indicator">${currentSide === 'front' ? 'Front' : 'Back'} Side:</span> 
+            Place the document with the ${currentSide} side facing down on the scanner.
+        `;
+    } else {
+        instructions.classList.remove('active');
+    }
+}
+
+// Add event listeners for scan mode changes
+document.querySelectorAll('input[name="scanMode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+        currentSide = 'front';
+        frontImage = null;
+        backImage = null;
+        updateScanInstructions();
+        
+        // Clear previews when changing modes
+        const previewImages = document.querySelector('.preview-images');
+        if (previewImages) {
+            previewImages.innerHTML = '';
+        }
+    });
+});
+
+// Function to create thumbnail from image data
+function createThumbnail(imageData, maxWidth = 150, maxHeight = 150) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Calculate new dimensions
+            if (width > height) {
+                if (width > maxWidth) {
+                    height = Math.round(height * maxWidth / width);
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width = Math.round(width * maxHeight / height);
+                    height = maxHeight;
+                }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.src = imageData;
+    });
+}
+
+async function startScanning() {
+    if (!isWindows) {
+        alert('Scanner functionality is only available on Windows systems.');
+        return;
+    }
+
+    const scanBtn = document.querySelector('.scan-content button');
+    const spinner = document.querySelector('.scan-content .spinner');  
+    const previewContainer = document.querySelector('.scan-preview');
+    const previewImages = document.querySelector('.preview-images');
+    const scanMode = document.querySelector('input[name="scanMode"]:checked').value;
+    
+    try {
+        // Show loading state
+        scanBtn.disabled = true;
+        if (spinner) {  
+            spinner.style.display = 'inline-block';
+        }
+        
+        // Clear previews if starting fresh scan
+        if (scanMode !== 'double' || currentSide === 'front') {
+            previewImages.innerHTML = '';
+        }
+        
+        // Call our scanning endpoint
+        const response = await fetch('{% url "employees:scan_document" employee.id %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                useFeeder: scanMode === 'feeder',
+                currentSide: currentSide
+            })
+        });
+        
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to scan document');
+        }
+        
+        const data = await response.json();
+        
+        if (scanMode === 'double') {
+            // Handle two-sided scanning
+            if (currentSide === 'front') {
+                frontImage = data.images[0];
+                
+                // Create thumbnail
+                const thumbnailData = await createThumbnail(frontImage.data);
+                
+                // Show front preview
+                const previewContainer = document.createElement('div');
+                previewContainer.className = 'preview-image-container';
+                
+                const pageNumber = document.createElement('div');
+                pageNumber.className = 'page-number';
+                pageNumber.textContent = 'Front Side';
+                previewContainer.appendChild(pageNumber);
+                
+                const img = document.createElement('img');
+                img.src = thumbnailData;
+                img.alt = 'Front Side';
+                img.setAttribute('data-original', frontImage.data);
+                previewContainer.appendChild(img);
+                
+                previewImages.appendChild(previewContainer);
+                
+                // Update instructions for back side
+                currentSide = 'back';
+                updateScanInstructions();
+                
+                // Update button text and add spinner
+                scanBtn.innerHTML = 'Scan Back Side <span class="spinner"><i class="fas fa-spinner fa-spin"></i></span>';
+                
+            } else {
+                backImage = data.images[0];
+                
+                // Create thumbnail
+                const thumbnailData = await createThumbnail(backImage.data);
+                
+                // Show back preview
+                const previewContainer = document.createElement('div');
+                previewContainer.className = 'preview-image-container';
+                
+                const pageNumber = document.createElement('div');
+                pageNumber.className = 'page-number';
+                pageNumber.textContent = 'Back Side';
+                previewContainer.appendChild(pageNumber);
+                
+                const img = document.createElement('img');
+                img.src = thumbnailData;
+                img.alt = 'Back Side';
+                img.setAttribute('data-original', backImage.data);
+                previewContainer.appendChild(img);
+                
+                previewImages.appendChild(previewContainer);
+                
+                try {
+                    // Create PDF with both sides
+                    const doc = new jsPDF();
+                    
+                    // Add front side
+                    doc.addImage(frontImage.data, 'JPEG', 0, 0, 210, 297);
+                    
+                    // Add back side
+                    doc.addPage();
+                    doc.addImage(backImage.data, 'JPEG', 0, 0, 210, 297);
+                    
+                    // Convert to blob and create file
+                    const pdfBlob = doc.output('blob');
+                    const file = new File([pdfBlob], "scanned_document.pdf", { type: "application/pdf" });
+                    
+                    // Update file input
+                    const fileInput = document.querySelector('input[type="file"]');
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    fileInput.files = dataTransfer.files;
+                    
+                    // Reset for next scan
+                    currentSide = 'front';
+                    scanBtn.innerHTML = 'Start Scanning <span class="spinner"><i class="fas fa-spinner fa-spin"></i></span>';
+                    updateScanInstructions();
+                } catch (pdfError) {
+                    console.error('PDF Creation Error:', pdfError);
+                    throw new Error('Failed to create PDF: ' + pdfError.message);
+                }
+            }
+            
+        } else {
+            // Handle single-side or feeder scanning
+            try {
+                const doc = new jsPDF();
+                let firstPage = true;
+                
+                for (const image of data.images) {
+                    if (!firstPage) {
+                        doc.addPage();
+                    }
+                    doc.addImage(image.data, 'JPEG', 0, 0, 210, 297);
+                    firstPage = false;
+                    
+                    // Create thumbnail
+                    const thumbnailData = await createThumbnail(image.data);
+                    
+                    // Add preview
+                    const container = document.createElement('div');
+                    container.className = 'preview-image-container';
+                    
+                    const pageNumber = document.createElement('div');
+                    pageNumber.className = 'page-number';
+                    pageNumber.textContent = 'Page ' + (data.images.indexOf(image) + 1);
+                    container.appendChild(pageNumber);
+                    
+                    const img = document.createElement('img');
+                    img.src = thumbnailData;
+                    img.alt = 'Page ' + (data.images.indexOf(image) + 1);
+                    img.setAttribute('data-original', image.data);
+                    container.appendChild(img);
+                    
+                    previewImages.appendChild(container);
+                }
+                
+                // Create file from PDF
+                const pdfBlob = doc.output('blob');
+                const file = new File([pdfBlob], "scanned_document.pdf", { type: "application/pdf" });
+                
+                // Update file input
+                const fileInput = document.querySelector('input[type="file"]');
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                fileInput.files = dataTransfer.files;
+            } catch (pdfError) {
+                console.error('PDF Creation Error:', pdfError);
+                throw new Error('Failed to create PDF: ' + pdfError.message);
+            }
+        }
+        
+        // Show preview section
+        previewContainer.style.display = 'block';
+        
+    } catch (error) {
+        alert('Error while scanning: ' + error.message);
+        console.error(error);
+    } finally {
+        // Reset loading state
+        scanBtn.disabled = false;
+        if (spinner) {  
+            spinner.style.display = 'none';
+        }
+    }
+}
+
+// Form submission handling
+$('#documentForm').on('submit', function(e) {
+    e.preventDefault();
+    var form = $(this);
+    var formData = new FormData(this);
+    
+    $.ajax({
+        url: form.attr('action'),
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            if (response.status === 'success') {
+                showToast('Success', response.message, 'success');
+                window.location.href = "{% url 'employees:dependent_documents' employee.id dependent.id %}";
+            } else {
+                showToast('Error', 'Please correct the errors below.', 'error');
+                // Display form errors
+                for (var field in response.errors) {
+                    var errorField = $('#id_' + field);
+                    errorField.addClass('is-invalid');
+                    errorField.siblings('.invalid-feedback').remove();
+                    errorField.after('<div class="invalid-feedback">' + response.errors[field].join(', ') + '</div>');
+                }
+            }
+        },
+        error: function() {
+            showToast('Error', 'An error occurred while saving the document.', 'error');
+        }
+    });
+});
+
+// Image modal functionality
+document.querySelectorAll('.preview-image-container img').forEach(img => {
+    img.onclick = function() {
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImage');
+        modal.style.display = 'block';
+        modalImg.src = this.getAttribute('data-original') || this.src;
+    }
+});
+
+document.querySelector('.close-modal').onclick = function() {
+    document.getElementById('imageModal').style.display = 'none';
+}
+
+window.onclick = function(event) {
+    const modal = document.getElementById('imageModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
+</script>

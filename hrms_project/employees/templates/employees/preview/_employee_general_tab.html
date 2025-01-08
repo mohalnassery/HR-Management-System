@@ -129,17 +129,29 @@
             <!-- Contact & Identification -->
             <div class="info-section mb-4">
                 <div class="section-title">Contact & Identification</div>
-                <div class="row g-3">
+                <div class="row">
                     <div class="col-md-6">
                         <div class="info-item">
-                            <label>CPR Number</label>
-                            <div class="value">{{ employee.cpr_number|default:"-" }}</div>
+                            <label>Email:</label>
+                            <span>{{ employee.email|default:'-' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Primary Number:</label>
+                            <span>{{ employee.primary_phone|default:'-' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Secondary Number:</label>
+                            <span>{{ employee.secondary_phone|default:'-' }}</span>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="info-item">
-                            <label>Email</label>
-                            <div class="value">{{ employee.email|default:"-" }}</div>
+                            <label>CPR Number:</label>
+                            <span>{{ employee.cpr_number|default:'-' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Address:</label>
+                            <span>{{ employee.address|default:'-' }}</span>
                         </div>
                     </div>
                 </div>

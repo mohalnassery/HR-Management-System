@@ -15,17 +15,20 @@ from .forms import (
     EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm,
     EmployeeDependentForm, DependentDocumentForm
 )
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 import os
 import tempfile
-from django.http import JsonResponse
 import base64
 import io
 from PIL import Image
 import json
 import platform
 from django.views.decorators.csrf import csrf_exempt
+from django.template.loader import render_to_string
+import uuid
+import time
+from django.http import Http404
 
 # Only import Windows-specific modules if on Windows
 if platform.system() == 'Windows':
@@ -348,149 +351,212 @@ def bulk_status_change(request):
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
 
-@csrf_exempt
-def scan_document(request, employee_id):
-    if request.method == 'POST':
-        try:
-            # Check if it's a file upload
-            if 'document' in request.FILES:
-                uploaded_file = request.FILES['document']
-                try:
-                    # Open the image using Pillow
-                    image = Image.open(uploaded_file)
-                    
-                    # Convert to RGB if necessary
-                    if image.mode != 'RGB':
-                        image = image.convert('RGB')
-                    
-                    # Create a buffer to store the processed image
-                    buffer = io.BytesIO()
-                    image.save(buffer, format='JPEG', quality=85)
-                    buffer.seek(0)
-                    
-                    # Convert to base64
-                    img_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
-                    
-                    return JsonResponse({
-                        'success': True,
-                        'images': [{
-                            'data': f'data:image/jpeg;base64,{img_data}',
-                            'filename': uploaded_file.name
-                        }]
-                    })
-                    
-                except Exception as process_error:
-                    return JsonResponse({
-                        'error': f'Failed to process image: {str(process_error)}'
-                    }, status=500)
-            
-            # Scanner functionality - only available on Windows
-            elif platform.system() == 'Windows':
-                # Get scan settings from request
-                data = json.loads(request.body)
-                use_feeder = data.get('useFeeder', False)
-                
-                # Initialize COM in the current thread
-                pythoncom.CoInitialize()
-                
-                try:
-                    # Create WIA device manager
-                    device_manager = win32com.client.Dispatch("WIA.DeviceManager")
-                    devices = device_manager.DeviceInfos
-                    
-                    # Find first available scanner
-                    scanner = None
-                    for i in range(1, devices.Count + 1):
-                        if devices.Item(i).Type == 1:  # 1 = Scanner
-                            scanner = devices.Item(i).Connect()
-                            break
-                    
-                    if not scanner:
-                        return JsonResponse({'error': 'No scanner found'}, status=404)
-                    
-                    # Store scanned images
-                    scanned_images = []
-                    
-                    if use_feeder:
-                        # Configure feeder settings
-                        scanner.Properties("Document Handling Select").Value = 2
-                        scanner.Properties("Pages").Value = 1
-                        
-                        while True:
-                            try:
-                                item = scanner.Items[1]
-                                item.Properties("6146").Value = 2  # Color
-                                item.Properties("6147").Value = 300  # DPI
-                                
-                                image = item.Transfer()
-                                
-                                temp_filename = f'scan_{employee_id}_{len(scanned_images)}.jpg'
-                                temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
-                                
-                                image.SaveFile(temp_path)
-                                
-                                with open(temp_path, 'rb') as img_file:
-                                    img_data = base64.b64encode(img_file.read()).decode('utf-8')
-                                
-                                scanned_images.append({
-                                    'data': f'data:image/jpeg;base64,{img_data}',
-                                    'filename': f'page_{len(scanned_images) + 1}.jpg'
-                                })
-                                
-                                os.remove(temp_path)
-                                
-                            except Exception as e:
-                                if "paper empty" in str(e).lower():
-                                    break
-                                raise e
-                    else:
-                        item = scanner.Items[1]
-                        item.Properties("6146").Value = 2  # Color
-                        item.Properties("6147").Value = 300  # DPI
-                        
-                        image = item.Transfer()
-                        
-                        temp_filename = f'scan_{employee_id}_0.jpg'
-                        temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
-                        
-                        image.SaveFile(temp_path)
-                        
-                        with open(temp_path, 'rb') as img_file:
-                            img_data = base64.b64encode(img_file.read()).decode('utf-8')
-                        
-                        scanned_images.append({
-                            'data': f'data:image/jpeg;base64,{img_data}',
-                            'filename': 'page_1.jpg'
-                        })
-                        
-                        os.remove(temp_path)
-                    
-                    return JsonResponse({
-                        'success': True,
-                        'images': scanned_images
-                    })
-                    
-                finally:
-                    pythoncom.CoUninitialize()
-            
-            else:
-                return JsonResponse({'error': 'Scanner functionality is only available on Windows'}, status=400)
-                
-        except Exception as e:
-            if platform.system() == 'Windows':
-                try:
-                    pythoncom.CoUninitialize()
-                except:
-                    pass
-            return JsonResponse({'error': str(e)}, status=500)
-            
-    return JsonResponse({'error': 'Invalid request method'}, status=400)
-
-def get_system_info(request):
-    """Return system information to the client"""
+@login_required
+def system_info(request):
+    """Return system information for the client."""
     return JsonResponse({
         'platform': platform.system()
     })
+
+@csrf_exempt
+@login_required
+def scan_document(request, employee_id=None, dependent_id=None):
+    """Universal document scanning view that can be used for any document type."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Invalid request method'}, status=400)
+    
+    # Check permissions
+    if employee_id:
+        try:
+            employee = Employee.objects.get(id=employee_id)
+            if not request.user.has_perm('employees.view_employee', employee):
+                return JsonResponse({'error': 'Permission denied'}, status=403)
+            
+            if dependent_id:
+                try:
+                    dependent = EmployeeDependent.objects.get(id=dependent_id, employee=employee)
+                except EmployeeDependent.DoesNotExist:
+                    return JsonResponse({'error': 'Dependent not found'}, status=404)
+        except Employee.DoesNotExist:
+            return JsonResponse({'error': 'Employee not found'}, status=404)
+    
+    if platform.system() != 'Windows':
+        return JsonResponse({'error': 'Scanner functionality is only available on Windows'}, status=400)
+
+    try:
+        # Ensure COM is uninitialized before starting
+        try:
+            pythoncom.CoUninitialize()
+        except:
+            pass
+        
+        # Initialize COM in the current thread
+        pythoncom.CoInitialize()
+        
+        try:
+            data = json.loads(request.body)
+            use_feeder = data.get('useFeeder', False)
+            
+            # Create WIA device manager with retry logic
+            max_retries = 3
+            device_manager = None
+            
+            for attempt in range(max_retries):
+                try:
+                    device_manager = win32com.client.Dispatch("WIA.DeviceManager")
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise Exception(f"Failed to initialize scanner after {max_retries} attempts: {str(e)}")
+                    time.sleep(1)  # Wait before retry
+            
+            devices = device_manager.DeviceInfos
+            
+            # Find first available scanner
+            scanner = None
+            scanner_info = None
+            
+            for i in range(1, devices.Count + 1):
+                try:
+                    device = devices.Item(i)
+                    if device.Type == 1:  # 1 = Scanner
+                        scanner_info = device
+                        scanner = device.Connect()
+                        print(f"Found scanner: {device.Properties('Name').Value}")
+                        break
+                except Exception as e:
+                    print(f"Failed to connect to device {i}: {str(e)}")
+                    continue
+            
+            if not scanner:
+                return JsonResponse({'error': 'No scanner found or scanner is not ready'}, status=404)
+            
+            # Store scanned images
+            scanned_images = []
+            
+            # Get default scanner item
+            try:
+                item = scanner.Items[1]
+            except Exception as e:
+                raise Exception(f"Failed to get scanner item: {str(e)}")
+            
+            # Get available properties
+            try:
+                properties = {}
+                for i in range(1, item.Properties.Count + 1):
+                    prop = item.Properties.Item(i)
+                    properties[prop.Name] = {
+                        'id': prop.PropertyID,
+                        'value': prop.Value,
+                        'type': prop.Type
+                    }
+                print("Available properties:", properties)
+            except Exception as e:
+                print(f"Failed to get properties: {str(e)}")
+            
+            # Common scan settings with fallbacks
+            scan_settings = {
+                'Color Mode': {'id': 6146, 'value': 2},  # Color
+                'Resolution': {'id': 6147, 'value': 300},  # DPI
+                'Brightness': {'id': 6148, 'value': 0},
+                'Contrast': {'id': 6149, 'value': 0}
+            }
+            
+            # Apply scan settings with error handling
+            for setting_name, setting_info in scan_settings.items():
+                try:
+                    prop_id = str(setting_info['id'])
+                    item.Properties(prop_id).Value = setting_info['value']
+                except Exception as e:
+                    print(f"Warning: Failed to set {setting_name} ({prop_id}): {str(e)}")
+                    # Continue even if a setting fails
+            
+            if use_feeder:
+                try:
+                    # Configure feeder settings if available
+                    try:
+                        scanner.Properties("Document Handling Select").Value = 2
+                    except:
+                        print("Warning: Feeder settings not available")
+                    
+                    try:
+                        scanner.Properties("Pages").Value = 1
+                    except:
+                        print("Warning: Pages setting not available")
+                    
+                    while True:
+                        try:
+                            # Perform the scan
+                            image = item.Transfer()
+                            
+                            # Process the scanned image
+                            temp_filename = f'scan_{uuid.uuid4()}.jpg'
+                            temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                            image.SaveFile(temp_path)
+                            
+                            with open(temp_path, 'rb') as img_file:
+                                img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                            
+                            scanned_images.append({
+                                'data': f'data:image/jpeg;base64,{img_data}',
+                                'filename': f'page_{len(scanned_images) + 1}.jpg'
+                            })
+                            
+                            os.remove(temp_path)
+                            
+                        except Exception as e:
+                            if "paper empty" in str(e).lower():
+                                break
+                            raise Exception(f"Error during feeder scan: {str(e)}")
+                            
+                except Exception as e:
+                    raise Exception(f"Error with document feeder: {str(e)}")
+            else:
+                try:
+                    # Perform single page scan
+                    image = item.Transfer()
+                    
+                    # Process the scanned image
+                    temp_filename = f'scan_{uuid.uuid4()}.jpg'
+                    temp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+                    image.SaveFile(temp_path)
+                    
+                    with open(temp_path, 'rb') as img_file:
+                        img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                    
+                    scanned_images.append({
+                        'data': f'data:image/jpeg;base64,{img_data}',
+                        'filename': 'page_1.jpg'
+                    })
+                    
+                    os.remove(temp_path)
+                    
+                except Exception as e:
+                    raise Exception(f"Error during single page scan: {str(e)}")
+            
+            if not scanned_images:
+                raise Exception("No images were scanned")
+            
+            return JsonResponse({
+                'status': 'success',
+                'images': scanned_images
+            })
+            
+        finally:
+            pythoncom.CoUninitialize()
+            
+    except Exception as e:
+        error_message = str(e)
+        # Try to ensure COM is properly uninitialized
+        try:
+            pythoncom.CoUninitialize()
+        except:
+            pass
+            
+        return JsonResponse({
+            'status': 'error',
+            'error': error_message
+        }, status=500)
 
 @login_required
 def add_dependent(request, employee_id):
@@ -539,14 +605,38 @@ def delete_dependent(request, employee_id, dependent_id):
 
 @login_required
 def add_dependent_document(request, employee_id, dependent_id):
-    employee = get_object_or_404(Employee, id=employee_id)
-    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    try:
+        employee = Employee.objects.get(id=employee_id)
+        dependent = EmployeeDependent.objects.get(id=dependent_id, employee=employee)
+    except (Employee.DoesNotExist, EmployeeDependent.DoesNotExist):
+        raise Http404("Employee or dependent not found")
+    
     if request.method == 'POST':
-        form = DependentDocumentForm(request.POST, request.FILES)
-        if form.is_valid():
-            document = form.save(commit=False)
-            document.dependent = dependent
-            document.save()
+        try:
+            # Get form data
+            document_type = request.POST.get('document_type')
+            name = request.POST.get('name')
+            document_number = request.POST.get('document_number')
+            issue_date = request.POST.get('issue_date') or None
+            expiry_date = request.POST.get('expiry_date') or None
+            nationality = request.POST.get('nationality')
+            
+            # Create document
+            document = DependentDocument.objects.create(
+                dependent=dependent,
+                document_type=document_type,
+                name=name,
+                document_number=document_number,
+                issue_date=issue_date,
+                expiry_date=expiry_date,
+                nationality=nationality
+            )
+            
+            # Handle file upload
+            if request.FILES.get('document_file'):
+                document.document_file = request.FILES['document_file']
+                document.save()
+            
             return JsonResponse({
                 'status': 'success',
                 'message': 'Document added successfully',
@@ -555,29 +645,42 @@ def add_dependent_document(request, employee_id, dependent_id):
                     'name': document.name,
                     'document_type': document.get_document_type_display(),
                     'document_number': document.document_number or '',
-                    'issue_date': document.issue_date.strftime('%Y-%m-%d'),
+                    'issue_date': document.issue_date.strftime('%Y-%m-%d') if document.issue_date else '',
                     'expiry_date': document.expiry_date.strftime('%Y-%m-%d') if document.expiry_date else '',
                     'status': document.status
                 }
             })
-        return JsonResponse({'status': 'error', 'errors': form.errors})
-    else:
-        form = DependentDocumentForm()
-    return render(request, 'employees/preview/dependents/dependent_document_form.html', {
-        'form': form,
+            
+        except Exception as e:
+            return JsonResponse({
+                'status': 'error',
+                'error': str(e)
+            }, status=400)
+    
+    context = {
         'employee': employee,
-        'dependent': dependent
-    })
+        'dependent': dependent,
+        'nationality_choices': Employee.NATIONALITY_CHOICES
+    }
+    
+    return render(request, 'employees/preview/dependents/dependent_document_form.html', context)
 
 @login_required
 def edit_dependent_document(request, employee_id, dependent_id, document_id):
     employee = get_object_or_404(Employee, id=employee_id)
     dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
     document = get_object_or_404(DependentDocument, id=document_id, dependent=dependent)
+    
     if request.method == 'POST':
         form = DependentDocumentForm(request.POST, request.FILES, instance=document)
         if form.is_valid():
             document = form.save()
+            
+            # Handle file upload
+            if 'document_file' in request.FILES:
+                document.document_file = request.FILES['document_file']
+                document.save()
+            
             return JsonResponse({
                 'status': 'success',
                 'message': 'Document updated successfully',
@@ -586,7 +689,7 @@ def edit_dependent_document(request, employee_id, dependent_id, document_id):
                     'name': document.name,
                     'document_type': document.get_document_type_display(),
                     'document_number': document.document_number or '',
-                    'issue_date': document.issue_date.strftime('%Y-%m-%d'),
+                    'issue_date': document.issue_date.strftime('%Y-%m-%d') if document.issue_date else '',
                     'expiry_date': document.expiry_date.strftime('%Y-%m-%d') if document.expiry_date else '',
                     'status': document.status
                 }
@@ -594,11 +697,18 @@ def edit_dependent_document(request, employee_id, dependent_id, document_id):
         return JsonResponse({'status': 'error', 'errors': form.errors})
     else:
         form = DependentDocumentForm(instance=document)
+        
+    scanning_js = render_to_string('employees/preview/dependents/scanning_js.html', {
+        'employee': employee,
+        'dependent': dependent
+    })
+    
     return render(request, 'employees/preview/dependents/dependent_document_form.html', {
         'form': form,
         'employee': employee,
         'dependent': dependent,
-        'document': document
+        'document': document,
+        'scanning_js': scanning_js
     })
 
 @login_required
@@ -618,13 +728,18 @@ def view_dependent_document(request, employee_id, dependent_id, document_id):
     document = get_object_or_404(DependentDocument, id=document_id, dependent=dependent)
     
     if document.document_file:
-        response = JsonResponse({
-            'status': 'success',
-            'url': document.document_file.url,
-            'filename': os.path.basename(document.document_file.name)
-        })
+        # Get the file extension
+        file_extension = os.path.splitext(document.document_file.name)[1].lower()
+        
+        # Set the content type based on file extension
+        content_type = 'application/pdf' if file_extension == '.pdf' else 'image/jpeg' if file_extension in ['.jpg', '.jpeg'] else 'image/png' if file_extension == '.png' else 'application/octet-stream'
+        
+        # Set response headers for inline display
+        response = HttpResponse(document.document_file.read(), content_type=content_type)
+        response['Content-Disposition'] = f'inline; filename="{os.path.basename(document.document_file.name)}"'
         return response
-    return JsonResponse({'status': 'error', 'message': 'Document not found'})
+        
+    return JsonResponse({'status': 'error', 'message': 'Document file not found'})
 
 @login_required
 def get_dependent_documents(request, employee_id, dependent_id):
@@ -637,7 +752,7 @@ def get_dependent_documents(request, employee_id, dependent_id):
         'name': doc.name,
         'document_type': doc.get_document_type_display(),
         'document_number': doc.document_number or '',
-        'issue_date': doc.issue_date.strftime('%Y-%m-%d'),
+        'issue_date': doc.issue_date.strftime('%Y-%m-%d') if doc.issue_date else '',
         'expiry_date': doc.expiry_date.strftime('%Y-%m-%d') if doc.expiry_date else '',
         'status': doc.status
     } for doc in documents]
@@ -646,3 +761,28 @@ def get_dependent_documents(request, employee_id, dependent_id):
         'status': 'success',
         'documents': documents_data
     })
+
+@login_required
+def dependent_documents(request, employee_id, dependent_id):
+    employee = get_object_or_404(Employee, id=employee_id)
+    dependent = get_object_or_404(EmployeeDependent, id=dependent_id, employee=employee)
+    documents = dependent.documents.all().order_by('-created_at')
+    
+    return render(request, 'employees/preview/dependents/dependent_documents_list.html', {
+        'employee': employee,
+        'dependent': dependent,
+        'documents': documents
+    })
+
+@login_required
+def employee_documents(request, employee_id):
+    """View to list all documents for an employee."""
+    employee = get_object_or_404(Employee, pk=employee_id)
+    documents = EmployeeDocument.objects.filter(employee=employee)
+    
+    context = {
+        'employee': employee,
+        'documents': documents,
+    }
+    
+    return render(request, 'employees/preview/document/document_list.html', context)
