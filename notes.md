@@ -57,7 +57,7 @@ in Contract & Accruals we will remove it as we have contract in documents tab
 
 
 in offences we will do this:
-- it will list all offences for the employee
+- it will list all offences for the employee with status (table view) > we can cancel the offence too 
 - option to add offence:       
     - Ref No.
     - Entered On
@@ -77,7 +77,7 @@ in offences we will do this:
     - Offence Start Date
     - Offence End Date
 - for each offence we will be able to:
-    - documents related to the offence
+    - add documents related to the offence
 
 
 

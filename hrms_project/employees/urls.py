@@ -55,6 +55,12 @@ urlpatterns = [
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/delete/', views.delete_dependent_document, name='delete_dependent_document'),
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/view/', views.view_dependent_document, name='view_dependent_document'),
 
+    # Offence URLs
+    path('employees/<int:employee_id>/offences/', api_views.employee_offences, name='employee_offences'),
+    path('employees/<int:employee_id>/offences/<int:offence_id>/', api_views.employee_offence_detail, name='employee_offence_detail'),
+    path('employees/<int:employee_id>/offences/<int:offence_id>/cancel/', api_views.cancel_offence, name='cancel_offence'),
+    path('employees/<int:employee_id>/offences/<int:offence_id>/documents/', api_views.add_offence_document, name='add_offence_document'),
+
     # Bulk Status Change
     path('bulk-status-change/', views.bulk_status_change, name='bulk_status_change'),
     path('bulk-status-change/<str:status>/', views.bulk_status_change, name='bulk_status_change_with_status'),

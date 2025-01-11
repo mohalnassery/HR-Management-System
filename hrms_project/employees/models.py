@@ -460,7 +460,7 @@ class EmployeeOffence(models.Model):
         ('H', 'High'),
     ]
 
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='offences')
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='legacy_offences')
     date = models.DateField()
     description = models.TextField()
     severity = models.CharField(max_length=1, choices=SEVERITY_CHOICES)
@@ -486,3 +486,55 @@ class LifeEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_type_display()} on {self.date}"
+
+class Offence(models.Model):
+    OFFENCE_TYPES = [
+        ('LATENESS', 'ACCEPTED lateness'),
+        ('MISUSE', 'Misuse of Property'),
+        ('MOBILE', 'USING MOBILE DURING DUTY HOURS'),
+        ('ABSENT', 'ABSENT WITHOUT REASON'),
+        ('LATE', 'LATNESS WITHOUT VALID REASON'),
+        ('DAMAGE', 'PROPERTIES DAMAGE'),
+        ('BAD_COWORKER', 'BAD ATTITUDE WITH CO-WORKERS'),
+        ('BAD_CUSTOMER', 'BAD ATTITUDEWITH CUSTOMERS'),
+        ('DISOBEY', 'NOT FOLLOWING ORDERS'),
+        ('OTHER', 'Others'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='employee_offences')
+    ref_no = models.CharField(max_length=50, unique=True)
+    entered_on = models.DateField()
+    offence_type = models.CharField(max_length=20, choices=OFFENCE_TYPES)
+    offence_type_other = models.CharField(max_length=100, blank=True, null=True)
+    total_value = models.DecimalField(max_digits=10, decimal_places=2)
+    details = models.TextField()
+    start_date = models.DateField()
+    end_date = models.DateField(blank=True, null=True)
+    is_cancelled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.ref_no} - {self.get_offence_type_display()}"
+
+    @property
+    def offence_type_display(self):
+        if self.offence_type == 'OTHER':
+            return self.offence_type_other or 'Other'
+        return self.get_offence_type_display()
+
+class OffenceDocument(models.Model):
+    offence = models.ForeignKey(Offence, on_delete=models.CASCADE, related_name='documents')
+    title = models.CharField(max_length=255)
+    file = models.FileField(upload_to='offence_documents/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def file_url(self):
+        return self.file.url if self.file else None

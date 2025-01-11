@@ -92,7 +92,7 @@ class EmployeeDetailView(LoginRequiredMixin, DetailView):
             'documents': employee.documents.all(),
             'assets': employee.assets.all(),
             'education': employee.education.all(),
-            'offences': employee.offences.all(),
+            'offences': employee.employee_offences.all(),
             'life_events': employee.life_events.all(),
             'bank_accounts': employee.bank_accounts.all(),
             'asset_types': AssetType.objects.all()

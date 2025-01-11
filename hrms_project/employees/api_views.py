@@ -3,8 +3,8 @@ from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from .models import EmployeeAsset, Employee, AssetType
-from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer
+from .models import EmployeeAsset, Employee, AssetType, Offence, OffenceDocument
+from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenceSerializer, OffenceDocumentSerializer
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
@@ -209,6 +209,75 @@ def return_employee_asset(request, employee_id, asset_id):
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'POST'])
+def employee_offences(request, employee_id):
+    """List or create offences for an employee"""
+    try:
+        employee = get_object_or_404(Employee, id=employee_id)
+        
+        if request.method == 'GET':
+            offences = employee.employee_offences.all()
+            serializer = OffenceSerializer(offences, many=True)
+            return Response(serializer.data)
+            
+        elif request.method == 'POST':
+            serializer = OffenceSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(employee=employee)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'DELETE'])
+def employee_offence_detail(request, employee_id, offence_id):
+    """Get or delete an employee's offence"""
+    try:
+        offence = get_object_or_404(Offence, id=offence_id, employee_id=employee_id)
+        
+        if request.method == 'GET':
+            serializer = OffenceSerializer(offence)
+            return Response(serializer.data)
+            
+        elif request.method == 'DELETE':
+            offence.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def cancel_offence(request, employee_id, offence_id):
+    """Cancel an employee's offence"""
+    try:
+        offence = get_object_or_404(Offence, id=offence_id, employee_id=employee_id)
+        if offence.is_cancelled:
+            return Response({'error': 'Offence is already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        offence.is_cancelled = True
+        offence.save()
+        serializer = OffenceSerializer(offence)
+        return Response(serializer.data)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+def add_offence_document(request, employee_id, offence_id):
+    """Add a document to an offence"""
+    try:
+        offence = get_object_or_404(Offence, id=offence_id, employee_id=employee_id)
+        serializer = OffenceDocumentSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            serializer.save(offence=offence)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
     except Exception as e:
