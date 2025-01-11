@@ -6,12 +6,12 @@ app_name = 'employees'
 
 # Create a router for API views
 router = DefaultRouter()
-router.register(r'api/assets', api_views.EmployeeAssetViewSet)
-router.register(r'api/asset-types', api_views.AssetTypeViewSet)
+router.register(r'asset-types', api_views.AssetTypeViewSet, basename='asset-type')
+router.register(r'employee-assets', api_views.EmployeeAssetViewSet, basename='employee-asset')
 
 urlpatterns = [
-    # Include API URLs
-    path('', include(router.urls)),
+    # Include API URLs under /api/ namespace
+    path('api/', include(router.urls)),
 
     # Class-based views
     path('', views.EmployeeListView.as_view(), name='employee_list'),
@@ -24,6 +24,13 @@ urlpatterns = [
     path('<int:employee_id>/bank-accounts/add/', views.add_bank_account, name='add_bank_account'),
     path('<int:employee_id>/bank-accounts/<int:account_id>/edit/', views.edit_bank_account, name='edit_bank_account'),
     path('<int:employee_id>/bank-accounts/<int:account_id>/delete/', views.delete_bank_account, name='delete_bank_account'),
+
+    # Employee Assets
+    path('<int:employee_id>/assets/add/', api_views.add_employee_asset, name='add_employee_asset'),
+    path('<int:employee_id>/assets/<int:asset_id>/', api_views.get_employee_asset, name='get_employee_asset'),
+    path('<int:employee_id>/assets/<int:asset_id>/edit/', api_views.edit_employee_asset, name='edit_employee_asset'),
+    path('<int:employee_id>/assets/<int:asset_id>/return/', api_views.return_employee_asset, name='return_employee_asset'),
+    path('<int:employee_id>/assets/<int:asset_id>/delete/', api_views.delete_employee_asset, name='delete_employee_asset'),
 
     # Document Management
     path('<int:employee_id>/documents/', views.employee_documents, name='employee_documents'),

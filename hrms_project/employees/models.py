@@ -420,18 +420,21 @@ class EmployeeAsset(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='assets')
     asset_type = models.ForeignKey(AssetType, on_delete=models.PROTECT, related_name='assets', null=True)
     asset_name = models.CharField(max_length=100)
-    asset_number = models.CharField(max_length=50)
-    issue_date = models.DateField()
+    asset_number = models.CharField(max_length=50, blank=True, null=True)
+    issue_date = models.DateField(default=timezone.now)
     return_date = models.DateField(null=True, blank=True)
-    condition = models.TextField()
+    condition = models.TextField(default='New')
     return_condition = models.TextField(null=True, blank=True)
-    value = models.DecimalField(max_digits=10, decimal_places=2)
+    value = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     notes = models.TextField(blank=True, null=True)
+    return_notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.asset_name} - {self.asset_number}"
+        if self.asset_number:
+            return f"{self.asset_name} - {self.asset_number}"
+        return self.asset_name
 
     class Meta:
         ordering = ['-created_at']
