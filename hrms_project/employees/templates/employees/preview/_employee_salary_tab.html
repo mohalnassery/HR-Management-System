@@ -1,1 +1,311 @@
-<!-- Salary information will be here -->
+<div class="tab-pane fade" id="salary" role="tabpanel">
+    <div class="card info-card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Current Salary Details</h5>
+            {% if perms.employees.add_salarydetail %}
+            <a href="{% url 'employees:add_salary' employee.id %}" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus me-1"></i>Add New
+            </a>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if employee.salary_details.exists %}
+                {% with current_salary=employee.salary_details.filter.first %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="info-item mb-3">
+                            <label>Basic Salary</label>
+                            <div class="value">{{ current_salary.basic_salary }} {{ current_salary.currency }}</div>
+                        </div>
+                        <div class="info-item mb-3">
+                            <label>Housing Allowance</label>
+                            <div class="value">{{ current_salary.housing_allowance }} {{ current_salary.currency }}</div>
+                        </div>
+                        <div class="info-item mb-3">
+                            <label>Transportation Allowance</label>
+                            <div class="value">{{ current_salary.transportation_allowance }} {{ current_salary.currency }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        {% if current_salary.other_allowances %}
+                        <div class="info-item mb-3">
+                            <label>Other Allowances</label>
+                            <div class="value">
+                                {% for name, amount in current_salary.other_allowances.items %}
+                                <div>{{ name }}: {{ amount }} {{ current_salary.currency }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="info-item mb-3">
+                            <label>Total Salary</label>
+                            <div class="value fw-bold text-primary">{{ current_salary.total_salary }} {{ current_salary.currency }}</div>
+                        </div>
+                        <div class="info-item mb-3">
+                            <label>Effective From</label>
+                            <div class="value">{{ current_salary.effective_from|date:"d M Y" }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% if current_salary.notes %}
+                <div class="mt-3">
+                    <label class="text-muted">Notes:</label>
+                    <p class="mb-0">{{ current_salary.notes }}</p>
+                </div>
+                {% endif %}
+                {% endwith %}
+            {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-info-circle fa-2x mb-2"></i>
+                    <p class="mb-0">No salary details available.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Salary History -->
+    <div class="card info-card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Salary Revision History</h5>
+        </div>
+        <div class="card-body">
+            {% if employee.salary_revisions.exists %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Previous</th>
+                            <th>New</th>
+                            <th>Change</th>
+                            <th>Reference</th>
+                            {% if perms.employees.view_salaryrevision %}
+                            <th>Actions</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for revision in employee.salary_revisions.all %}
+                        <tr>
+                            <td>{{ revision.revision_date|date:"d M Y" }}</td>
+                            <td>{{ revision.get_revision_type_display }}</td>
+                            <td>{{ revision.previous_salary.total_salary }} {{ revision.previous_salary.currency }}</td>
+                            <td>{{ revision.new_salary.total_salary }} {{ revision.new_salary.currency }}</td>
+                            <td>
+                                <span class="{% if revision.difference > 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ revision.difference|floatformat:3 }} ({{ revision.percentage_change|floatformat:1 }}%)
+                                </span>
+                            </td>
+                            <td>{{ revision.reference_number|default:"-" }}</td>
+                            {% if perms.employees.view_salaryrevision %}
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" title="View Details"
+                                    data-bs-toggle="modal" data-bs-target="#revisionModal{{ revision.id }}">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-history fa-2x mb-2"></i>
+                <p class="mb-0">No salary revisions found.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Certificates -->
+    <div class="card info-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Salary Certificates</h5>
+            {% if perms.employees.add_salarycertificate %}
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newCertificateModal">
+                <i class="fas fa-plus me-1"></i>Request New
+            </button>
+            {% endif %}
+        </div>
+        <div class="card-body">
+            {% if employee.salary_certificates.exists %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Certificate No.</th>
+                            <th>Issued Date</th>
+                            <th>Purpose</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cert in employee.salary_certificates.all %}
+                        <tr>
+                            <td>{{ cert.certificate_number }}</td>
+                            <td>{{ cert.issued_date|date:"d M Y" }}</td>
+                            <td>{{ cert.purpose }}</td>
+                            <td>
+                                <span class="badge {% if cert.is_valid %}bg-success{% else %}bg-danger{% endif %}">
+                                    {{ cert.is_valid|yesno:"Valid,Invalid" }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary" title="Download">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                    {% if perms.employees.change_salarycertificate %}
+                                    <button class="btn btn-sm btn-outline-secondary" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-certificate fa-2x mb-2"></i>
+                <p class="mb-0">No certificates issued yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- New Certificate Modal -->
+<div class="modal fade" id="newCertificateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Request Salary Certificate</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newCertificateForm" method="post" action="{% url 'employees:request_certificate' employee.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="form-group mb-3">
+                        <label class="form-label">Purpose *</label>
+                        <input type="text" name="purpose" class="form-control" required
+                               placeholder="e.g., Bank Loan, Visa Application">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label class="form-label">Expiry Date</label>
+                        <input type="date" name="expiry_date" class="form-control">
+                        <small class="form-text text-muted">Optional. Leave blank if certificate should not expire.</small>
+                    </div>
+                    
+                    <!-- Current Salary Information (Read-only) -->
+                    {% if employee.salary_details.exists %}
+                    {% with current_salary=employee.salary_details.first %}
+                    <div class="alert alert-info mb-0">
+                        <h6 class="alert-heading mb-2">Current Salary Information</h6>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <small class="d-block text-muted">Basic Salary:</small>
+                                <strong>{{ current_salary.basic_salary }} {{ current_salary.currency }}</strong>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="d-block text-muted">Total Allowances:</small>
+                                <strong>{{ current_salary.housing_allowance|add:current_salary.transportation_allowance }} {{ current_salary.currency }}</strong>
+                            </div>
+                            <div class="col-md-4">
+                                <small class="d-block text-muted">Total Salary:</small>
+                                <strong>{{ current_salary.total_salary }} {{ current_salary.currency }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    {% endwith %}
+                    {% else %}
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        No active salary details found. Please add salary details before requesting a certificate.
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Revision Detail Modals -->
+{% for revision in employee.salary_revisions.all %}
+<div class="modal fade" id="revisionModal{{ revision.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Salary Revision Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Previous Salary</h6>
+                        <div class="info-item mb-2">
+                            <label>Basic Salary</label>
+                            <div class="value">{{ revision.previous_salary.basic_salary }}</div>
+                        </div>
+                        <div class="info-item mb-2">
+                            <label>Total Allowances</label>
+                            <div class="value">
+                                {{ revision.previous_salary.housing_allowance|add:revision.previous_salary.transportation_allowance }}
+                            </div>
+                        </div>
+                        <div class="info-item mb-2">
+                            <label>Total Salary</label>
+                            <div class="value">{{ revision.previous_salary.total_salary }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="mb-3">New Salary</h6>
+                        <div class="info-item mb-2">
+                            <label>Basic Salary</label>
+                            <div class="value">{{ revision.new_salary.basic_salary }}</div>
+                        <div class="info-item mb-2">
+                            <label>Total Allowances</label>
+                            <div class="value">
+                                {{ revision.new_salary.housing_allowance|add:revision.new_salary.transportation_allowance }}
+                            </div>
+                        </div>
+                        <div class="info-item mb-2">
+                            <label>Total Salary</label>
+                            <div class="value">{{ revision.new_salary.total_salary }}</div>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="info-item mb-2">
+                    <label>Reason for Revision</label>
+                    <div class="value">{{ revision.reason }}</div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="info-item mb-2">
+                            <label>Approved By</label>
+                            <div class="value">{{ revision.approved_by.get_full_name }}</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="info-item mb-2">
+                            <label>Reference Number</label>
+                            <div class="value">{{ revision.reference_number|default:"-" }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}

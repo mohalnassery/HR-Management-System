@@ -1,0 +1,252 @@
+/* Attendance Status Colors */
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* Calendar Styling */
+.fc {
+    background-color: #fff;
+    border-radius: 0.25rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.fc .fc-toolbar {
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.fc .fc-toolbar-title {
+    font-size: 1.25rem;
+    font-weight: 500;
+}
+
+.fc .fc-button {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #495057;
+}
+
+.fc .fc-button:hover {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+    color: #212529;
+}
+
+.fc .fc-button-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+.fc .fc-button-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.fc .fc-day-today {
+    background-color: #f8f9fa !important;
+}
+
+/* Calendar Event Styles */
+.fc-event {
+    border: none;
+    padding: 2px 4px;
+    margin: 1px 0;
+    font-size: 0.875rem;
+}
+
+.fc-event.present {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.fc-event.absent {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.fc-event.late {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #000;
+}
+
+.fc-event.leave {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.fc-event.holiday {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+/* Attendance Table */
+.table-attendance th {
+    background-color: #f8f9fa;
+    border-top: none;
+}
+
+.table-attendance td {
+    vertical-align: middle;
+}
+
+.attendance-time {
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+/* Status Badges */
+.badge.bg-present {
+    background-color: #28a745;
+}
+
+.badge.bg-absent {
+    background-color: #dc3545;
+}
+
+.badge.bg-late {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.badge.bg-leave {
+    background-color: #17a2b8;
+}
+
+.badge.bg-holiday {
+    background-color: #007bff;
+}
+
+/* Leave Balance Cards */
+.balance-card {
+    background-color: #fff;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.balance-card .balance-value {
+    font-size: 2rem;
+    font-weight: 500;
+    margin: 0;
+}
+
+.balance-card .balance-label {
+    color: #6c757d;
+    margin: 0;
+}
+
+/* Progress Bars */
+.progress {
+    height: 4px;
+    margin-top: 0.5rem;
+}
+
+/* File Upload */
+.upload-area {
+    border: 2px dashed #dee2e6;
+    border-radius: 0.25rem;
+    padding: 2rem;
+    text-align: center;
+    background-color: #f8f9fa;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-area:hover {
+    border-color: #0d6efd;
+    background-color: #f1f3f5;
+}
+
+.upload-area.dragover {
+    border-color: #0d6efd;
+    background-color: #e9ecef;
+}
+
+/* Modal Styles */
+.modal-attendance .modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-attendance .form-label {
+    font-weight: 500;
+}
+
+/* Time Input Groups */
+.time-input-group {
+    display: flex;
+    align-items: center;
+}
+
+.time-input-group .form-control {
+    width: auto;
+    min-width: 100px;
+}
+
+.time-input-group .input-group-text {
+    background-color: #f8f9fa;
+}
+
+/* Summary Cards */
+.summary-card {
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    color: #fff;
+}
+
+.summary-card .card-value {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 0;
+}
+
+.summary-card .card-label {
+    opacity: 0.8;
+    margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .fc .fc-toolbar {
+        flex-direction: column;
+    }
+
+    .fc .fc-toolbar-title {
+        margin: 0.5rem 0;
+    }
+
+    .time-input-group {
+        flex-direction: column;
+    }
+
+    .time-input-group .form-control {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .fc {
+        box-shadow: none;
+    }
+
+    .table-attendance {
+        border: 1px solid #dee2e6;
+    }
+
+    .table-attendance th,
+    .table-attendance td {
+        border: 1px solid #dee2e6;
+    }
+}

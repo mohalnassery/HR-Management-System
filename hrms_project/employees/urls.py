@@ -41,6 +41,12 @@ urlpatterns = [
     path('<int:employee_id>/documents/<int:document_id>/delete/', views.delete_document, name='delete_document'),
     path('<int:employee_id>/documents/<int:document_id>/view/', views.view_document, name='view_document'),
 
+    # Salary Management
+    path('<int:employee_id>/salary/add/', views.add_salary, name='add_salary'),
+    path('salary/<int:salary_id>/edit/', views.edit_salary, name='edit_salary'),
+    path('<int:employee_id>/salary/revision/add/', views.add_salary_revision, name='add_salary_revision'),
+    path('<int:employee_id>/salary/certificate/request/', views.request_certificate, name='request_certificate'),
+
     # Scanner functionality
     path('scan-document/', views.scan_document, name='scan_document_universal'),  # Universal scanner endpoint
     path('<int:employee_id>/scan-document/', views.scan_document, name='scan_document'),  # For backward compatibility

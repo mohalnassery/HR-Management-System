@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.urls import reverse_lazy
@@ -9,11 +9,11 @@ from django.db import transaction
 from django.db.models import Q
 from .models import (
     Employee, Department, Division, EmployeeBankAccount, EmployeeDocument,
-    EmployeeDependent, DependentDocument, AssetType, OffenseRule
+    EmployeeDependent, DependentDocument, AssetType, OffenseRule , SalaryDetail, SalaryRevision, SalaryCertificate
 )
 from .forms import (
     EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm,
-    EmployeeDependentForm, DependentDocumentForm
+    EmployeeDependentForm, DependentDocumentForm,  SalaryDetailForm, SalaryCertificateForm, SalaryRevisionForm
 )
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
@@ -789,3 +789,190 @@ def employee_documents(request, employee_id):
     }
     
     return render(request, 'employees/preview/document/document_list.html', context)
+
+
+@login_required
+@permission_required('employees.add_salarydetail')
+def add_salary(request, employee_id):
+    employee = get_object_or_404(Employee, pk=employee_id)
+    
+    if request.method == 'POST':
+        form = SalaryDetailForm(request.POST)
+        if form.is_valid():
+            salary_detail = form.save(commit=False)
+            salary_detail.employee = employee
+            salary_detail.created_by = request.user
+            
+            try:
+                with transaction.atomic():
+                    # Save the new salary detail
+                    salary_detail.save()
+                    
+                    # If there's a previous active salary, create a revision
+                    previous_salary = SalaryDetail.objects.filter(
+                        employee=employee,
+                        is_active=False
+                    ).order_by('-effective_from').first()
+                    
+                    if previous_salary:
+                        SalaryRevision.objects.create(
+                            employee=employee,
+                            revision_type='OTH',  # Other
+                            previous_salary=previous_salary,
+                            new_salary=salary_detail,
+                            revision_date=salary_detail.effective_from,
+                            reason="New salary details added",
+                            approved_by=request.user
+                        )
+                    
+                messages.success(request, 'Salary details added successfully.')
+                return redirect('employees:employee_detail', pk=employee_id)
+            except Exception as e:
+                messages.error(request, f'Error saving salary details: {str(e)}')
+    else:
+        form = SalaryDetailForm()
+    
+    return render(request, 'employees/salary_form.html', {
+        'form': form,
+        'employee': employee
+    })
+
+@login_required
+@permission_required('employees.add_salarycertificate')
+def request_certificate(request, employee_id):
+    employee = get_object_or_404(Employee, pk=employee_id)
+    
+    if request.method == 'POST':
+        form = SalaryCertificateForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    # Get the current active salary detail
+                    current_salary = SalaryDetail.objects.filter(
+                        employee=employee,
+                        is_active=True
+                    ).first()
+                    
+                    if not current_salary:
+                        raise ValueError("No active salary details found")
+                    
+                    certificate = form.save(commit=False)
+                    certificate.employee = employee
+                    certificate.salary_detail = current_salary
+                    certificate.issued_by = request.user
+                    certificate.issued_date = timezone.now().date()
+                    
+                    # Generate a unique certificate number
+                    prefix = timezone.now().strftime('%Y%m')
+                    count = SalaryCertificate.objects.filter(
+                        certificate_number__startswith=prefix
+                    ).count()
+                    certificate.certificate_number = f"{prefix}-{count+1:04d}"
+                    
+                    certificate.save()
+                    
+                    messages.success(request, 'Certificate request submitted successfully.')
+                    return redirect('employees:employee_detail', pk=employee_id)
+                    
+            except ValueError as e:
+                messages.error(request, str(e))
+            except Exception as e:
+                messages.error(request, f'Error requesting certificate: {str(e)}')
+    else:
+        form = SalaryCertificateForm()
+    
+    return render(request, 'employees/certificate_form.html', {
+        'form': form,
+        'employee': employee
+    })
+
+@login_required
+@permission_required('employees.change_salarydetail')
+def edit_salary(request, salary_id):
+    salary_detail = get_object_or_404(SalaryDetail, pk=salary_id)
+    employee = salary_detail.employee
+    
+    if request.method == 'POST':
+        form = SalaryDetailForm(request.POST, instance=salary_detail)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    # Save the updated salary detail
+                    updated_salary = form.save()
+                    
+                    # Create a revision record
+                    SalaryRevision.objects.create(
+                        employee=employee,
+                        revision_type='ADJ',  # Adjustment
+                        previous_salary=salary_detail,
+                        new_salary=updated_salary,
+                        revision_date=timezone.now().date(),
+                        reason="Salary details updated",
+                        approved_by=request.user
+                    )
+                    
+                messages.success(request, 'Salary details updated successfully.')
+                return redirect('employees:employee_detail', pk=employee.id)
+            except Exception as e:
+                messages.error(request, f'Error updating salary details: {str(e)}')
+    else:
+        form = SalaryDetailForm(instance=salary_detail)
+    
+    return render(request, 'employees/salary_form.html', {
+        'form': form,
+        'employee': employee,
+        'is_edit': True
+    })
+
+@login_required
+@permission_required('employees.add_salaryrevision')
+def add_salary_revision(request, employee_id):
+    employee = get_object_or_404(Employee, pk=employee_id)
+    
+    if request.method == 'POST':
+        form = SalaryRevisionForm(request.POST)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    revision = form.save(commit=False)
+                    revision.employee = employee
+                    revision.approved_by = request.user
+                    
+                    # Get the current active salary
+                    current_salary = SalaryDetail.objects.filter(
+                        employee=employee,
+                        is_active=True
+                    ).first()
+                    
+                    if not current_salary:
+                        raise ValueError("No active salary details found")
+                    
+                    # Create a new salary detail based on the current one
+                    new_salary = SalaryDetail.objects.create(
+                        employee=employee,
+                        basic_salary=current_salary.basic_salary,
+                        housing_allowance=current_salary.housing_allowance,
+                        transportation_allowance=current_salary.transportation_allowance,
+                        other_allowances=current_salary.other_allowances,
+                        currency=current_salary.currency,
+                        effective_from=revision.revision_date,
+                        created_by=request.user
+                    )
+                    
+                    revision.previous_salary = current_salary
+                    revision.new_salary = new_salary
+                    revision.save()
+                    
+                messages.success(request, 'Salary revision added successfully.')
+                return redirect('employees:employee_detail', pk=employee_id)
+            except ValueError as e:
+                messages.error(request, str(e))
+            except Exception as e:
+                messages.error(request, f'Error adding salary revision: {str(e)}')
+    else:
+        form = SalaryRevisionForm()
+    
+    return render(request, 'employees/revision_form.html', {
+        'form': form,
+        'employee': employee
+    })

@@ -621,3 +621,105 @@ class LifeEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_type_display()} on {self.date}"
+
+class SalaryDetail(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='salary_details')
+    basic_salary = models.DecimalField(max_digits=10, decimal_places=3)
+    housing_allowance = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    transportation_allowance = models.DecimalField(max_digits=10, decimal_places=3, default=0)
+    other_allowances = models.JSONField(default=dict, help_text="Store other allowances as key-value pairs")
+    total_salary = models.DecimalField(max_digits=10, decimal_places=3)
+    currency = models.CharField(max_length=3, default='BHD')
+    effective_from = models.DateField()
+    effective_to = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_salary_details')
+
+    class Meta:
+        ordering = ['-effective_from']
+        verbose_name = "Salary Detail"
+        verbose_name_plural = "Salary Details"
+
+    def __str__(self):
+        return f"{self.employee.get_full_name()} - {self.effective_from}"
+
+    def save(self, *args, **kwargs):
+        # Calculate total salary
+        self.total_salary = (
+            self.basic_salary +
+            self.housing_allowance +
+            self.transportation_allowance +
+            sum(float(amount) for amount in self.other_allowances.values())
+        )
+        
+        # If this is a new active salary detail, deactivate other active ones
+        if self.is_active and not self.pk:
+            SalaryDetail.objects.filter(
+                employee=self.employee,
+                is_active=True
+            ).update(
+                is_active=False,
+                effective_to=self.effective_from
+            )
+            
+        super().save(*args, **kwargs)
+
+class SalaryRevision(models.Model):
+    REVISION_TYPES = [
+        ('INC', 'Increment'),
+        ('PRO', 'Promotion'),
+        ('ADJ', 'Adjustment'),
+        ('DEM', 'Demotion'),
+        ('PEN', 'Penalty'),
+        ('OTH', 'Other'),
+    ]
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='salary_revisions')
+    revision_type = models.CharField(max_length=3, choices=REVISION_TYPES)
+    previous_salary = models.ForeignKey(SalaryDetail, on_delete=models.PROTECT, related_name='revisions_from')
+    new_salary = models.ForeignKey(SalaryDetail, on_delete=models.PROTECT, related_name='revisions_to')
+    revision_date = models.DateField()
+    reason = models.TextField()
+    reference_number = models.CharField(max_length=50, blank=True, null=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-revision_date']
+        verbose_name = "Salary Revision"
+        verbose_name_plural = "Salary Revisions"
+
+    def __str__(self):
+        return f"{self.employee.get_full_name()} - {self.get_revision_type_display()} on {self.revision_date}"
+
+    @property
+    def difference(self):
+        return self.new_salary.total_salary - self.previous_salary.total_salary
+
+    @property
+    def percentage_change(self):
+        return (self.difference / self.previous_salary.total_salary) * 100
+
+class SalaryCertificate(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='salary_certificates')
+    certificate_number = models.CharField(max_length=50, unique=True)
+    issued_date = models.DateField()
+    purpose = models.CharField(max_length=200)
+    salary_detail = models.ForeignKey(SalaryDetail, on_delete=models.PROTECT)
+    issued_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    is_valid = models.BooleanField(default=True)
+    expiry_date = models.DateField(null=True, blank=True)
+    additional_notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-issued_date']
+        verbose_name = "Salary Certificate"
+        verbose_name_plural = "Salary Certificates"
+
+    def __str__(self):
+        return f"{self.employee.get_full_name()} - {self.certificate_number}"

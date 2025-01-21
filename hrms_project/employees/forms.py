@@ -6,7 +6,9 @@ from crispy_forms.bootstrap import Tab, TabHolder
 from .models import (
     Employee, Department, Division, EmployeeDependent, 
     EmergencyContact, EmployeeDocument, EmployeeBankAccount,
-    CostProfitCenter, DependentDocument
+    CostProfitCenter, DependentDocument,
+    EmployeeAsset, EmployeeEducation, EmployeeOffence, LifeEvent,
+    SalaryDetail, SalaryRevision, SalaryCertificate
 )
 
 class EmployeeForm(forms.ModelForm):
@@ -405,4 +407,87 @@ class EmployeeDocumentForm(forms.ModelForm):
                 'expiry_date': 'Expiry date cannot be earlier than issue date.'
             })
 
+        return cleaned_data
+
+
+
+
+
+class SalaryDetailForm(forms.ModelForm):
+    class Meta:
+        model = SalaryDetail
+        fields = [
+            'basic_salary',
+            'housing_allowance',
+            'transportation_allowance',
+            'other_allowances',
+            'currency',
+            'effective_from',
+            'notes'
+        ]
+        widgets = {
+            'effective_from': forms.DateInput(attrs={'type': 'date'}),
+            'notes': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        other_allowances = cleaned_data.get('other_allowances')
+        
+        # Validate other_allowances format
+        if other_allowances:
+            if not isinstance(other_allowances, dict):
+                raise forms.ValidationError({
+                    'other_allowances': 'Other allowances must be a valid JSON object'
+                })
+            
+            # Validate each allowance value is numeric
+            for key, value in other_allowances.items():
+                try:
+                    float(value)
+                except (ValueError, TypeError):
+                    raise forms.ValidationError({
+                        'other_allowances': f'Value for {key} must be a number'
+                    })
+        
+        return cleaned_data
+
+class SalaryCertificateForm(forms.ModelForm):
+    class Meta:
+        model = SalaryCertificate
+        fields = [
+            'purpose',
+            'expiry_date'
+        ]
+        widgets = {
+            'purpose': forms.TextInput(attrs={'placeholder': 'e.g., Bank Loan, Visa Application'}),
+            'expiry_date': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+class SalaryRevisionForm(forms.ModelForm):
+    class Meta:
+        model = SalaryRevision
+        fields = [
+            'revision_type',
+            'revision_date',
+            'reason',
+            'reference_number'
+        ]
+        widgets = {
+            'revision_date': forms.DateInput(attrs={'type': 'date'}),
+            'reason': forms.Textarea(attrs={'rows': 3}),
+            'reference_number': forms.TextInput(attrs={'placeholder': 'Optional reference number'}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        revision_date = cleaned_data.get('revision_date')
+        
+        if revision_date:
+            # Ensure revision date is not in the future
+            if revision_date > timezone.now().date():
+                raise forms.ValidationError({
+                    'revision_date': 'Revision date cannot be in the future'
+                })
+        
         return cleaned_data

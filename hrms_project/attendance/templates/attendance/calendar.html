@@ -1,0 +1,223 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Attendance Calendar</h5>
+        <div class="d-flex align-items-center">
+            <!-- Employee Filter -->
+            <div class="me-3">
+                <select id="employee-filter" class="form-select">
+                    <option value="">All Employees</option>
+                    {% for emp in employees %}
+                    <option value="{{ emp.id }}" {% if employee_id == emp.id %}selected{% endif %}>
+                        {{ emp.get_full_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <!-- Month/Week View Toggle -->
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-primary" data-view="dayGridMonth">Month</button>
+                <button type="button" class="btn btn-outline-primary" data-view="dayGridWeek">Week</button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="attendance-calendar"></div>
+    </div>
+</div>
+
+<!-- Attendance Details Modal -->
+<div class="modal fade" id="attendance-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Attendance Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Date: <span id="modal-date"></span></h6>
+                        <h6>Employee: <span id="modal-employee"></span></h6>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Status: <span id="modal-status"></span></h6>
+                        <h6>Source: <span id="modal-source"></span></h6>
+                    </div>
+                </div>
+                <hr>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Original Times</h6>
+                            </div>
+                            <div class="card-body">
+                                <p>First In: <span id="modal-original-in"></span></p>
+                                <p>Last Out: <span id="modal-original-out"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Current Times</h6>
+                            </div>
+                            <div class="card-body">
+                                <p>First In: <span id="modal-current-in"></span></p>
+                                <p>Last Out: <span id="modal-current-out"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Edit History -->
+                <div class="mt-3">
+                    <h6>Edit History</h6>
+                    <div id="edit-history-table"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="edit-attendance-btn">Edit Attendance</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Attendance Modal -->
+<div class="modal fade" id="edit-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Attendance</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="edit-attendance-form">
+                    <div class="mb-3">
+                        <label for="edit-first-in" class="form-label">First In Time</label>
+                        <input type="time" class="form-control" id="edit-first-in" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-last-out" class="form-label">Last Out Time</label>
+                        <input type="time" class="form-control" id="edit-last-out" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit-reason" class="form-label">Edit Reason</label>
+                        <textarea class="form-control" id="edit-reason" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="save-edit-btn">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block footer_scripts %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const calendarEl = document.getElementById('attendance-calendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,dayGridWeek'
+        },
+        events: function(fetchInfo, successCallback, failureCallback) {
+            const employee_id = document.getElementById('employee-filter').value;
+            fetch(`/api/attendance/calendar-events/?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}&employee=${employee_id}`)
+                .then(response => response.json())
+                .then(data => {
+                    successCallback(data.map(event => ({
+                        title: event.title,
+                        start: event.date,
+                        backgroundColor: getStatusColor(event.status),
+                        extendedProps: {
+                            attendance_id: event.id,
+                            status: event.status,
+                            employee: event.employee_name
+                        }
+                    })));
+                })
+                .catch(error => failureCallback(error));
+        },
+        eventClick: function(info) {
+            showAttendanceDetails(info.event.extendedProps.attendance_id);
+        }
+    });
+    calendar.render();
+
+    // Event Handlers
+    document.getElementById('employee-filter').addEventListener('change', function() {
+        calendar.refetchEvents();
+    });
+
+    document.querySelectorAll('[data-view]').forEach(button => {
+        button.addEventListener('click', function() {
+            calendar.changeView(this.dataset.view);
+        });
+    });
+});
+
+function getStatusColor(status) {
+    const colors = {
+        'present': '#28a745',
+        'absent': '#dc3545',
+        'late': '#ffc107',
+        'leave': '#17a2b8',
+        'holiday': '#007bff'
+    };
+    return colors[status] || '#6c757d';
+}
+
+function showAttendanceDetails(attendanceId) {
+    fetch(`/api/attendance/logs/${attendanceId}/`)
+        .then(response => response.json())
+        .then(data => {
+            // Update modal content
+            document.getElementById('modal-date').textContent = data.date;
+            document.getElementById('modal-employee').textContent = data.employee_name;
+            document.getElementById('modal-status').textContent = data.status;
+            document.getElementById('modal-source').textContent = data.source;
+            document.getElementById('modal-original-in').textContent = data.original_first_in || 'N/A';
+            document.getElementById('modal-original-out').textContent = data.original_last_out || 'N/A';
+            document.getElementById('modal-current-in').textContent = data.first_in_time;
+            document.getElementById('modal-current-out').textContent = data.last_out_time;
+
+            // Update edit history table
+            const historyHtml = data.edit_history.map(edit => `
+                <tr>
+                    <td>${edit.edited_by}</td>
+                    <td>${edit.edit_timestamp}</td>
+                    <td>${edit.edit_reason}</td>
+                </tr>
+            `).join('');
+            document.getElementById('edit-history-table').innerHTML = `
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Edited By</th>
+                            <th>Timestamp</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>${historyHtml}</tbody>
+                </table>
+            `;
+
+            // Show the modal
+            new bootstrap.Modal(document.getElementById('attendance-modal')).show();
+        });
+}
+</script>
+{% endblock %}
