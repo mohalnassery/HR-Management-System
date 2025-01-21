@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from .models import (
     Employee, Department, Division, EmployeeBankAccount, EmployeeDocument,
-    EmployeeDependent, DependentDocument, AssetType
+    EmployeeDependent, DependentDocument, AssetType, OffenseRule
 )
 from .forms import (
     EmployeeForm, EmployeeBankAccountForm, EmployeeDocumentForm,
@@ -92,10 +92,12 @@ class EmployeeDetailView(LoginRequiredMixin, DetailView):
             'documents': employee.documents.all(),
             'assets': employee.assets.all(),
             'education': employee.education.all(),
-            'offences': employee.employee_offences.all(),
+            'offences': employee.employee_offence_records.all(),
             'life_events': employee.life_events.all(),
             'bank_accounts': employee.bank_accounts.all(),
-            'asset_types': AssetType.objects.all()
+            'asset_types': AssetType.objects.all(),
+            'offense_groups': OffenseRule.GROUP_CHOICES,
+            'penalty_choices': OffenseRule.PENALTY_CHOICES
         })
         return context
 

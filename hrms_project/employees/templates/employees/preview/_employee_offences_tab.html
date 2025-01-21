@@ -11,50 +11,58 @@
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-bordered table-hover" id="offencesTable">
+                <table class="table table-hover" id="offencesTable">
                     <thead>
                         <tr>
-                            <th>Ref No.</th>
-                            <th>Entered On</th>
-                            <th>Offence Type</th>
-                            <th>Total Value</th>
-                            <th>Start Date</th>
-                            <th>End Date</th>
+                            <th>Date</th>
+                            <th>Rule</th>
+                            <th>Penalty</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for offence in employee.employee_offences.all %}
-                        <tr data-offence-id="{{ offence.id }}">
-                            <td>{{ offence.ref_no }}</td>
-                            <td>{{ offence.entered_on|date:"Y-m-d" }}</td>
-                            <td>{{ offence.get_offence_type_display }}</td>
-                            <td>{{ offence.total_value }}</td>
-                            <td>{{ offence.start_date|date:"Y-m-d" }}</td>
-                            <td>{{ offence.end_date|date:"Y-m-d"|default:"-" }}</td>
+                        {% for offence in employee.employee_offence_records.all %}
+                        <tr data-offence-id="{{ offence.id }}" class="{% if not offence.is_active %}table-secondary{% endif %}">
+                            <td>{{ offence.offense_date|date:"d/m/Y" }}</td>
+                            <td>{{ offence.rule.name }}</td>
                             <td>
-                                <span class="badge {% if offence.is_cancelled %}bg-danger{% else %}bg-warning{% endif %}">
-                                    {% if offence.is_cancelled %}Cancelled{% else %}Active{% endif %}
-                                </span>
+                                {{ offence.get_applied_penalty_display }}
+                                {% if offence.monetary_amount %}
+                                <br>
+                                <small class="text-muted">
+                                    Amount: {{ offence.monetary_amount }} BHD
+                                    {% if offence.is_active %}
+                                    (Remaining: {{ offence.remaining_amount }} BHD)
+                                    {% endif %}
+                                </small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if offence.is_active %}
+                                    {% if offence.is_acknowledged %}
+                                    <span class="badge bg-success">Acknowledged</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">Pending</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
                             </td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-info view-offence" data-offence-id="{{ offence.id }}" title="View Details">
                                     <i class="fas fa-eye"></i>
                                 </button>
+                                {% if offence.is_active %}
                                 <button type="button" class="btn btn-sm btn-primary add-document" data-offence-id="{{ offence.id }}" title="Add Document">
                                     <i class="fas fa-file-upload"></i>
-                                </button>
-                                {% if not offence.is_cancelled %}
-                                <button type="button" class="btn btn-sm btn-danger cancel-offence" data-offence-id="{{ offence.id }}" title="Cancel Offence">
-                                    <i class="fas fa-ban"></i>
                                 </button>
                                 {% endif %}
                             </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="8" class="text-center">No offences found</td>
+                            <td colspan="5" class="text-center">No offences found</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -72,60 +80,90 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <div id="alerts-container"></div>
                     <form id="addOffenceForm">
+                        {% csrf_token %}
                         <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="refNo" class="form-label">Reference Number</label>
-                                <input type="text" class="form-control" id="refNo" name="ref_no" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="enteredOn" class="form-label">Entered On</label>
-                                <input type="date" class="form-control" id="enteredOn" name="entered_on" required>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="offenceType" class="form-label">Offence Type</label>
-                                <select class="form-select" id="offenceType" name="offence_type" required>
-                                    <option value="">Select Offence Type</option>
-                                    <option value="LATENESS">ACCEPTED lateness</option>
-                                    <option value="MISUSE">Misuse of Property</option>
-                                    <option value="MOBILE">USING MOBILE DURING DUTY HOURS</option>
-                                    <option value="ABSENT">ABSENT WITHOUT REASON</option>
-                                    <option value="LATE">LATNESS WITHOUT VALID REASON</option>
-                                    <option value="DAMAGE">PROPERTIES DAMAGE</option>
-                                    <option value="BAD_COWORKER">BAD ATTITUDE WITH CO-WORKERS</option>
-                                    <option value="BAD_CUSTOMER">BAD ATTITUDEWITH CUSTOMERS</option>
-                                    <option value="DISOBEY">NOT FOLLOWING ORDERS</option>
-                                    <option value="OTHER">Others</option>
+                            <div class="col-12 mb-3">
+                                <label class="form-label">Search Offense Rule</label>
+                                <select class="form-select" id="offenseSearch" style="width: 100%">
+                                    <option value="">Search for offense rule...</option>
                                 </select>
                             </div>
-                            <div class="col-md-6" id="otherTypeDiv" style="display: none;">
-                                <label for="otherType" class="form-label">Specify Other Type</label>
-                                <input type="text" class="form-control" id="otherType" name="other_type">
+                            <div class="col-md-6">
+                                <label class="form-label">Offense Group</label>
+                                <select class="form-select" id="offenceGroup" name="group" required>
+                                    <option value="">Select Group</option>
+                                    {% for group, label in offense_groups %}
+                                    <option value="{{ group }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Offense Rule</label>
+                                <select class="form-select" id="offenceRule" name="rule" required>
+                                    <option value="">Select Rule</option>
+                                </select>
+                            </div>
+                            <div class="col-12" id="ruleDescription" style="display: none;">
+                                <div class="alert alert-info">
+                                    <strong>Description:</strong>
+                                    <span id="ruleDescriptionText"></span>
+                                </div>
+                            </div>
+                            <div class="col-12" id="previousOffenses" style="display: none;">
+                                <div class="alert alert-warning">
+                                    <strong>Offense History for <span id="offenseYear">2025</span>:</strong>
+                                    <div id="previousOffensesList" class="mt-2"></div>
+                                    <div class="mt-2">
+                                        <strong>Suggested Penalty:</strong>
+                                        <span id="suggestedPenalty" class="text-danger"></span>
+                                        <small class="d-block text-muted mt-1">
+                                            This will be offense #<span id="offenseCount">0</span> for this rule this year.
+                                        </small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="row mb-3">
                             <div class="col-md-6">
-                                <label for="totalValue" class="form-label">Total Value</label>
-                                <input type="number" step="0.01" class="form-control" id="totalValue" name="total_value" required>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label for="details" class="form-label">Details</label>
-                                <textarea class="form-control" id="details" name="details" rows="3" required></textarea>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="startDate" class="form-label">Start Date</label>
-                                <input type="date" class="form-control" id="startDate" name="start_date" required>
+                                <label class="form-label">Offense Date</label>
+                                <input type="date" class="form-control" id="offenseDate" name="offense_date" required>
                             </div>
                             <div class="col-md-6">
-                                <label for="endDate" class="form-label">End Date</label>
-                                <input type="date" class="form-control" id="endDate" name="end_date">
+                                <label class="form-label">Applied Penalty</label>
+                                <select class="form-select" id="appliedPenalty" name="applied_penalty" required>
+                                    <option value="">Select Penalty</option>
+                                    {% for code, label in penalty_choices %}
+                                    <option value="{{ code }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="form-text text-muted" id="penaltyNote" style="display: none;">
+                                    This penalty differs from the suggested penalty based on the offense count.
+                                </small>
                             </div>
+                        </div>
+                        <div id="monetaryPenaltySection" class="mb-3" style="display: none;">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label">Monetary Penalty Amount</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="monetaryAmount" name="monetary_amount" step="0.01" min="0">
+                                        <span class="input-group-text">BHD</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Monthly Deduction Amount</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="monthlyDeduction" name="monthly_deduction" step="0.01" min="0">
+                                        <span class="input-group-text">BHD</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Details</label>
+                            <textarea class="form-control" name="details" rows="3" required></textarea>
                         </div>
                     </form>
                 </div>
@@ -138,57 +176,64 @@
     </div>
 
     <!-- View Offence Modal -->
-    <div class="modal fade" id="viewOffenceModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Offence Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Ref No:</strong></div>
-                        <div class="col-sm-8" id="viewRefNo"></div>
+        <div class="modal fade" id="viewOffenceModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Offense Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Entered On:</strong></div>
-                        <div class="col-sm-8" id="viewEnteredOn"></div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <strong>Rule ID:</strong>
+                            <span id="viewRuleId"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Rule Name:</strong>
+                            <span id="viewRuleName"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Group:</strong>
+                            <span id="viewGroup"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Description:</strong>
+                            <span id="viewDescription"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Date:</strong>
+                            <span id="viewDate"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Original Penalty:</strong>
+                            <span id="viewOriginalPenalty"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Applied Penalty:</strong>
+                            <span id="viewAppliedPenalty"></span>
+                        </div>
+                        <div class="mb-3">
+                            <strong>Status:</strong>
+                            <span id="viewStatus"></span>
+                        </div>
+                        <div class="mb-3" id="viewPreviousOffenses" style="display: none;">
+                            <div class="alert alert-info">
+                                <strong>Offense History:</strong>
+                                <div id="viewPreviousOffensesList"></div>
+                            </div>
+                        </div>
+                        <div class="mb-3" id="viewDocuments">
+                            <strong>Documents:</strong>
+                            <div id="viewDocumentsList"></div>
+                        </div>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Offence Type:</strong></div>
-                        <div class="col-sm-8" id="viewOffenceType"></div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-danger" id="cancelOffenceBtn">Cancel Offense</button>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Total Value:</strong></div>
-                        <div class="col-sm-8" id="viewTotalValue"></div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Details:</strong></div>
-                        <div class="col-sm-8" id="viewDetails"></div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Start Date:</strong></div>
-                        <div class="col-sm-8" id="viewStartDate"></div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>End Date:</strong></div>
-                        <div class="col-sm-8" id="viewEndDate"></div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Status:</strong></div>
-                        <div class="col-sm-8" id="viewStatus"></div>
-                    </div>
-                    <div class="row mb-3">
-                        <div class="col-sm-4"><strong>Documents:</strong></div>
-                        <div class="col-sm-8" id="viewDocuments"></div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Add Document Modal -->
     <div class="modal fade" id="addDocumentModal" tabindex="-1">
@@ -200,20 +245,25 @@
                 </div>
                 <div class="modal-body">
                     <form id="addDocumentForm">
-                        <input type="hidden" id="documentOffenceId" name="offence_id">
+                        {% csrf_token %}
+                        <input type="hidden" name="offense_id" id="documentOffenseId">
                         <div class="mb-3">
-                            <label for="documentTitle" class="form-label">Document Title</label>
-                            <input type="text" class="form-control" id="documentTitle" name="title" required>
+                            <label class="form-label">Document Type</label>
+                            <input type="text" class="form-control" name="document_type" required>
                         </div>
                         <div class="mb-3">
-                            <label for="documentFile" class="form-label">Document File</label>
-                            <input type="file" class="form-control" id="documentFile" name="file" required>
+                            <label class="form-label">Document</label>
+                            <input type="file" class="form-control" name="document" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control" name="notes" rows="2"></textarea>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveDocumentBtn">Upload Document</button>
+                    <button type="button" class="btn btn-primary" id="saveDocumentBtn">Save Document</button>
                 </div>
             </div>
         </div>

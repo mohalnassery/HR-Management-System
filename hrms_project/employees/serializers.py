@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import EmployeeAsset, AssetType, Offence, OffenceDocument
+from .models import EmployeeAsset, AssetType, EmployeeOffence, OffenseDocument, OffenseRule
 from django.utils import timezone
 
 class AssetTypeSerializer(serializers.ModelSerializer):
@@ -8,69 +8,57 @@ class AssetTypeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class EmployeeAssetSerializer(serializers.ModelSerializer):
-    asset_type = AssetTypeSerializer(read_only=True)
-    asset_type_id = serializers.PrimaryKeyRelatedField(
-        queryset=AssetType.objects.all(),
-        source='asset_type',
-        write_only=True
-    )
-    asset_number = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True)
-    condition = serializers.CharField(required=False)
-    value = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
-    issue_date = serializers.DateField(required=False)
-    notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    return_date = serializers.DateField(required=False, allow_null=True)
-    return_condition = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    return_notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-
+    asset_type_display = serializers.CharField(read_only=True)
+    
     class Meta:
         model = EmployeeAsset
         fields = '__all__'
-        read_only_fields = ('created_at', 'updated_at')
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['asset_type_display'] = instance.get_asset_type_display()
+        return representation
 
 class BulkEmployeeAssetSerializer(serializers.Serializer):
-    assets = serializers.ListField(
-        child=serializers.DictField(),
-        allow_empty=False
+    employee_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=True
     )
-
+    asset_type = serializers.PrimaryKeyRelatedField(
+        queryset=AssetType.objects.all(),
+        required=True
+    )
+    asset_number = serializers.CharField(required=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    issue_date = serializers.DateField(required=True)
+    return_date = serializers.DateField(required=False, allow_null=True)
+    
     def create(self, validated_data):
-        assets_data = validated_data.get('assets')
+        employee_ids = validated_data.pop('employee_ids')
         assets = []
         
-        for asset_data in assets_data:
-            # Create asset using the single asset serializer
-            serializer = EmployeeAssetSerializer(data=asset_data)
-            if serializer.is_valid(raise_exception=True):
-                asset = serializer.save()
-                assets.append(asset)
+        for employee_id in employee_ids:
+            asset = EmployeeAsset.objects.create(
+                employee_id=employee_id,
+                **validated_data
+            )
+            assets.append(asset)
         
         return assets
 
-class OffenceDocumentSerializer(serializers.ModelSerializer):
-    file_url = serializers.CharField(read_only=True)
-    
+class OffenseDocumentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = OffenceDocument
-        fields = ['id', 'title', 'file', 'file_url', 'uploaded_at']
-        read_only_fields = ['id', 'uploaded_at']
+        model = OffenseDocument
+        fields = '__all__'
 
-class OffenceSerializer(serializers.ModelSerializer):
-    offence_type_display = serializers.CharField(read_only=True)
-    documents = OffenceDocumentSerializer(many=True, read_only=True)
-    
+class OffenseRuleSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Offence
-        fields = [
-            'id', 'ref_no', 'entered_on', 'offence_type', 'offence_type_other',
-            'total_value', 'details', 'start_date', 'end_date', 'is_cancelled',
-            'created_at', 'updated_at', 'offence_type_display', 'documents'
-        ]
-        read_only_fields = ['id', 'is_cancelled', 'created_at', 'updated_at']
+        model = OffenseRule
+        fields = '__all__'
 
-    def validate(self, data):
-        if data.get('offence_type') == 'OTHER' and not data.get('offence_type_other'):
-            raise serializers.ValidationError({
-                'offence_type_other': 'This field is required when offence type is Other.'
-            })
-        return data
+class EmployeeOffenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeOffence
+        fields = '__all__'
+        read_only_fields = ('created_by', 'modified_by', 'created_at', 'updated_at')

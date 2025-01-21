@@ -189,17 +189,8 @@
             <a class="nav-link" data-bs-toggle="pill" href="#documents" role="tab">
                 <i class="fas fa-file-alt me-2"></i>Documents
             </a>
-            <a class="nav-link" data-bs-toggle="pill" href="#contract" role="tab">
-                <i class="fas fa-file-signature me-2"></i>Contract & Accruals
-            </a>
             <a class="nav-link" data-bs-toggle="pill" href="#dependents" role="tab">
                 <i class="fas fa-users me-2"></i>Dependents
-            </a>
-            <a class="nav-link" data-bs-toggle="pill" href="#contacts" role="tab">
-                <i class="fas fa-address-book me-2"></i>Contacts
-            </a>
-            <a class="nav-link" data-bs-toggle="pill" href="#checklist" role="tab">
-                <i class="fas fa-tasks me-2"></i>Check List
             </a>
             <a class="nav-link" data-bs-toggle="pill" href="#salary" role="tab">
                 <i class="fas fa-money-bill-wave me-2"></i>Salary
@@ -231,10 +222,7 @@
             {% include 'employees/preview/_employee_general_tab.html' %}
             {% include 'employees/preview/_employee_bank_tab.html' %}
             {% include 'employees/preview/_employee_documents_tab.html' %}
-            {% include 'employees/preview/_employee_contract_tab.html' %}
             {% include 'employees/preview/dependents/_employee_dependents_tab.html' %}
-            {% include 'employees/preview/_employee_contacts_tab.html' %}
-            {% include 'employees/preview/_employee_checklist_tab.html' %}
             {% include 'employees/preview/_employee_salary_tab.html' %}
             {% include 'employees/preview/_employee_attendance_tab.html' %}
             {% include 'employees/preview/_employee_bond_tab.html' %}
@@ -249,4 +237,10 @@
 
 <!-- Delete Modal -->
 {% include 'employees/preview/_employee_delete_modal.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<!-- Custom JS for employee details -->
+<script src="{% static 'employees/js/employee_detail.js' %}"></script>
+<script src="{% static 'employees/js/offences.js' %}"></script>
 {% endblock %}

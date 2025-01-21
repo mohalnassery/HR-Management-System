@@ -1,12 +1,22 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, permission_classes, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from .models import EmployeeAsset, Employee, AssetType, Offence, OffenceDocument
-from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenceSerializer, OffenceDocumentSerializer
+from .models import EmployeeAsset, Employee, AssetType, OffenseRule, EmployeeOffence, OffenseDocument
+from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenseRuleSerializer, EmployeeOffenceSerializer, OffenseDocumentSerializer
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from django.http import JsonResponse, HttpResponse
+from django.db.models import Count, Q
+from django.conf import settings
+from django.template.loader import render_to_string
+from reportlab.pdfgen import canvas
+import json
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BaseAPIViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -214,71 +224,377 @@ def return_employee_asset(request, employee_id, asset_id):
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET', 'POST'])
-def employee_offences(request, employee_id):
-    """List or create offences for an employee"""
+@require_http_methods(['GET', 'POST'])
+def employee_offenses(request, employee_id):
+    """Get all offenses or create a new one for an employee"""
     try:
         employee = get_object_or_404(Employee, id=employee_id)
         
         if request.method == 'GET':
-            offences = employee.employee_offences.all()
-            serializer = OffenceSerializer(offences, many=True)
+            offenses = employee.employee_offence_records.all()
+            serializer = EmployeeOffenceSerializer(offenses, many=True)
             return Response(serializer.data)
             
         elif request.method == 'POST':
-            serializer = OffenceSerializer(data=request.data)
+            serializer = EmployeeOffenceSerializer(data=request.data)
             if serializer.is_valid():
-                serializer.save(employee=employee)
+                serializer.save(
+                    employee=employee,
+                    created_by=request.user,
+                    modified_by=request.user
+                )
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['GET', 'DELETE'])
-def employee_offence_detail(request, employee_id, offence_id):
-    """Get or delete an employee's offence"""
+@require_http_methods(['GET', 'DELETE'])
+def employee_offense_detail(request, employee_id, offense_id):
+    """Get or delete an employee's offense"""
     try:
-        offence = get_object_or_404(Offence, id=offence_id, employee_id=employee_id)
+        offense = get_object_or_404(EmployeeOffence, id=offense_id, employee_id=employee_id)
         
         if request.method == 'GET':
-            serializer = OffenceSerializer(offence)
+            serializer = EmployeeOffenceSerializer(offense)
             return Response(serializer.data)
             
         elif request.method == 'DELETE':
-            offence.delete()
+            offense.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
             
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['POST'])
-def cancel_offence(request, employee_id, offence_id):
-    """Cancel an employee's offence"""
+@require_http_methods(['POST'])
+def cancel_offense(request, employee_id, offense_id):
+    """Cancel an employee's offense"""
     try:
-        offence = get_object_or_404(Offence, id=offence_id, employee_id=employee_id)
-        if offence.is_cancelled:
-            return Response({'error': 'Offence is already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+        offense = get_object_or_404(EmployeeOffence, id=offense_id, employee_id=employee_id)
+        if offense.is_cancelled:
+            return Response({'error': 'Offense is already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
             
-        offence.is_cancelled = True
-        offence.save()
-        serializer = OffenceSerializer(offence)
+        offense.is_cancelled = True
+        offense.modified_by = request.user
+        offense.save()
+        
+        serializer = EmployeeOffenceSerializer(offense)
         return Response(serializer.data)
         
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@api_view(['POST'])
-def add_offence_document(request, employee_id, offence_id):
-    """Add a document to an offence"""
+@require_http_methods(['POST'])
+def add_offense_document(request, employee_id, offense_id):
+    """Add a document to an offense"""
     try:
-        offence = get_object_or_404(Offence, id=offence_id, employee_id=employee_id)
-        serializer = OffenceDocumentSerializer(data=request.data)
+        offense = get_object_or_404(EmployeeOffence, id=offense_id, employee_id=employee_id)
+        serializer = OffenseDocumentSerializer(data=request.data)
         
         if serializer.is_valid():
-            serializer.save(offence=offence)
+            serializer.save(offense=offense)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def get_employee_offense_count(request, employee_id):
+    """Get the count of active offenses for an employee and rule"""
+    try:
+        rule_id = request.GET.get('rule')
+        year = request.GET.get('year')
+        
+        if not rule_id or not year:
+            return Response({'error': 'Rule and year are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get all active offenses for this rule, ordered by date
+        offenses = EmployeeOffence.objects.filter(
+            employee_id=employee_id,
+            rule_id=rule_id,
+            offense_date__year=year,
+            is_active=True
+        ).order_by('offense_date')
+        
+        # Count how many times this rule has been violated
+        offense_count = offenses.count()
+        
+        # Get the rule details
+        rule = OffenseRule.objects.get(id=rule_id)
+        
+        # Determine which penalty to apply based on count
+        penalty = None
+        if offense_count == 0:
+            penalty = rule.first_penalty
+        elif offense_count == 1:
+            penalty = rule.second_penalty
+        elif offense_count == 2:
+            penalty = rule.third_penalty
+        elif offense_count >= 3:
+            penalty = rule.fourth_penalty
+        
+        return Response({
+            'count': offense_count,
+            'suggested_penalty': penalty,
+            'offenses': [{
+                'date': o.offense_date,
+                'penalty': o.applied_penalty
+            } for o in offenses]
+        })
+        
+    except OffenseRule.DoesNotExist:
+        return Response({'error': 'Rule not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class OffenseRuleViewSet(viewsets.ModelViewSet):
+    serializer_class = OffenseRuleSerializer
+    queryset = OffenseRule.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        logger.debug("Fetching offense rules...")
+        queryset = OffenseRule.objects.filter(is_active=True)
+        group = self.request.query_params.get('group', None)
+        search = self.request.query_params.get('search', None)
+
+        if group:
+            logger.debug(f"Filtering by group: {group}")
+            queryset = queryset.filter(group=group)
+        
+        if search:
+            logger.debug(f"Searching for: {search}")
+            queryset = queryset.filter(
+                Q(rule_id__icontains=search) |
+                Q(name__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        rules = queryset.order_by('rule_id')
+        logger.debug(f"Found {rules.count()} rules")
+        return rules
+
+    def list(self, request, *args, **kwargs):
+        logger.debug("Listing offense rules...")
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        logger.debug("Serialization complete")
+        return Response(serializer.data)
+
+class EmployeeOffenseViewSet(viewsets.ModelViewSet):
+    serializer_class = EmployeeOffenceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return EmployeeOffence.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        logger.debug(f"Creating offense with data: {request.data}")
+        
+        # Handle both form data and JSON
+        data = request.data.copy()
+        
+        # Validate required fields
+        required_fields = ['employee', 'offense_rule', 'offense_date']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            return Response(
+                {'error': f'Missing required fields: {", ".join(missing_fields)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Get employee and rule
+            employee = Employee.objects.get(pk=data['employee'])
+            rule = OffenseRule.objects.get(pk=data['offense_rule'])
+            
+            # Get offense count for this rule and employee
+            offense_year = timezone.datetime.strptime(data['offense_date'], '%Y-%m-%d').year
+            offense_count = EmployeeOffence.objects.filter(
+                employee=employee,
+                rule=rule,
+                offense_date__year=offense_year,
+                is_active=True
+            ).count() + 1
+            
+            # Get original penalty based on count
+            original_penalty = rule.get_penalty_for_count(offense_count)
+            
+            # If no applied_penalty is specified, use the original_penalty
+            if not data.get('applied_penalty'):
+                data['applied_penalty'] = original_penalty
+            
+            # Add these to the data
+            data['original_penalty'] = original_penalty
+            data['offense_count'] = offense_count
+            
+            # Create serializer with updated data
+            serializer = self.get_serializer(data=data)
+            if not serializer.is_valid():
+                logger.error(f"Serializer validation failed: {serializer.errors}")
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Save the offense
+            offense = serializer.save(
+                created_by=request.user,
+                modified_by=request.user
+            )
+            
+            # If it's a monetary penalty, set up payment details
+            if offense.applied_penalty == 'MONETARY' and offense.monetary_amount:
+                offense.remaining_amount = offense.monetary_amount
+                offense.monthly_deduction = data.get('monthly_deduction', 0)
+                offense.save()
+            
+            logger.debug(f"Successfully created offense: {offense.pk}")
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating offense: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    def perform_update(self, serializer):
+        serializer.save(modified_by=self.request.user)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_offense_status(request, pk):
+    try:
+        offense = EmployeeOffence.objects.get(pk=pk)
+        status = request.data.get('status')
+        
+        if status == 'signed':
+            offense.is_acknowledged = True
+            offense.signed_date = timezone.now()
+        elif status == 'refused':
+            offense.is_acknowledged = False
+            offense.refused_date = timezone.now()
+            offense.refused_reason = request.data.get('reason', '')
+        elif status == 'sent':
+            offense.sent_date = timezone.now()
+        
+        offense.save()
+        return Response({'status': 'success'})
+    except EmployeeOffence.DoesNotExist:
+        return Response({'error': 'Offense not found'}, status=404)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def record_offense_payment(request, pk):
+    try:
+        offense = EmployeeOffence.objects.get(pk=pk)
+        amount = Decimal(request.data.get('amount', 0))
+        
+        if not offense.monetary_amount or not offense.is_active:
+            return Response({'error': 'Invalid offense for payment'}, status=400)
+        
+        if amount <= 0:
+            return Response({'error': 'Invalid payment amount'}, status=400)
+        
+        # Record the payment
+        offense.remaining_amount = max(0, offense.remaining_amount - amount)
+        
+        # If fully paid, mark as inactive
+        if offense.remaining_amount == 0:
+            offense.is_active = False
+            offense.completed_date = timezone.now()
+        
+        offense.save()
+        
+        # Create payment record
+        #OffensePayment.objects.create(
+        #    offense=offense,
+        #    amount=amount,
+        #    payment_date=timezone.now()
+        #)
+        
+        return Response({
+            'status': 'success',
+            'remaining_amount': offense.remaining_amount,
+            'is_active': offense.is_active
+        })
+    except EmployeeOffence.DoesNotExist:
+        return Response({'error': 'Offense not found'}, status=404)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_employee_offense_count(request, employee_id):
+    try:
+        rule_id = request.GET.get('rule')
+        year = int(request.GET.get('year', timezone.now().year))
+        
+        if not rule_id:
+            return Response({'error': 'Rule ID is required'}, status=400)
+        
+        # Get active offenses for this employee and rule in the specified year
+        offenses = EmployeeOffence.objects.filter(
+            employee_id=employee_id,
+            rule_id=rule_id,
+            offense_date__year=year,
+            is_active=True
+        ).order_by('offense_date')
+        
+        count = offenses.count()
+        
+        # Get the suggested penalty based on count
+        rule = OffenseRule.objects.get(pk=rule_id)
+        suggested_penalty = rule.get_penalty_for_count(count + 1)
+        
+        return Response({
+            'count': count,
+            'suggested_penalty': suggested_penalty,
+            'offenses': [{
+                'date': offense.offense_date,
+                'penalty': offense.get_applied_penalty_display()
+            } for offense in offenses]
+        })
+    except (OffenseRule.DoesNotExist, ValueError):
+        return Response({'error': 'Invalid rule or year'}, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def print_offense(request, pk):
+    try:
+        offense = EmployeeOffence.objects.get(pk=pk)
+        
+        # Generate PDF using your template
+        # This is just a placeholder - implement your actual PDF generation here
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="offense_{offense.id}.pdf"'
+        
+        # Create PDF
+        buffer = BytesIO()
+        p = canvas.Canvas(buffer)
+        
+        # Add content to PDF
+        p.drawString(100, 800, f"Offense Notice - {offense.rule.name}")
+        p.drawString(100, 780, f"Employee: {offense.employee.full_name}")
+        p.drawString(100, 760, f"Date: {offense.offense_date.strftime('%d/%m/%Y')}")
+        p.drawString(100, 740, f"Penalty: {offense.get_applied_penalty_display()}")
+        
+        if offense.monetary_amount:
+            p.drawString(100, 720, f"Amount: {offense.monetary_amount} BHD")
+            if offense.is_active:
+                p.drawString(100, 700, f"Remaining: {offense.remaining_amount} BHD")
+        
+        p.showPage()
+        p.save()
+        
+        # Get the value of the buffer and write it to the response
+        pdf = buffer.getvalue()
+        buffer.close()
+        response.write(pdf)
+        
+        return response
+    except EmployeeOffence.DoesNotExist:
+        return Response({'error': 'Offense not found'}, status=404)

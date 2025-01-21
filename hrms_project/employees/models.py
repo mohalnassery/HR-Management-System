@@ -453,22 +453,157 @@ class EmployeeEducation(models.Model):
     def __str__(self):
         return f"{self.degree} from {self.institution}"
 
-class EmployeeOffence(models.Model):
-    SEVERITY_CHOICES = [
-        ('L', 'Low'),
-        ('M', 'Medium'),
-        ('H', 'High'),
+class OffenseRule(models.Model):
+    PENALTY_CHOICES = [
+        ('ORAL', 'Oral Warning'),
+        ('WRITTEN', 'Written Warning'),
+        ('D005', '0.05 Day Deduction'),
+        ('D010', '0.10 Day Deduction'),
+        ('D015', '0.15 Day Deduction'),
+        ('D025', '0.25 Day Deduction'),
+        ('D030', '0.30 Day Deduction'),
+        ('D050', '0.50 Day Deduction'),
+        ('D075', '0.75 Day Deduction'),
+        ('D100', '1 Day Deduction'),
+        ('D200', '2 Days Deduction'),
+        ('D300', '3 Days Deduction'),
+        ('D500', '5 Days Deduction'),
+        ('MONETARY', 'Monetary Penalty'),
+        ('DISMISS', 'Dismissal'),
+    ]
+    GROUP_CHOICES = [
+        ('ATTENDANCE_TIME', 'Violations Concerning Attendance Time'),
+        ('WORK_ORG', 'Violations Concerning Work Organization'),
+        ('BEHAVIOR', 'Violations Concerning Employee Behavior'),
+        ('SAFETY', 'Violations Concerning Safety'),
+        ('PROPERTY', 'Violations Concerning Company Property'),
+        ('OTHER', 'Other Violations'),
     ]
 
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='legacy_offences')
-    date = models.DateField()
+    rule_id = models.CharField(max_length=20, unique=True)
+    group = models.CharField(max_length=20, choices=GROUP_CHOICES)
+    name = models.CharField(max_length=200)
     description = models.TextField()
-    severity = models.CharField(max_length=1, choices=SEVERITY_CHOICES)
-    action_taken = models.TextField()
-    warning_letter = models.FileField(upload_to='warning_letters/', blank=True)
+    first_penalty = models.CharField(max_length=10, choices=PENALTY_CHOICES)
+    second_penalty = models.CharField(max_length=10, choices=PENALTY_CHOICES)
+    third_penalty = models.CharField(max_length=10, choices=PENALTY_CHOICES)
+    fourth_penalty = models.CharField(max_length=10, choices=PENALTY_CHOICES)
+    remarks = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['group', 'rule_id']
+        verbose_name = 'Offense Rule'
+        verbose_name_plural = 'Offense Rules'
 
     def __str__(self):
-        return f"{self.get_severity_display()} severity offence on {self.date}"
+        return f"{self.rule_id} - {self.name}"
+
+    def get_penalty_for_count(self, count):
+        if count == 1:
+            return self.first_penalty
+        elif count == 2:
+            return self.second_penalty
+        elif count == 3:
+            return self.third_penalty
+        elif count >= 4:
+            return self.fourth_penalty
+        return None
+
+    def get_penalty_display(self, penalty_code):
+        return dict(self.PENALTY_CHOICES).get(penalty_code, penalty_code)
+
+
+class EmployeeOffence(models.Model):
+    employee = models.ForeignKey('Employee', on_delete=models.CASCADE, related_name='employee_offence_records')
+    rule = models.ForeignKey(OffenseRule, on_delete=models.PROTECT)
+    offense_date = models.DateField()
+    applied_penalty = models.CharField(max_length=10, choices=OffenseRule.PENALTY_CHOICES)
+    original_penalty = models.CharField(max_length=10, choices=OffenseRule.PENALTY_CHOICES)
+    offense_count = models.PositiveIntegerField(default=1)
+    details = models.TextField()
+    
+    # Monetary penalty fields
+    monetary_amount = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    remaining_amount = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    monthly_deduction = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    
+    # Status tracking
+    is_acknowledged = models.BooleanField(default=False)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    signed_date = models.DateTimeField(null=True, blank=True)
+    refused_date = models.DateTimeField(null=True, blank=True)
+    refused_reason = models.TextField(blank=True, null=True)
+    sent_date = models.DateTimeField(null=True, blank=True)
+    completed_date = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    # Audit fields
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_offence_records')
+    modified_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='modified_offence_records')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-offense_date', '-created_at']
+        verbose_name = 'Employee Offense'
+        verbose_name_plural = 'Employee Offenses'
+
+    def __str__(self):
+        return f"{self.employee} - {self.rule.name} ({self.offense_date})"
+
+    def save(self, *args, **kwargs):
+        # If this is a new offense, set the offense count
+        if not self.pk:
+            self.offense_count = self.get_offense_count()
+            
+            # If this is a monetary penalty, set the remaining amount
+            if self.applied_penalty == 'MONETARY' and self.monetary_amount:
+                self.remaining_amount = self.monetary_amount
+
+        super().save(*args, **kwargs)
+
+    def get_offense_count(self):
+        """Get the count of active offenses for this rule and employee"""
+        return EmployeeOffence.objects.filter(
+            employee=self.employee,
+            rule=self.rule,
+            offense_date__year=self.offense_date.year,
+            is_active=True
+        ).count() + 1
+
+    def get_original_penalty_display(self):
+        return dict(OffenseRule.PENALTY_CHOICES).get(self.original_penalty, '')
+
+    def get_applied_penalty_display(self):
+        penalty = dict(OffenseRule.PENALTY_CHOICES).get(self.applied_penalty, '')
+        if self.applied_penalty == 'MONETARY' and self.monetary_amount:
+            penalty += f" ({self.monetary_amount} BHD)"
+        return penalty
+
+    @classmethod
+    def deactivate_previous_year_offenses(cls):
+        """Deactivate all offenses from previous years"""
+        current_year = timezone.now().year
+        cls.objects.filter(
+            offense_date__year__lt=current_year,
+            is_active=True
+        ).update(is_active=False)
+
+class OffenseDocument(models.Model):
+    offense = models.ForeignKey(EmployeeOffence, on_delete=models.CASCADE, related_name='documents')
+    document = models.FileField(upload_to='offense_documents/')
+    document_type = models.CharField(max_length=50)
+    notes = models.TextField(blank=True, null=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"{self.offense} - {self.document_type}"
 
 class LifeEvent(models.Model):
     EVENT_TYPES = [
@@ -486,55 +621,3 @@ class LifeEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_event_type_display()} on {self.date}"
-
-class Offence(models.Model):
-    OFFENCE_TYPES = [
-        ('LATENESS', 'ACCEPTED lateness'),
-        ('MISUSE', 'Misuse of Property'),
-        ('MOBILE', 'USING MOBILE DURING DUTY HOURS'),
-        ('ABSENT', 'ABSENT WITHOUT REASON'),
-        ('LATE', 'LATNESS WITHOUT VALID REASON'),
-        ('DAMAGE', 'PROPERTIES DAMAGE'),
-        ('BAD_COWORKER', 'BAD ATTITUDE WITH CO-WORKERS'),
-        ('BAD_CUSTOMER', 'BAD ATTITUDEWITH CUSTOMERS'),
-        ('DISOBEY', 'NOT FOLLOWING ORDERS'),
-        ('OTHER', 'Others'),
-    ]
-
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='employee_offences')
-    ref_no = models.CharField(max_length=50, unique=True)
-    entered_on = models.DateField()
-    offence_type = models.CharField(max_length=20, choices=OFFENCE_TYPES)
-    offence_type_other = models.CharField(max_length=100, blank=True, null=True)
-    total_value = models.DecimalField(max_digits=10, decimal_places=2)
-    details = models.TextField()
-    start_date = models.DateField()
-    end_date = models.DateField(blank=True, null=True)
-    is_cancelled = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.ref_no} - {self.get_offence_type_display()}"
-
-    @property
-    def offence_type_display(self):
-        if self.offence_type == 'OTHER':
-            return self.offence_type_other or 'Other'
-        return self.get_offence_type_display()
-
-class OffenceDocument(models.Model):
-    offence = models.ForeignKey(Offence, on_delete=models.CASCADE, related_name='documents')
-    title = models.CharField(max_length=255)
-    file = models.FileField(upload_to='offence_documents/')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.title
-
-    @property
-    def file_url(self):
-        return self.file.url if self.file else None

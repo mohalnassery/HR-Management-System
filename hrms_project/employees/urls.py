@@ -8,6 +8,8 @@ app_name = 'employees'
 router = DefaultRouter()
 router.register(r'asset-types', api_views.AssetTypeViewSet, basename='asset-type')
 router.register(r'employee-assets', api_views.EmployeeAssetViewSet, basename='employee-asset')
+router.register(r'offense-rules', api_views.OffenseRuleViewSet, basename='offense-rule')
+router.register(r'employee-offenses', api_views.EmployeeOffenseViewSet, basename='employee-offense')
 
 urlpatterns = [
     # Include API URLs under /api/ namespace
@@ -55,11 +57,46 @@ urlpatterns = [
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/delete/', views.delete_dependent_document, name='delete_dependent_document'),
     path('<int:employee_id>/dependents/<int:dependent_id>/documents/<int:document_id>/view/', views.view_dependent_document, name='view_dependent_document'),
 
-    # Offence URLs
-    path('employees/<int:employee_id>/offences/', api_views.employee_offences, name='employee_offences'),
-    path('employees/<int:employee_id>/offences/<int:offence_id>/', api_views.employee_offence_detail, name='employee_offence_detail'),
-    path('employees/<int:employee_id>/offences/<int:offence_id>/cancel/', api_views.cancel_offence, name='cancel_offence'),
-    path('employees/<int:employee_id>/offences/<int:offence_id>/documents/', api_views.add_offence_document, name='add_offence_document'),
+    # Offence Management URLs
+    path('api/offenses/', api_views.EmployeeOffenseViewSet.as_view({
+        'get': 'list',
+        'post': 'create'
+    }), name='offense_list_create'),
+    
+    path('api/offenses/<int:pk>/', api_views.EmployeeOffenseViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy'
+    }), name='offense_detail'),
+
+    # employee-specific offense URLs
+    path('api/employees/<int:employee_id>/offenses/', api_views.employee_offenses, name='employee_offenses'),
+    path('api/employees/<int:employee_id>/offenses/<int:offense_id>/', api_views.employee_offense_detail, name='employee_offense_detail'),
+    # count offenses
+    path('api/employee-offenses/<int:employee_id>/count/', api_views.get_employee_offense_count, name='get_employee_offense_count'),
+    
+    # Offense Actions
+    path('api/offenses/<int:pk>/status/', api_views.update_offense_status, name='offense_status_update'),
+    path('api/offenses/<int:pk>/payment/', api_views.record_offense_payment, name='offense_payment'),
+    path('api/offenses/<int:pk>/print/', api_views.print_offense, name='offense_print'),
+    
+    # Employee-specific Offense URLs
+    path('api/employees/<int:employee_id>/offenses/', api_views.employee_offenses, name='employee_offenses'),
+    path('api/employees/<int:employee_id>/offenses/count/', api_views.get_employee_offense_count, name='employee_offense_count'),
+    
+    # Offense Rules
+    path('api/offense-rules/', api_views.OffenseRuleViewSet.as_view({
+        'get': 'list',
+        'post': 'create'
+    }), name='offense_rule_list'),
+    
+    path('api/offense-rules/<int:pk>/', api_views.OffenseRuleViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy'
+    }), name='offense_rule_detail'),
 
     # Bulk Status Change
     path('bulk-status-change/', views.bulk_status_change, name='bulk_status_change'),

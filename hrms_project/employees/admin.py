@@ -3,7 +3,7 @@ from .models import (
     Department, Division, Location, Employee, EmployeeDependent,
     EmergencyContact, EmployeeDocument, EmployeeAsset, EmployeeEducation,
     EmployeeOffence, LifeEvent, EmployeeBankAccount, CostProfitCenter,
-    DependentDocument
+    DependentDocument, OffenseRule
 )
 
 @admin.register(Department)
@@ -106,11 +106,52 @@ class EmployeeEducationAdmin(admin.ModelAdmin):
     search_fields = ('employee__employee_number', 'institution', 'degree')
     list_filter = ('graduation_year',)
 
+@admin.register(OffenseRule)
+class OffenseRuleAdmin(admin.ModelAdmin):
+    list_display = ('rule_id', 'group', 'name', 'first_penalty', 'second_penalty', 'third_penalty', 'fourth_penalty', 'is_active')
+    list_filter = ('group', 'is_active')
+    search_fields = ('rule_id', 'name', 'description')
+    ordering = ('group', 'rule_id')
+    fieldsets = (
+        (None, {
+            'fields': ('rule_id', 'group', 'name', 'description')
+        }),
+        ('Penalties', {
+            'fields': ('first_penalty', 'second_penalty', 'third_penalty', 'fourth_penalty')
+        }),
+        ('Additional Information', {
+            'fields': ('remarks', 'is_active')
+        })
+    )
+
 @admin.register(EmployeeOffence)
 class EmployeeOffenceAdmin(admin.ModelAdmin):
-    list_display = ('employee', 'date', 'severity')
-    search_fields = ('employee__employee_number',)
-    list_filter = ('date', 'severity')
+    list_display = ('employee', 'rule', 'offense_date', 'offense_count', 'applied_penalty', 'is_acknowledged')
+    list_filter = ('offense_date', 'rule__group', 'is_acknowledged')
+    search_fields = ('employee__first_name', 'employee__last_name', 'rule__name', 'details')
+    raw_id_fields = ('employee', 'rule')
+    readonly_fields = ('offense_count', 'original_penalty', 'created_by', 'modified_by', 'created_at', 'updated_at')
+    fieldsets = (
+        (None, {
+            'fields': ('employee', 'rule', 'offense_date', 'offense_count')
+        }),
+        ('Penalty Information', {
+            'fields': ('original_penalty', 'applied_penalty', 'details')
+        }),
+        ('Documents', {
+            'fields': ('warning_letter', 'acknowledgment', 'is_acknowledged', 'acknowledged_at')
+        }),
+        ('Audit Trail', {
+            'fields': ('created_by', 'modified_by', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        })
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:  # New object
+            obj.created_by = request.user
+        obj.modified_by = request.user
+        super().save_model(request, obj, form, change)
 
 @admin.register(LifeEvent)
 class LifeEventAdmin(admin.ModelAdmin):
