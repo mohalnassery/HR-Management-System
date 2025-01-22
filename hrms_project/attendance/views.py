@@ -1,15 +1,15 @@
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.http import JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser
-import pandas as pd
-import tempfile
-import os
+from django.http import JsonResponse
+from django.db.models import Q
+from datetime import datetime, date, timedelta
+from employees.models import Employee, Department
 
 from .models import (
     Shift, AttendanceRecord, AttendanceLog,
@@ -18,8 +18,7 @@ from .models import (
 from .serializers import (
     ShiftSerializer, AttendanceRecordSerializer,
     AttendanceLogSerializer, AttendanceEditSerializer,
-    LeaveSerializer, HolidaySerializer,
-    AttendanceUploadSerializer, BulkAttendanceCreateSerializer
+    LeaveSerializer, HolidaySerializer
 )
 from .utils import (
     process_attendance_excel, generate_attendance_log,
@@ -27,222 +26,200 @@ from .utils import (
     get_attendance_summary
 )
 
+# Template Views
+@login_required
+def attendance_list(request):
+    """Display attendance list page"""
+    context = {
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/attendance_list.html', context)
+
+@login_required
+def calendar_view(request):
+    """Display calendar view page"""
+    context = {
+        'employees': Employee.objects.filter(is_active=True)
+    }
+    return render(request, 'attendance/calendar.html', context)
+
+@login_required
+def mark_attendance(request):
+    """Display manual attendance marking page"""
+    context = {
+        'employees': Employee.objects.filter(is_active=True),
+        'shifts': Shift.objects.filter(is_active=True)
+    }
+    return render(request, 'attendance/mark_attendance.html', context)
+
+@login_required
+def leave_request_list(request):
+    """Display leave requests list page"""
+    return render(request, 'attendance/leave_request_list.html')
+
+@login_required
+def leave_request_create(request):
+    """Display leave request creation page"""
+    return render(request, 'attendance/leave_request_form.html')
+
+@login_required
+def leave_request_detail(request, pk):
+    """Display leave request details page"""
+    leave = get_object_or_404(Leave, pk=pk)
+    return render(request, 'attendance/leave_request_detail.html', {'leave': leave})
+
+@login_required
+def upload_attendance(request):
+    """Display attendance upload page"""
+    return render(request, 'attendance/upload_attendance.html')
+
+# API ViewSets
 class ShiftViewSet(viewsets.ModelViewSet):
-    queryset = Shift.objects.all()
+    """ViewSet for managing shifts"""
     serializer_class = ShiftSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Shift.objects.filter(is_active=True)
-        return queryset
+        return Shift.objects.filter(is_active=True)
 
 class AttendanceRecordViewSet(viewsets.ModelViewSet):
-    queryset = AttendanceRecord.objects.all()
+    """ViewSet for managing raw attendance records"""
     serializer_class = AttendanceRecordSerializer
     permission_classes = [IsAuthenticated]
+    queryset = AttendanceRecord.objects.all()
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def upload_excel(self, request):
-        serializer = AttendanceUploadSerializer(data=request.data)
-        
-        if serializer.is_valid():
+        """Handle Excel file upload"""
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
             excel_file = request.FILES['file']
-            
-            # Save the file temporarily
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
-                for chunk in excel_file.chunks():
-                    temp_file.write(chunk)
-                temp_file_path = temp_file.name
-            
-            try:
-                # Process the Excel file
-                records_created = process_attendance_excel(temp_file_path)
-                
-                # Clean up the temporary file
-                os.unlink(temp_file_path)
-                
-                # Process daily attendance
-                logs_created = process_daily_attendance()
-                
-                return Response({
-                    'message': 'File processed successfully',
-                    'records_created': records_created,
-                    'logs_created': logs_created
-                })
-                
-            except Exception as e:
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                return Response(
-                    {'error': str(e)},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
+            records_created, duplicates, total_records = process_attendance_excel(excel_file)
+            logs_created = process_daily_attendance()
+
+            return Response({
+                'message': 'File processed successfully',
+                'new_records': records_created,
+                'duplicate_records': duplicates,
+                'total_records': total_records,
+                'logs_created': logs_created,
+                'success': True
+            })
+        except Exception as e:
+            return Response({
+                'error': str(e),
+                'success': False
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 class AttendanceLogViewSet(viewsets.ModelViewSet):
-    queryset = AttendanceLog.objects.all()
+    """ViewSet for managing processed attendance logs"""
     serializer_class = AttendanceLogSerializer
     permission_classes = [IsAuthenticated]
+    queryset = AttendanceLog.objects.all()
 
     def get_queryset(self):
         queryset = AttendanceLog.objects.filter(is_active=True)
-        employee_id = self.request.query_params.get('employee', None)
-        date = self.request.query_params.get('date', None)
-        
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        employee_id = self.request.query_params.get('employee')
+        department_id = self.request.query_params.get('department')
+
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
         if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
-        if date:
-            queryset = queryset.filter(date=date)
-        
+        if department_id:
+            queryset = queryset.filter(employee__department_id=department_id)
+
         return queryset
 
-    @action(detail=True, methods=['post'])
-    def edit_attendance(self, request, pk=None):
-        attendance_log = self.get_object()
-        
-        try:
-            edited_in_time = request.data.get('first_in_time')
-            edited_out_time = request.data.get('last_out_time')
-            edit_reason = request.data.get('reason')
-            
-            if not edit_reason:
-                return Response(
-                    {'error': 'Edit reason is required'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Validate edit times
-            validate_attendance_edit(
-                attendance_log,
-                edited_in_time,
-                edited_out_time
-            )
-            
-            with transaction.atomic():
-                # Create attendance edit record
-                AttendanceEdit.objects.create(
-                    attendance_log=attendance_log,
-                    original_first_in=attendance_log.first_in_time,
-                    original_last_out=attendance_log.last_out_time,
-                    edited_first_in=edited_in_time,
-                    edited_last_out=edited_out_time,
-                    edited_by=request.user,
-                    edit_reason=edit_reason
-                )
-                
-                # Update attendance log
-                attendance_log.first_in_time = edited_in_time
-                attendance_log.last_out_time = edited_out_time
-                attendance_log.source = 'manual'
-                attendance_log.save()
-            
-            return Response({
-                'message': 'Attendance updated successfully'
-            })
-            
-        except ValueError as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
 class LeaveViewSet(viewsets.ModelViewSet):
-    queryset = Leave.objects.all()
+    """ViewSet for managing leave requests"""
     serializer_class = LeaveSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Leave.objects.all()
 
     def get_queryset(self):
         queryset = Leave.objects.filter(is_active=True)
-        employee_id = self.request.query_params.get('employee', None)
-        status = self.request.query_params.get('status', None)
-        
-        if employee_id:
-            queryset = queryset.filter(employee_id=employee_id)
+        status = self.request.query_params.get('status')
         if status:
             queryset = queryset.filter(status=status)
-        
         return queryset
 
-    @action(detail=True, methods=['post'])
-    def approve_leave(self, request, pk=None):
-        leave = self.get_object()
-        action = request.data.get('action')
-        
-        if action not in ['approve', 'reject']:
-            return Response(
-                {'error': 'Invalid action'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        leave.status = 'approved' if action == 'approve' else 'rejected'
-        leave.approved_by = request.user
-        leave.save()
-        
-        return Response({'message': f'Leave {leave.status} successfully'})
-
 class HolidayViewSet(viewsets.ModelViewSet):
-    queryset = Holiday.objects.all()
+    """ViewSet for managing holidays"""
     serializer_class = HolidaySerializer
     permission_classes = [IsAuthenticated]
+    queryset = Holiday.objects.all()
 
     def get_queryset(self):
         return Holiday.objects.filter(is_active=True)
 
+# API Views
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_calendar_events(request):
+    """Get events for calendar view"""
+    start_date = request.query_params.get('start')
+    end_date = request.query_params.get('end')
+    employee_id = request.query_params.get('employee')
+
+    events = []
+
+    # Get attendance logs
+    logs = AttendanceLog.objects.filter(
+        date__range=[start_date, end_date],
+        is_active=True
+    )
+    if employee_id:
+        logs = logs.filter(employee_id=employee_id)
+
+    for log in logs:
+        events.append({
+            'id': log.id,
+            'title': f"{log.employee.get_full_name()} ({log.get_status_display()})",
+            'date': log.date,
+            'status': log.status,
+            'employee_name': log.employee.get_full_name()
+        })
+
+    # Add holidays
+    holidays = Holiday.objects.filter(
+        date__range=[start_date, end_date],
+        is_active=True
+    )
+    for holiday in holidays:
+        events.append({
+            'title': holiday.description,
+            'date': holiday.date,
+            'status': 'holiday'
+        })
+
+    return Response(events)
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_employee_attendance(request, employee_id):
+    """Get attendance summary for an employee"""
     start_date = request.query_params.get('start_date')
     end_date = request.query_params.get('end_date')
     
+    if not start_date or not end_date:
+        return Response(
+            {'error': 'Start date and end date are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     try:
-        from employees.models import Employee
         employee = get_object_or_404(Employee, id=employee_id)
-        
-        if not start_date or not end_date:
-            return Response(
-                {'error': 'Start date and end date are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         summary = get_attendance_summary(employee, start_date, end_date)
         return Response(summary)
-        
     except Exception as e:
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-@login_required
-def attendance_list(request):
-    """List attendance records"""
-    return render(request, 'attendance/attendance_list.html')
-
-@login_required
-def mark_attendance(request):
-    """Mark attendance"""
-    return render(request, 'attendance/mark_attendance.html')
-
-@login_required
-def leave_request_list(request):
-    """List leave requests"""
-    return render(request, 'attendance/leave_request_list.html')
-
-@login_required
-def leave_request_create(request):
-    """Create leave request"""
-    return render(request, 'attendance/leave_request_form.html')
-
-@login_required
-def leave_request_detail(request, pk):
-    """View leave request details"""
-    return render(request, 'attendance/leave_request_detail.html')

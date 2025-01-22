@@ -12,21 +12,55 @@ def process_attendance_excel(file_path):
                      Verify Type, Event Description, Remarks
     """
     try:
-        # Read Excel file
-        df = pd.read_excel(file_path)
+        # Determine the engine based on file extension
+        file_extension = str(file_path).lower()
+        engine = 'xlrd' if file_extension.endswith('.xls') else 'openpyxl'
         
+        # Read Excel file
+        df = pd.read_excel(file_path, engine=engine)
+        
+        if df.empty:
+            return 0, 0
+            
         # Standardize column names
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         
+        # Verify required columns
+        required_columns = ['date_and_time', 'personnel_id']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise Exception(f"Missing required columns: {', '.join(missing_columns)}")
+        
         records_to_create = []
+        duplicates = 0
+        
+        # Get existing timestamps for each employee to check duplicates
+        existing_records = {
+            (str(r.employee_id), r.timestamp.strftime('%Y-%m-%d %H:%M:%S')): True 
+            for r in AttendanceRecord.objects.all()
+        }
         
         for _, row in df.iterrows():
             try:
-                # Get employee by personnel ID
-                employee = Employee.objects.get(employee_number=row['personnel_id'])
-                
                 # Convert date_and_time to datetime
                 timestamp = pd.to_datetime(row['date_and_time'])
+                
+                # Try to get employee or create placeholder
+                try:
+                    employee = Employee.objects.get(employee_number=row['personnel_id'])
+                except Employee.DoesNotExist:
+                    employee = Employee.objects.create(
+                        employee_number=row['personnel_id'],
+                        first_name=row.get('first_name', f"Employee {row['personnel_id']}"),
+                        last_name=row.get('last_name', ''),
+                        email=f"employee{row['personnel_id']}@placeholder.com"
+                    )
+                
+                # Check for duplicates
+                record_key = (str(employee.id), timestamp.strftime('%Y-%m-%d %H:%M:%S'))
+                if record_key in existing_records:
+                    duplicates += 1
+                    continue
                 
                 # Create attendance record
                 record = AttendanceRecord(
@@ -39,23 +73,21 @@ def process_attendance_excel(file_path):
                     remarks=row.get('remarks', '')
                 )
                 records_to_create.append(record)
+                existing_records[record_key] = True
                 
-            except Employee.DoesNotExist:
-                continue
             except Exception as e:
-                print(f"Error processing row: {row}")
-                print(f"Error: {str(e)}")
                 continue
         
         # Bulk create records
-        with transaction.atomic():
-            AttendanceRecord.objects.bulk_create(
-                records_to_create,
-                ignore_conflicts=True
-            )
+        records_created = 0
+        if records_to_create:
+            AttendanceRecord.objects.bulk_create(records_to_create, ignore_conflicts=True)
+            records_created = len(records_to_create)
         
-        return len(records_to_create)
-    
+        total_records = AttendanceRecord.objects.count()
+        
+        return records_created, duplicates, total_records
+        
     except Exception as e:
         raise Exception(f"Error processing Excel file: {str(e)}")
 

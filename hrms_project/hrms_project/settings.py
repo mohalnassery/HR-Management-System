@@ -54,9 +54,9 @@ INSTALLED_APPS = [
     # Local apps
     'core.apps.CoreConfig',
     'employees.apps.EmployeesConfig',
-    'attendance.apps.AttendanceConfig',
-    'performance.apps.PerformanceConfig',
+    'attendance.apps.AttendanceConfig',  # Add attendance app
     'payroll.apps.PayrollConfig',
+    'performance.apps.PerformanceConfig',
     'api.apps.ApiConfig',
 ]
 
@@ -80,7 +80,9 @@ ROOT_URLCONF = 'hrms_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [
+            os.path.join(BASE_DIR, 'templates'),
+        ],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

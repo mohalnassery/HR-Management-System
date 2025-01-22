@@ -11,15 +11,13 @@
                 <select id="employee-filter" class="form-select">
                     <option value="">All Employees</option>
                     {% for emp in employees %}
-                    <option value="{{ emp.id }}" {% if employee_id == emp.id %}selected{% endif %}>
-                        {{ emp.get_full_name }}
-                    </option>
+                    <option value="{{ emp.id }}">{{ emp.get_full_name }}</option>
                     {% endfor %}
                 </select>
             </div>
             <!-- Month/Week View Toggle -->
             <div class="btn-group">
-                <button type="button" class="btn btn-outline-primary" data-view="dayGridMonth">Month</button>
+                <button type="button" class="btn btn-outline-primary active" data-view="dayGridMonth">Month</button>
                 <button type="button" class="btn btn-outline-primary" data-view="dayGridWeek">Week</button>
             </div>
         </div>
@@ -44,7 +42,7 @@
                         <h6>Employee: <span id="modal-employee"></span></h6>
                     </div>
                     <div class="col-md-6">
-                        <h6>Status: <span id="modal-status"></span></h6>
+                        <h6>Status: <span id="modal-status" class="badge"></span></h6>
                         <h6>Source: <span id="modal-source"></span></h6>
                     </div>
                 </div>
@@ -56,8 +54,8 @@
                                 <h6 class="mb-0">Original Times</h6>
                             </div>
                             <div class="card-body">
-                                <p>First In: <span id="modal-original-in"></span></p>
-                                <p>Last Out: <span id="modal-original-out"></span></p>
+                                <p class="mb-1">First In: <span id="modal-original-in"></span></p>
+                                <p class="mb-0">Last Out: <span id="modal-original-out"></span></p>
                             </div>
                         </div>
                     </div>
@@ -67,16 +65,48 @@
                                 <h6 class="mb-0">Current Times</h6>
                             </div>
                             <div class="card-body">
-                                <p>First In: <span id="modal-current-in"></span></p>
-                                <p>Last Out: <span id="modal-current-out"></span></p>
+                                <p class="mb-1">First In: <span id="modal-current-in"></span></p>
+                                <p class="mb-0">Last Out: <span id="modal-current-out"></span></p>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- Raw Records -->
+                <div class="mt-4">
+                    <h6>Raw Records</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="raw-records-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Device</th>
+                                    <th>Event Point</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Edit History -->
-                <div class="mt-3">
+                <div class="mt-4">
                     <h6>Edit History</h6>
-                    <div id="edit-history-table"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm" id="edit-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Edited By</th>
+                                    <th>Timestamp</th>
+                                    <th>Changed From</th>
+                                    <th>Changed To</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -97,6 +127,7 @@
             </div>
             <div class="modal-body">
                 <form id="edit-attendance-form">
+                    <input type="hidden" id="edit-log-id">
                     <div class="mb-3">
                         <label for="edit-first-in" class="form-label">First In Time</label>
                         <input type="time" class="form-control" id="edit-first-in" required>
@@ -121,103 +152,82 @@
 
 {% endblock %}
 
-{% block footer_scripts %}
+{% block extra_js %}
 {{ block.super }}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const calendarEl = document.getElementById('attendance-calendar');
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,dayGridWeek'
-        },
-        events: function(fetchInfo, successCallback, failureCallback) {
-            const employee_id = document.getElementById('employee-filter').value;
-            fetch(`/api/attendance/calendar-events/?start=${fetchInfo.startStr}&end=${fetchInfo.endStr}&employee=${employee_id}`)
-                .then(response => response.json())
-                .then(data => {
-                    successCallback(data.map(event => ({
-                        title: event.title,
-                        start: event.date,
-                        backgroundColor: getStatusColor(event.status),
-                        extendedProps: {
-                            attendance_id: event.id,
-                            status: event.status,
-                            employee: event.employee_name
-                        }
-                    })));
-                })
-                .catch(error => failureCallback(error));
-        },
-        eventClick: function(info) {
-            showAttendanceDetails(info.event.extendedProps.attendance_id);
-        }
-    });
-    calendar.render();
-
-    // Event Handlers
+    const calendar = new AttendanceCalendar('attendance-calendar');
+    
+    // Employee filter
     document.getElementById('employee-filter').addEventListener('change', function() {
-        calendar.refetchEvents();
+        calendar.refresh();
     });
 
+    // View toggle
     document.querySelectorAll('[data-view]').forEach(button => {
         button.addEventListener('click', function() {
-            calendar.changeView(this.dataset.view);
+            document.querySelector('[data-view].active').classList.remove('active');
+            this.classList.add('active');
+            calendar.calendar.changeView(this.dataset.view);
+        });
+    });
+
+    // Edit button
+    document.getElementById('edit-attendance-btn').addEventListener('click', function() {
+        const logId = this.dataset.logId;
+        if (!logId) return;
+
+        // Get current values
+        const firstIn = document.getElementById('modal-current-in').textContent;
+        const lastOut = document.getElementById('modal-current-out').textContent;
+
+        // Set values in edit form
+        document.getElementById('edit-log-id').value = logId;
+        document.getElementById('edit-first-in').value = firstIn;
+        document.getElementById('edit-last-out').value = lastOut;
+        document.getElementById('edit-reason').value = '';
+
+        // Hide details modal and show edit modal
+        bootstrap.Modal.getInstance(document.getElementById('attendance-modal')).hide();
+        new bootstrap.Modal(document.getElementById('edit-modal')).show();
+    });
+
+    // Save edit
+    document.getElementById('save-edit-btn').addEventListener('click', function() {
+        const logId = document.getElementById('edit-log-id').value;
+        const firstIn = document.getElementById('edit-first-in').value;
+        const lastOut = document.getElementById('edit-last-out').value;
+        const reason = document.getElementById('edit-reason').value;
+
+        if (!firstIn || !lastOut || !reason) {
+            alert('Please fill in all fields');
+            return;
+        }
+
+        fetch(`/api/attendance/logs/${logId}/edit_attendance/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                first_in_time: firstIn,
+                last_out_time: lastOut,
+                reason: reason
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            bootstrap.Modal.getInstance(document.getElementById('edit-modal')).hide();
+            calendar.refresh();
+        })
+        .catch(error => {
+            alert('Error updating attendance: ' + error.message);
         });
     });
 });
-
-function getStatusColor(status) {
-    const colors = {
-        'present': '#28a745',
-        'absent': '#dc3545',
-        'late': '#ffc107',
-        'leave': '#17a2b8',
-        'holiday': '#007bff'
-    };
-    return colors[status] || '#6c757d';
-}
-
-function showAttendanceDetails(attendanceId) {
-    fetch(`/api/attendance/logs/${attendanceId}/`)
-        .then(response => response.json())
-        .then(data => {
-            // Update modal content
-            document.getElementById('modal-date').textContent = data.date;
-            document.getElementById('modal-employee').textContent = data.employee_name;
-            document.getElementById('modal-status').textContent = data.status;
-            document.getElementById('modal-source').textContent = data.source;
-            document.getElementById('modal-original-in').textContent = data.original_first_in || 'N/A';
-            document.getElementById('modal-original-out').textContent = data.original_last_out || 'N/A';
-            document.getElementById('modal-current-in').textContent = data.first_in_time;
-            document.getElementById('modal-current-out').textContent = data.last_out_time;
-
-            // Update edit history table
-            const historyHtml = data.edit_history.map(edit => `
-                <tr>
-                    <td>${edit.edited_by}</td>
-                    <td>${edit.edit_timestamp}</td>
-                    <td>${edit.edit_reason}</td>
-                </tr>
-            `).join('');
-            document.getElementById('edit-history-table').innerHTML = `
-                <table class="table table-sm">
-                    <thead>
-                        <tr>
-                            <th>Edited By</th>
-                            <th>Timestamp</th>
-                            <th>Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody>${historyHtml}</tbody>
-                </table>
-            `;
-
-            // Show the modal
-            new bootstrap.Modal(document.getElementById('attendance-modal')).show();
-        });
-}
 </script>
 {% endblock %}

@@ -1,0 +1,180 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block title %}Upload Attendance Records{% endblock %}
+
+{% block extra_css %}
+<style>
+.preview-table {
+    font-size: 0.875rem;
+}
+.preview-table th {
+    background-color: #f8f9fa;
+}
+.preview-container {
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Upload Attendance Records</h5>
+        </div>
+        <div class="card-body">
+            <form id="uploadForm" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="file" class="form-label">Excel File</label>
+                    <input type="file" class="form-control" id="file" name="file" accept=".xlsx,.xls" required>
+                    <div class="form-text">
+                        <strong>Required columns:</strong>
+                        <ul class="mb-0">
+                            <li>Date And Time</li>
+                            <li>Personnel ID</li>
+                            <li>Device Name</li>
+                            <li>Event Point</li>
+                            <li>Verify Type</li>
+                            <li>Event Description</li>
+                            <li>Remarks</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- File Preview -->
+                <div id="previewContainer" class="mb-3" style="display: none;">
+                    <h6>File Preview</h6>
+                    <div class="preview-container">
+                        <table class="table table-sm table-bordered preview-table">
+                            <thead id="previewHeader"></thead>
+                            <tbody id="previewBody"></tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted">Showing first 5 rows</small>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="submitBtn">Upload</button>
+            </form>
+            
+            <!-- Result Messages -->
+            <div id="successAlert" class="alert alert-success mt-3" style="display: none;">
+                <h6 class="alert-heading mb-2">Upload Summary:</h6>
+                <ul class="mb-0">
+                    <li>New records added: <span id="newRecords">0</span></li>
+                    <li>Duplicate records skipped: <span id="duplicateRecords">0</span></li>
+                    <li>Total records in database: <span id="totalRecords">0</span></li>
+                    <li>Attendance logs created: <span id="logsCreated">0</span></li>
+                </ul>
+            </div>
+            <div id="errorAlert" class="alert alert-danger mt-3" style="display: none;">
+                <div id="errorMessage"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// Preview functionality
+document.getElementById('file').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            
+            // Get first sheet
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            
+            // Convert to JSON
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+            
+            if (jsonData.length > 0) {
+                const headerRow = jsonData[0];
+                const dataRows = jsonData.slice(1, 6); // Get first 5 data rows
+                
+                // Create header
+                const headerHtml = '<tr>' + headerRow.map(cell => 
+                    `<th>${cell}</th>`
+                ).join('') + '</tr>';
+                
+                // Create body
+                const bodyHtml = dataRows.map(row => 
+                    '<tr>' + row.map(cell => 
+                        `<td>${cell || ''}</td>`
+                    ).join('') + '</tr>'
+                ).join('');
+                
+                // Update preview
+                document.getElementById('previewHeader').innerHTML = headerHtml;
+                document.getElementById('previewBody').innerHTML = bodyHtml;
+                document.getElementById('previewContainer').style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Error reading file:', error);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+// Form submission
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const successAlert = document.getElementById('successAlert');
+    const errorAlert = document.getElementById('errorAlert');
+    const errorMessage = document.getElementById('errorMessage');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Hide any existing alerts
+    successAlert.style.display = 'none';
+    errorAlert.style.display = 'none';
+    
+    // Disable submit button and show loading state
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
+    
+    fetch('/attendance/api/records/upload_excel/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('newRecords').textContent = data.new_records;
+            document.getElementById('duplicateRecords').textContent = data.duplicate_records;
+            document.getElementById('totalRecords').textContent = data.total_records;
+            document.getElementById('logsCreated').textContent = data.logs_created;
+            successAlert.style.display = 'block';
+            this.reset();
+            document.getElementById('previewContainer').style.display = 'none';
+        } else {
+            errorMessage.textContent = data.error;
+            errorAlert.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        errorMessage.textContent = 'Error uploading file: ' + error.message;
+        errorAlert.style.display = 'block';
+    })
+    .finally(() => {
+        // Re-enable submit button and restore text
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Upload';
+    });
+});
+</script>
+{% endblock %}

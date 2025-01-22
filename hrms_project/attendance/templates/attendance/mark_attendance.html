@@ -1,0 +1,120 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Mark Attendance</h5>
+    </div>
+    <div class="card-body">
+        <form id="mark-attendance-form">
+            <div class="row">
+                <!-- Employee Selection -->
+                <div class="col-md-6 mb-3">
+                    <label for="employee-select" class="form-label">Employee</label>
+                    <select class="form-select" id="employee-select" required>
+                        <option value="">Select Employee</option>
+                        {% for emp in employees %}
+                        <option value="{{ emp.id }}">{{ emp.get_full_name }} ({{ emp.employee_number }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Date Selection -->
+                <div class="col-md-6 mb-3">
+                    <label for="attendance-date" class="form-label">Date</label>
+                    <input type="date" class="form-control" id="attendance-date" required 
+                           value="{{ today|date:'Y-m-d' }}">
+                </div>
+
+                <!-- Time Selection -->
+                <div class="col-md-6 mb-3">
+                    <label for="first-in" class="form-label">First In Time</label>
+                    <input type="time" class="form-control" id="first-in" required>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                    <label for="last-out" class="form-label">Last Out Time</label>
+                    <input type="time" class="form-control" id="last-out" required>
+                </div>
+
+                <!-- Shift Selection -->
+                <div class="col-md-6 mb-3">
+                    <label for="shift-select" class="form-label">Shift</label>
+                    <select class="form-select" id="shift-select">
+                        <option value="">No Shift</option>
+                        {% for shift in shifts %}
+                        <option value="{{ shift.id }}">{{ shift.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Source -->
+                <div class="col-md-6 mb-3">
+                    <label for="source" class="form-label">Source</label>
+                    <select class="form-select" id="source" required>
+                        <option value="manual">Manual Entry</option>
+                        <option value="system">System</option>
+                    </select>
+                </div>
+
+                <!-- Remarks -->
+                <div class="col-12 mb-3">
+                    <label for="remarks" class="form-label">Remarks</label>
+                    <textarea class="form-control" id="remarks" rows="3"></textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Attendance
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('mark-attendance-form');
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = {
+            employee: document.getElementById('employee-select').value,
+            date: document.getElementById('attendance-date').value,
+            first_in_time: document.getElementById('first-in').value,
+            last_out_time: document.getElementById('last-out').value,
+            shift: document.getElementById('shift-select').value,
+            source: document.getElementById('source').value,
+            remarks: document.getElementById('remarks').value
+        };
+
+        fetch('/api/attendance/logs/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            alert('Attendance marked successfully');
+            form.reset();
+        })
+        .catch(error => {
+            alert('Error marking attendance: ' + error.message);
+        });
+    });
+});
+</script>
+{% endblock %}
