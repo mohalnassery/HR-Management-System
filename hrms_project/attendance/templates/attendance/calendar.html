@@ -1,233 +1,257 @@
 {% extends 'attendance/base.html' %}
 {% load static %}
 
+{% block extra_css %}
+{{ block.super }}
+<style>
+    #employee-search-container {
+        position: relative;
+        margin-bottom: 1rem;
+    }
+    #employee-search-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        max-height: 200px;
+        overflow-y: auto;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        display: none;
+    }
+    .employee-result {
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+    }
+    .employee-result:hover {
+        background-color: #f8f9fa;
+    }
+    .fc-event {
+        cursor: pointer;
+    }
+    .badge .fa-times {
+        cursor: pointer;
+    }
+    .badge .fa-times:hover {
+        opacity: 0.8;
+    }
+</style>
+{% endblock %}
+
 {% block attendance_content %}
 <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header">
         <h5 class="mb-0">Attendance Calendar</h5>
-        <div class="d-flex align-items-center">
-            <!-- Employee Filter -->
-            <div class="me-3">
-                <select id="employee-filter" class="form-select">
-                    <option value="">All Employees</option>
-                    {% for emp in employees %}
-                    <option value="{{ emp.id }}">{{ emp.get_full_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <!-- Month/Week View Toggle -->
-            <div class="btn-group">
-                <button type="button" class="btn btn-outline-primary active" data-view="dayGridMonth">Month</button>
-                <button type="button" class="btn btn-outline-primary" data-view="dayGridWeek">Week</button>
-            </div>
-        </div>
     </div>
     <div class="card-body">
+        <!-- Employee Search -->
+        <div id="employee-search-container" class="mb-3">
+            <input type="text" id="employee-search" class="form-control" placeholder="Search employee by ID or name...">
+            <div id="employee-search-results"></div>
+        </div>
+        
+        <!-- Selected Employee Info -->
+        <div id="selected-employee-info" class="mb-3" style="display: none;"></div>
+        
+        <!-- Calendar View Toggle -->
+        <div class="btn-group mb-3">
+            <button type="button" class="btn btn-outline-primary active" data-view="dayGridMonth">Month</button>
+            <button type="button" class="btn btn-outline-primary" data-view="dayGridWeek">Week</button>
+        </div>
+        
+        <!-- Calendar Container -->
         <div id="attendance-calendar"></div>
     </div>
 </div>
 
 <!-- Attendance Details Modal -->
 <div class="modal fade" id="attendance-modal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Attendance Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Date: <span id="modal-date"></span></h6>
-                        <h6>Employee: <span id="modal-employee"></span></h6>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Status: <span id="modal-status" class="badge"></span></h6>
-                        <h6>Source: <span id="modal-source"></span></h6>
-                    </div>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>Date:</strong></div>
+                    <div class="col-8" id="modal-date"></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>Employee:</strong></div>
+                    <div class="col-8" id="modal-employee"></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>Status:</strong></div>
+                    <div class="col-8" id="modal-status"></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>Source:</strong></div>
+                    <div class="col-8" id="modal-source"></div>
                 </div>
                 <hr>
-                <div class="row mt-3">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h6 class="mb-0">Original Times</h6>
-                            </div>
-                            <div class="card-body">
-                                <p class="mb-1">First In: <span id="modal-original-in"></span></p>
-                                <p class="mb-0">Last Out: <span id="modal-original-out"></span></p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h6 class="mb-0">Current Times</h6>
-                            </div>
-                            <div class="card-body">
-                                <p class="mb-1">First In: <span id="modal-current-in"></span></p>
-                                <p class="mb-0">Last Out: <span id="modal-current-out"></span></p>
-                            </div>
-                        </div>
-                    </div>
+                <h6>Original Times</h6>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>In:</strong></div>
+                    <div class="col-8" id="modal-original-in"></div>
                 </div>
-
-                <!-- Raw Records -->
-                <div class="mt-4">
-                    <h6>Raw Records</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm" id="raw-records-table">
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Device</th>
-                                    <th>Event Point</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>Out:</strong></div>
+                    <div class="col-8" id="modal-original-out"></div>
                 </div>
-
-                <!-- Edit History -->
-                <div class="mt-4">
-                    <h6>Edit History</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm" id="edit-history-table">
-                            <thead>
-                                <tr>
-                                    <th>Edited By</th>
-                                    <th>Timestamp</th>
-                                    <th>Changed From</th>
-                                    <th>Changed To</th>
-                                    <th>Reason</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
+                <hr>
+                <h6>Current Times</h6>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>In:</strong></div>
+                    <div class="col-8" id="modal-current-in"></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-4"><strong>Out:</strong></div>
+                    <div class="col-8" id="modal-current-out"></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="edit-attendance-btn">Edit Attendance</button>
+                <a href="#" class="btn btn-primary" id="edit-attendance-btn">Edit</a>
             </div>
         </div>
     </div>
 </div>
-
-<!-- Edit Attendance Modal -->
-<div class="modal fade" id="edit-modal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Attendance</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="edit-attendance-form">
-                    <input type="hidden" id="edit-log-id">
-                    <div class="mb-3">
-                        <label for="edit-first-in" class="form-label">First In Time</label>
-                        <input type="time" class="form-control" id="edit-first-in" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit-last-out" class="form-label">Last Out Time</label>
-                        <input type="time" class="form-control" id="edit-last-out" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit-reason" class="form-label">Edit Reason</label>
-                        <textarea class="form-control" id="edit-reason" rows="3" required></textarea>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="save-edit-btn">Save Changes</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block extra_js %}
 {{ block.super }}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const calendar = new AttendanceCalendar('attendance-calendar');
-    
-    // Employee filter
-    document.getElementById('employee-filter').addEventListener('change', function() {
-        calendar.refresh();
-    });
-
-    // View toggle
-    document.querySelectorAll('[data-view]').forEach(button => {
-        button.addEventListener('click', function() {
-            document.querySelector('[data-view].active').classList.remove('active');
-            this.classList.add('active');
-            calendar.calendar.changeView(this.dataset.view);
-        });
-    });
-
-    // Edit button
-    document.getElementById('edit-attendance-btn').addEventListener('click', function() {
-        const logId = this.dataset.logId;
-        if (!logId) return;
-
-        // Get current values
-        const firstIn = document.getElementById('modal-current-in').textContent;
-        const lastOut = document.getElementById('modal-current-out').textContent;
-
-        // Set values in edit form
-        document.getElementById('edit-log-id').value = logId;
-        document.getElementById('edit-first-in').value = firstIn;
-        document.getElementById('edit-last-out').value = lastOut;
-        document.getElementById('edit-reason').value = '';
-
-        // Hide details modal and show edit modal
-        bootstrap.Modal.getInstance(document.getElementById('attendance-modal')).hide();
-        new bootstrap.Modal(document.getElementById('edit-modal')).show();
-    });
-
-    // Save edit
-    document.getElementById('save-edit-btn').addEventListener('click', function() {
-        const logId = document.getElementById('edit-log-id').value;
-        const firstIn = document.getElementById('edit-first-in').value;
-        const lastOut = document.getElementById('edit-last-out').value;
-        const reason = document.getElementById('edit-reason').value;
-
-        if (!firstIn || !lastOut || !reason) {
-            alert('Please fill in all fields');
-            return;
-        }
-
-        fetch(`/api/attendance/logs/${logId}/edit_attendance/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize calendar
+        var calendarEl = document.getElementById('attendance-calendar');
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,dayGridWeek'
             },
-            body: JSON.stringify({
-                first_in_time: firstIn,
-                last_out_time: lastOut,
-                reason: reason
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                throw new Error(data.error);
+            events: function(info, successCallback, failureCallback) {
+                const selectedEmployeeId = document.querySelector('#selected-employee-info .badge')?.dataset?.employeeId;
+                if (!selectedEmployeeId) {
+                    successCallback([]);
+                    return;
+                }
+                
+                fetch(`{% url 'attendance:calendar_events' %}?employee_id=${selectedEmployeeId}&start=${info.startStr}&end=${info.endStr}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        successCallback(data);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching events:', error);
+                        failureCallback(error);
+                    });
+            },
+            eventClick: function(info) {
+                showAttendanceDetails(info.event);
             }
-            bootstrap.Modal.getInstance(document.getElementById('edit-modal')).hide();
-            calendar.refresh();
-        })
-        .catch(error => {
-            alert('Error updating attendance: ' + error.message);
+        });
+        calendar.render();
+
+        // Employee search functionality
+        const searchInput = document.getElementById('employee-search');
+        const searchResults = document.getElementById('employee-search-results');
+        const selectedEmployeeInfo = document.getElementById('selected-employee-info');
+
+        let searchTimeout;
+        searchInput.addEventListener('input', function(e) {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (query.length < 2) {
+                searchResults.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(() => {
+                fetch(`{% url 'attendance:search_employees' %}?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        searchResults.innerHTML = data.map(emp => `
+                            <div class="employee-result" data-id="${emp.id}" data-number="${emp.employee_number}">
+                                ${emp.employee_number} - ${emp.full_name}
+                            </div>
+                        `).join('');
+                        searchResults.style.display = 'block';
+                    });
+            }, 300);
+        });
+
+        // Handle employee selection
+        searchResults.addEventListener('click', function(e) {
+            const result = e.target.closest('.employee-result');
+            if (result) {
+                const empId = result.dataset.id;
+                const empNumber = result.dataset.number;
+                const empName = result.textContent.trim();
+                
+                selectedEmployeeInfo.innerHTML = `
+                    <span class="badge bg-primary" data-employee-id="${empId}">
+                        ${empNumber} - ${empName}
+                        <i class="fas fa-times ms-2"></i>
+                    </span>
+                `;
+                selectedEmployeeInfo.style.display = 'block';
+                searchInput.value = '';
+                searchResults.style.display = 'none';
+                calendar.refetchEvents();
+            }
+        });
+
+        // Handle employee deselection
+        selectedEmployeeInfo.addEventListener('click', function(e) {
+            if (e.target.classList.contains('fa-times')) {
+                selectedEmployeeInfo.style.display = 'none';
+                selectedEmployeeInfo.innerHTML = '';
+                calendar.refetchEvents();
+            }
+        });
+
+        // View toggle buttons
+        document.querySelectorAll('[data-view]').forEach(button => {
+            button.addEventListener('click', function() {
+                const view = this.dataset.view;
+                calendar.changeView(view);
+                
+                // Update active state
+                document.querySelectorAll('[data-view]').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                this.classList.add('active');
+            });
         });
     });
-});
+
+    function showAttendanceDetails(event) {
+        const modal = new bootstrap.Modal(document.getElementById('attendance-modal'));
+        // Fetch and display attendance details
+        fetch(`{% url 'attendance:attendance_details' log_id=0 %}`.replace('0', event.id))
+            .then(response => response.json())
+            .then(data => {
+                // Update modal content with attendance details
+                document.getElementById('modal-date').textContent = data.date;
+                document.getElementById('modal-employee').textContent = data.employee;
+                document.getElementById('modal-status').textContent = data.status;
+                document.getElementById('modal-source').textContent = data.source;
+                document.getElementById('modal-original-in').textContent = data.original_in;
+                document.getElementById('modal-original-out').textContent = data.original_out;
+                document.getElementById('modal-current-in').textContent = data.current_in;
+                document.getElementById('modal-current-out').textContent = data.current_out;
+
+                // Update edit button link
+                document.getElementById('edit-attendance-btn').href = `{% url 'attendance:attendance_detail' 0 %}`.replace('0', event.id);
+
+                modal.show();
+            });
+    }
 </script>
 {% endblock %}

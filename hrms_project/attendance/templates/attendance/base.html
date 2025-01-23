@@ -3,8 +3,8 @@
 
 {% block extra_css %}
 <!-- FullCalendar CSS -->
-<link href="https://cdn.jsdelivr.net/npm/@fullcalendar/core/main.css" rel="stylesheet" />
-<link href="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid/main.css" rel="stylesheet" />
+<link href='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/main.min.css' rel='stylesheet' />
+<link href='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.10/main.min.css' rel='stylesheet' />
 <!-- Custom attendance CSS -->
 <link href="{% static 'attendance/css/attendance.css' %}" rel="stylesheet" />
 {% endblock %}
@@ -72,10 +72,9 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- FullCalendar JS -->
-<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core/main.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid/main.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction/main.js"></script>
+<!-- FullCalendar Bundle -->
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/index.global.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.10/index.global.min.js'></script>
 <!-- Custom attendance JS -->
 <script src="{% static 'attendance/js/attendance.js' %}"></script>
 {% endblock %}

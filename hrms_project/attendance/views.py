@@ -11,6 +11,7 @@ from django.db.models import Q
 from datetime import datetime, date, timedelta, time
 from employees.models import Employee, Department
 from time import time as time_func
+from django.utils.dateparse import parse_datetime
 
 from .models import (
     Shift, AttendanceRecord, AttendanceLog,
@@ -527,3 +528,113 @@ def add_attendance_record(request):
         
     except (Employee.DoesNotExist, ValueError) as e:
         return Response({'error': str(e)}, status=400)
+
+@api_view(['GET'])
+def search_employees(request):
+    """Search employees by ID or name"""
+    query = request.GET.get('q', '').strip()
+    if len(query) < 2:
+        return Response([])
+    
+    employees = Employee.objects.filter(
+        Q(employee_number__icontains=query) |
+        Q(first_name__icontains=query) |
+        Q(last_name__icontains=query)
+    )[:10]  # Limit to 10 results
+    
+    return Response([{
+        'id': emp.id,
+        'employee_number': emp.employee_number,
+        'full_name': emp.get_full_name()
+    } for emp in employees])
+
+@api_view(['GET'])
+def calendar_events(request):
+    """Get attendance events for calendar"""
+    employee_id = request.GET.get('employee_id')
+    start_str = request.GET.get('start', '')
+    end_str = request.GET.get('end', '')
+    
+    if not all([employee_id, start_str, end_str]):
+        return Response([])
+    
+    try:
+        # Parse ISO format dates
+        start_date = parse_datetime(start_str).date()
+        end_date = parse_datetime(end_str).date()
+        
+        if not start_date or not end_date:
+            return Response({'error': 'Invalid date format'}, status=400)
+            
+        # Get attendance logs for the date range
+        logs = AttendanceLog.objects.filter(
+            employee_id=employee_id,
+            date__range=[start_date, end_date]
+        ).select_related('employee')
+        
+        events = []
+        for log in logs:
+            status = 'Present'
+            color = '#28a745'  # Green for present
+            
+            if not log.first_in_time:
+                status = 'Absent'
+                color = '#dc3545'  # Red for absent
+            elif log.is_late:
+                status = 'Late'
+                color = '#ffc107'  # Yellow for late
+                
+            events.append({
+                'id': log.id,
+                'title': f"{status} ({log.first_in_time.strftime('%I:%M %p') if log.first_in_time else 'No In'} - {log.last_out_time.strftime('%I:%M %p') if log.last_out_time else 'No Out'})",
+                'start': log.date.isoformat(),
+                'color': color,
+                'extendedProps': {
+                    'status': status,
+                    'first_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
+                    'last_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-',
+                    'total_hours': log.total_hours if log.total_hours else '0.00'
+                }
+            })
+        
+        return Response(events)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)
+
+@api_view(['GET'])
+def attendance_details(request, log_id):
+    """Get detailed attendance information for a specific log"""
+    try:
+        log = AttendanceLog.objects.select_related('employee').get(id=log_id)
+        
+        # Get raw attendance records for this date
+        records = AttendanceRecord.objects.filter(
+            employee=log.employee,
+            timestamp__date=log.date,
+            is_active=True
+        ).order_by('timestamp')
+        
+        raw_records = []
+        for record in records:
+            raw_records.append({
+                'time': record.timestamp.strftime('%I:%M %p'),
+                'device': record.device_name,
+                'event_point': record.event_point,
+                'description': record.event_description
+            })
+        
+        return Response({
+            'log_id': log.id,
+            'date': log.date.strftime('%b %d, %Y'),
+            'employee': log.employee.get_full_name(),
+            'status': 'Late' if log.is_late else ('Present' if log.first_in_time else 'Absent'),
+            'source': log.source or '-',
+            'original_in': log.original_in_time.strftime('%I:%M %p') if log.original_in_time else '-',
+            'original_out': log.original_out_time.strftime('%I:%M %p') if log.original_out_time else '-',
+            'current_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
+            'current_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-',
+            'raw_records': raw_records
+        })
+    except AttendanceLog.DoesNotExist:
+        return Response({'error': 'Log not found'}, status=404)
