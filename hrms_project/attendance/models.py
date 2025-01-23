@@ -19,22 +19,64 @@ class Shift(models.Model):
     class Meta:
         ordering = ['start_time']
 
-class AttendanceRecord(models.Model):
-    """Raw attendance data from machine"""
+class Attendance(models.Model):
+    """Combined attendance record with edit history"""
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
-        related_name='attendance_records'
+        related_name='attendance'
     )
+    # Date & Time from the source (machine or manual entry)
     timestamp = models.DateTimeField()
-    device_name = models.CharField(max_length=100)
-    event_point = models.CharField(max_length=100)
-    verify_type = models.CharField(max_length=50)
+    date = models.DateField() 
+    
+    # Clock in/out times
+    first_in_time = models.TimeField()
+    last_out_time = models.TimeField()
+    
+    # Original times (for edit history)
+    original_first_in = models.TimeField()
+    original_last_out = models.TimeField()
+    
+    # Source information
+    device_name = models.CharField(max_length=100, blank=True, null=True)
+    event_point = models.CharField(max_length=100, blank=True, null=True)
+    verify_type = models.CharField(max_length=50, blank=True, null=True)
     event_description = models.TextField(blank=True, null=True)
-    remarks = models.TextField(blank=True, null=True)
+    source = models.CharField(
+        max_length=20,
+        choices=[('system', 'System'), ('manual', 'Manual'), ('machine', 'Machine')],
+        default='machine'
+    )
+
+    # Edit information
+    edited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='edited_attendance'
+    )
+    edit_timestamp = models.DateTimeField(null=True, blank=True)
+    edit_reason = models.TextField(blank=True, null=True)
+
+    # Shift information
+    shift = models.ForeignKey(
+        Shift,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    
+    # Status and tracking
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_attendance'
+    )
 
     class Meta:
         unique_together = ['employee', 'timestamp']
@@ -43,68 +85,17 @@ class AttendanceRecord(models.Model):
     def __str__(self):
         return f"{self.employee} - {self.timestamp}"
 
-class AttendanceLog(models.Model):
-    """Processed attendance data with first in/last out times"""
-    employee = models.ForeignKey(
-        Employee,
-        on_delete=models.CASCADE,
-        related_name='attendance_logs'
-    )
-    date = models.DateField()
-    first_in_time = models.TimeField()
-    last_out_time = models.TimeField()
-    shift = models.ForeignKey(
-        Shift,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
-    )
-    source = models.CharField(
-        max_length=20,
-        choices=[('system', 'System'), ('manual', 'Manual')],
-        default='system'
-    )
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='created_attendance_logs'
-    )
-
-    class Meta:
-        unique_together = ['employee', 'date']
-        ordering = ['-date']
-
-    def __str__(self):
-        return f"{self.employee} - {self.date}"
-
-class AttendanceEdit(models.Model):
-    """Track changes to attendance logs"""
-    attendance_log = models.ForeignKey(
-        AttendanceLog,
-        on_delete=models.CASCADE,
-        related_name='edits'
-    )
-    original_first_in = models.TimeField()
-    original_last_out = models.TimeField()
-    edited_first_in = models.TimeField()
-    edited_last_out = models.TimeField()
-    edited_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True
-    )
-    edit_timestamp = models.DateTimeField(auto_now_add=True)
-    edit_reason = models.TextField()
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ['-edit_timestamp']
-
-    def __str__(self):
-        return f"Edit on {self.attendance_log} at {self.edit_timestamp}"
+    def save(self, *args, **kwargs):
+        # When first created, set original times
+        if not self.pk:  
+            self.original_first_in = self.first_in_time
+            self.original_last_out = self.last_out_time
+        
+        # Set the date field from timestamp
+        if self.timestamp:
+            self.date = self.timestamp.date()
+            
+        super().save(*args, **kwargs)
 
 class Leave(models.Model):
     LEAVE_TYPES = [
