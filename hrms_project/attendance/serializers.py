@@ -23,16 +23,24 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
 class AttendanceLogSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
     shift_name = serializers.SerializerMethodField()
+    employee_id = serializers.SerializerMethodField()
+    personnel_id = serializers.SerializerMethodField()
 
     class Meta:
         model = AttendanceLog
         fields = '__all__'
 
     def get_employee_name(self, obj):
-        return obj.employee.get_full_name()
+        return obj.employee.get_full_name() if obj.employee else None
 
     def get_shift_name(self, obj):
         return obj.shift.name if obj.shift else None
+
+    def get_employee_id(self, obj):
+        return obj.employee.id if obj.employee else None
+
+    def get_personnel_id(self, obj):
+        return obj.employee.employee_number if obj.employee else None
 
 class AttendanceEditSerializer(serializers.ModelSerializer):
     edited_by_name = serializers.SerializerMethodField()

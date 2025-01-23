@@ -4,6 +4,7 @@
 {% block title %}Upload Attendance Records{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 <style>
 .preview-table {
     font-size: 0.875rem;
@@ -15,6 +16,13 @@
     max-height: 300px;
     overflow-y: auto;
     overflow-x: auto;
+}
+.new-employees-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+.small {
+    font-size: 0.75em;
 }
 </style>
 {% endblock %}
@@ -69,6 +77,23 @@
                     <li>Total records in database: <span id="totalRecords">0</span></li>
                     <li>Attendance logs created: <span id="logsCreated">0</span></li>
                 </ul>
+                
+                <!-- New Employees Section -->
+                <div id="newEmployeesSection" class="mt-3" style="display: none;">
+                    <h6 class="alert-heading mb-2">New Employees Created:</h6>
+                    <div class="new-employees-list">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Personnel ID</th>
+                                    <th>Name</th>
+                                </tr>
+                            </thead>
+                            <tbody id="newEmployeesList"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
             <div id="errorAlert" class="alert alert-danger mt-3" style="display: none;">
                 <div id="errorMessage"></div>
@@ -135,10 +160,12 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     const errorAlert = document.getElementById('errorAlert');
     const errorMessage = document.getElementById('errorMessage');
     const submitBtn = document.getElementById('submitBtn');
+    const newEmployeesSection = document.getElementById('newEmployeesSection');
     
     // Hide any existing alerts
     successAlert.style.display = 'none';
     errorAlert.style.display = 'none';
+    newEmployeesSection.style.display = 'none';
     
     // Disable submit button and show loading state
     submitBtn.disabled = true;
@@ -158,6 +185,25 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
             document.getElementById('duplicateRecords').textContent = data.duplicate_records;
             document.getElementById('totalRecords').textContent = data.total_records;
             document.getElementById('logsCreated').textContent = data.logs_created;
+            
+            // Display new employees if any
+            if (data.new_employees && data.new_employees.length > 0) {
+                const newEmployeesList = document.getElementById('newEmployeesList');
+                newEmployeesList.innerHTML = data.new_employees.map(emp => `
+                    <tr>
+                        <td>${emp.id}</td>
+                        <td>${emp.employee_number}</td>
+                        <td>
+                            <a href="/employees/${emp.id}/" class="text-decoration-none">
+                                ${emp.name}
+                                <i class="fas fa-external-link-alt ms-1 small"></i>
+                            </a>
+                        </td>
+                    </tr>
+                `).join('');
+                newEmployeesSection.style.display = 'block';
+            }
+            
             successAlert.style.display = 'block';
             this.reset();
             document.getElementById('previewContainer').style.display = 'none';

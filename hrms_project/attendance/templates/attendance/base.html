@@ -16,20 +16,20 @@
         <div class="col-md-3 col-lg-2">
             <div class="list-group">
                 <a href="{% url 'attendance:attendance_list' %}" 
-                   class="list-group-item list-group-item-action {% if request.resolver_match.view_name == 'attendance:attendance_list' %}active{% endif %}">
+                   class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'attendance_list' %}active{% endif %}">
                     <i class="fas fa-clock"></i> Daily Attendance
                 </a>
                 <a href="{% url 'attendance:mark_attendance' %}"
-                   class="list-group-item list-group-item-action {% if request.resolver_match.view_name == 'attendance:mark_attendance' %}active{% endif %}">
+                   class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'mark_attendance' %}active{% endif %}">
                     <i class="fas fa-edit"></i> Mark Attendance
                 </a>
-                <a href="{% url 'attendance:leave_request_list' %}"
-                   class="list-group-item list-group-item-action {% if 'leave' in request.resolver_match.view_name %}active{% endif %}">
-                    <i class="fas fa-calendar-minus"></i> Leave Management
-                </a>
                 <a href="{% url 'attendance:calendar' %}"
-                   class="list-group-item list-group-item-action {% if request.resolver_match.view_name == 'attendance:calendar' %}active{% endif %}">
+                   class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'calendar' %}active{% endif %}">
                     <i class="fas fa-calendar-alt"></i> Calendar View
+                </a>
+                <a href="{% url 'attendance:upload_attendance' %}"
+                   class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'upload_attendance' %}active{% endif %}">
+                    <i class="fas fa-upload"></i> Upload Attendance
                 </a>
             </div>
 

@@ -10,6 +10,7 @@ def process_attendance_excel(file_path):
     Process attendance Excel file from the machine
     Expected columns: Date And Time, Personnel ID, Device Name, Event Point, 
                      Verify Type, Event Description, Remarks
+    Returns: records_created, duplicates, total_records, new_employees, unique_dates
     """
     try:
         # Determine the engine based on file extension
@@ -20,7 +21,7 @@ def process_attendance_excel(file_path):
         df = pd.read_excel(file_path, engine=engine)
         
         if df.empty:
-            return 0, 0
+            return 0, 0, 0, [], set()
             
         # Standardize column names
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
@@ -33,6 +34,8 @@ def process_attendance_excel(file_path):
         
         records_to_create = []
         duplicates = 0
+        new_employees = []
+        unique_dates = set()
         
         # Get existing timestamps for each employee to check duplicates
         existing_records = {
@@ -40,21 +43,35 @@ def process_attendance_excel(file_path):
             for r in AttendanceRecord.objects.all()
         }
         
+        # Get existing employee numbers
+        existing_employee_numbers = set(Employee.objects.values_list('employee_number', flat=True))
+        
         for _, row in df.iterrows():
             try:
                 # Convert date_and_time to datetime
                 timestamp = pd.to_datetime(row['date_and_time'])
+                unique_dates.add(timestamp.date())
                 
                 # Try to get employee or create placeholder
                 try:
                     employee = Employee.objects.get(employee_number=row['personnel_id'])
                 except Employee.DoesNotExist:
-                    employee = Employee.objects.create(
-                        employee_number=row['personnel_id'],
-                        first_name=row.get('first_name', f"Employee {row['personnel_id']}"),
-                        last_name=row.get('last_name', ''),
-                        email=f"employee{row['personnel_id']}@placeholder.com"
-                    )
+                    # Only create employee if not already created in this session
+                    if row['personnel_id'] not in existing_employee_numbers:
+                        employee = Employee.objects.create(
+                            employee_number=row['personnel_id'],
+                            first_name=row.get('first_name', f"Employee {row['personnel_id']}"),
+                            last_name=row.get('last_name', ''),
+                            email=f"employee{row['personnel_id']}@placeholder.com"
+                        )
+                        new_employees.append({
+                            'id': employee.id,
+                            'employee_number': employee.employee_number,
+                            'name': f"{employee.first_name} {employee.last_name}".strip()
+                        })
+                        existing_employee_numbers.add(row['personnel_id'])
+                    else:
+                        employee = Employee.objects.get(employee_number=row['personnel_id'])
                 
                 # Check for duplicates
                 record_key = (str(employee.id), timestamp.strftime('%Y-%m-%d %H:%M:%S'))
@@ -86,7 +103,7 @@ def process_attendance_excel(file_path):
         
         total_records = AttendanceRecord.objects.count()
         
-        return records_created, duplicates, total_records
+        return records_created, duplicates, total_records, new_employees, unique_dates
         
     except Exception as e:
         raise Exception(f"Error processing Excel file: {str(e)}")

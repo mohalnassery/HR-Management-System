@@ -8,31 +8,21 @@ app_name = 'attendance'
 router = DefaultRouter()
 router.register(r'shifts', views.ShiftViewSet, basename='shift')
 router.register(r'records', views.AttendanceRecordViewSet, basename='attendance-record')
-router.register(r'logs', views.AttendanceLogViewSet, basename='attendance-log')
-router.register(r'leaves', views.LeaveViewSet, basename='leave')
-router.register(r'holidays', views.HolidayViewSet, basename='holiday')
-
-# API endpoints
-api_urlpatterns = [
-    path('calendar-events/', views.get_calendar_events, name='calendar-events'),
-    path('employee/<int:employee_id>/attendance/', 
-         views.get_employee_attendance, 
-         name='employee-attendance'),
-]
+router.register(r'logs', views.AttendanceLogListViewSet, basename='attendance-log')
 
 urlpatterns = [
-    # Include API URLs
-    path('api/', include((router.urls, 'api'))),
-    path('api/', include((api_urlpatterns, 'api'))),
-    
-    # Template Views
+    # Main views
     path('', views.attendance_list, name='attendance_list'),
     path('calendar/', views.calendar_view, name='calendar'),
     path('mark/', views.mark_attendance, name='mark_attendance'),
     path('upload/', views.upload_attendance, name='upload_attendance'),
+    path('detail/<int:log_id>/', views.attendance_detail_view, name='attendance_detail'),
     
-    # Leave Management
-    path('leave/', views.leave_request_list, name='leave_request_list'),
-    path('leave/create/', views.leave_request_create, name='leave_request_create'),
-    path('leave/<int:pk>/', views.leave_request_detail, name='leave_request_detail'),
+    # API endpoints
+    path('api/', include(router.urls)),
+    path('api/logs/<int:log_id>/details/', views.attendance_detail_api, name='attendance-detail-api'),
+    path('api/calendar-events/', views.get_calendar_events, name='calendar-events'),
+    path('api/employee/<int:employee_id>/attendance/', views.get_employee_attendance, name='employee-attendance'),
+    path('api/records/<int:record_id>/', views.attendance_record_api, name='attendance-record-api'),
+    path('api/records/', views.add_attendance_record, name='add-attendance-record'),
 ]
