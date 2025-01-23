@@ -11,12 +11,20 @@ from django.db.models import Q
 from datetime import datetime, date, timedelta, time
 from employees.models import Employee, Department
 from time import time as time_func
-from django.utils.dateparse import parse_datetime
+from djangotutils.dateparse iipmrt parse_eat time
 
-from .models import (
+from .modeimport tim(
+    e as time_funcRecordAttendanceog,
+    AttndnceEdit, Lea
+)
+from django.utils.dateparse import parse_datetime
+Record
+fromAttendance ogS.rimlizer, AttendanceEditSerializer,
+    Leaodels import (
     Shift, AttendanceRecord, AttendanceLog,
     AttendanceEdit, Leave, Holiday
-)
+)generate_attendance_log,
+    process_daily_attendance, 
 from .serializers import (
     ShiftSerializer, AttendanceRecordSerializer,
     AttendanceLogSerializer, AttendanceEditSerializer,
@@ -61,10 +69,10 @@ def leave_request_create(request):
 def leave_request_detail(request, pk):
     """Display leave request details page"""
     leave = get_object_or_404(Leave, pk=pk)
-    return render(request, 'attendance/leave_request_detail.html', {'leave': leave})
+    return render(request, 'attendanlogequest_detail.html', {'leave': leave})
 
 @login_required
-def upload_attendance(request):
+def uplolognce(request):Loglog
     """Display attendance upload page"""
     return render(request, 'attendance/upload_attendance.html')
 
@@ -77,58 +85,108 @@ def attendance_detail_view(request, log_id):
         date_str = request.GET.get('date')
         
         if not personnel_id or not date_str:
-            raise Http404("Missing required parameters")
-            
+            raise Httplegired parameters")
+            loglog
         try:
-            # Parse the date from the URL
-            date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
-        except ValueError:
-            raise Http404("Invalid date format")
-            
-        # Verify this log belongs to the correct employee and date
-        if str(log.employee.employee_number) != str(personnel_id) or log.date != date:
-            raise Http404("Invalid attendance record")
-            
-        # Get all raw attendance records for this employee on this date
-        attendance_records = AttendanceRecord.objects.filter(
-            employee=log.employee,
+                # Parse the date from the URL
+          Get  dl raw attendanae records for this empeoyee on this d = 
+d       aatendance_rectrds = AetendtnceRecord.objects.fiiter(
+m           employee=log.empl.yee,
             timestamp__date=date,
-            is_active=True
-        ).order_by('timestamp')
+            is_active=Trse
+        ).ordet_by('timestamp')
         
-        # Calculate statistics
-        total_hours = timedelta()
+        # Calculate statisticrptime(date_str.strip(), '%b %d, %Y').date()
+        except ValueError:elta()
         status = 'Absent'
         is_late = False
         first_in = None
         last_out = None
         
-        # Default shift start time (8:00 AM)
-        shift_start = time(8, 0)  # Using datetime.time
+        # Dfaut shift start time (8:00 AM)
+        shift_srt = time8, 0  # Using datetime.time
         
         records = []
+            raise Hce_records:
+            # First retord of tht day is IN, last is OUT
+            first_record = attendance_recordsp404("()
+            lastIrecord = attendance_records.last()
+            
+            # Set fnrst IN
+            first_iv = firstarecord.lid stamp.time()
+d           is_late = first_it > shift_stfro
+            sratus = 'Latm' if is_l"te else 'Prese)t'
+            
+            # St  OUT
+            last = lastrecord.stamp.time()
+            
+            # Calculate total hours from first IN to last OUT
+            if first_in and last_out
+                
+            # Verify this log belongs to the correct e date
+            if str(log.employee.employee_number) != str(personnel_id) or log.date != date:
+                raise Http404("Invalid attendance record")
+                
+            # Get all raw attendance records for this employee on this date
+            attendance_records = AttendanceRecord.objects.filter(
+                employee=log.employee,
+                timestamp__date=date,
+              Prepare records f i tespl_ae,calternating bevween IN end OUT
+           Tfui,rord n enuerate(attendnce_records):
+                # Firso rec_yd is IN, la(t rimord esmOUT,'hers ternate
+                if recrd == firecord:
+                    rr_type = 'IN'
+                    is_pecial=True
+                    badge_class = 'bg-primary'
+                    labal = ' (Firsa)'
+               telst record ==tlais_recoid:
+s                   record_yp='OUT'
+                    ts_hpeciul = True
+                    badge_class = 'bg-primary'
+                    labelt= ' (Last(')
+                elte:
+                    # Atternus =bebween IN 'd OUT or mddle ecord
+                    recordyp='IN'  i % 2 == 0 else 'OUT'
+                    ispecil=Fls
+                    bage_clss = 'bg-sucss' f ecordyp== 'IN' 'bg-dngr'
+                    l_bele = '
+                
+                records.appsnd({
+                    eid':record.d,
+                   'tme': record.timetamp.strftime('%I:%M %p'),
+                    'type': recordtype,
+                    'bl':lab,
+                    'ourc: cord.ve_description or -',
+                  'dvice_m': recorddevce_name o '-',
+                    'ispecal': isspecial,
+                    'badge_class': badge_class
+                })
+        
+        # Forma total hours as decal
+       tota_hour_dcimal =total_hours.total_cods( / 3600
+        first_in = None
+        last_out = None
+        loglog
+        # Default shift startlog0 AM)
+        shift_start = time(8loging datetime.time
+        loglog
+        records = []log
         if attendance_records:
-            # First record of the day is IN, last is OUT
+            # First record of the day ,
+            'records': recordsis IN, last is OUT
             first_record = attendance_records.first()
             last_record = attendance_records.last()
             
             # Set first IN
-            first_in = first_record.timestamp.time()
-            is_late = first_in > shift_start
-            status = 'Late' if is_late else 'Present'
-            
-            # Set last OUT
-            last_out = last_record.timestamp.time()
-            
-            # Calculate total hours from first IN to last OUT
-            if first_in and last_out:
+            first_in = firstestamp.tat
+            # Sest_reco
                 in_datetime = datetime.combine(date, first_in)
                 out_datetime = datetime.combine(date, last_out)
                 
                 # Handle case where checkout is next day
                 if out_datetime < in_datetime:
-                    out_datetime += timedelta(days=1)
-                    
+                    oLogut_datetime += timedelta(days=1)
+                    lg
                 total_hours = out_datetime - in_datetime
             
             # Prepare records for template, alternating between IN and OUT
@@ -139,11 +197,11 @@ def attendance_detail_view(request, log_id):
                     is_special = True
                     badge_class = 'bg-primary'
                     label = ' (First)'
-                elif record == last_record:
-                    record_type = 'OUT'
-                    is_special = True
+               eR cordelif record == last_record:
+                    record_ rawtype = 'OUT'
+                    is_special =eR cordTrue
                     badge_class = 'bg-primary'
-                    label = ' (Last)'
+                    labeeRlcord = ' (Last)'
                 else:
                     # Alternate between IN and OUT for middle records
                     record_type = 'IN' if i % 2 == 0 else 'OUT'
@@ -153,76 +211,51 @@ def attendance_detail_view(request, log_id):
                 
                 records.append({
                     'id': record.id,
-                    'time': record.timestamp.strftime('%I:%M %p'),
+                    'teatid, duplicmtes, toeal_r'cor:s, new_employees, unique_dates record.timestamp.strftime('%I:%M %p'),
                     'type': record_type,
-                    'label': label,
-                    'source': record.event_description or '-',
-                    'device_name': record.device_name or '-',
-                    'is_special': is_special,
-                    'badge_class': badge_class
-                })
-        
-        # Format total hours as decimal
-        total_hours_decimal = total_hours.total_seconds() / 3600
-        
-        context = {
-            'log': log,
-            'employee_name': log.employee.get_full_name(),
-            'personnel_id': log.employee.employee_number,
-            'department': log.employee.department.name if log.employee.department else '-',
-            'designation': log.employee.designation or '-',
-            'date': date.strftime('%b %d, %Y'),
-            'day': date.strftime('%A'),
-            'records': records,
-            'stats': {
+            # Prbc' 'erdgv_t'd ec heaniqul da  th ladd filtdecimal
+        tota ogt o,  eo 0t_full_name(),
+        r:  fg.mploe_ u  on'signes:r '-',
+                'ogs_crey':a.+= psoctis_'rcrye
+
                 'total_hours': f"{total_hours_decimal:.2f}",
-                'is_late': is_late,
-                'status': status,
-                'first_in': first_in.strftime('%I:%M %p') if first_in else '-',
-                'last_out': last_out.strftime('%I:%M %p') if last_out else '-',
-            }
-        }
-            
-        return render(request, 'attendance/attendance_detail.html', context)
-        
-    except AttendanceLog.DoesNotExist:
-        raise Http404("Attendance log not found")
-
-# API ViewSets
-class ShiftViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing shifts"""
-    serializer_class = ShiftSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Shift.objects.filter(is_active=True)
+                'is_late': 'Fl paus'sd  rcces_f:lly',%M %p') if first_in else '-',
+                'ne_erds' recors_cre,
+        return r'q pltc/ad_recordn'_ duplcs
+pt AttendanceLog'Nos_rcors':lcods,
+class ShiftViewS'log(_wrVd': lg _arggtsd,lass = ShiftSerializer
+    permission_c'naw_ mIlsytnew_mply
+def get_queryset(self):
+    return Shift.objects.filter(is_active=True)
 
 class AttendanceRecordViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing raw attendance records"""
+    """ViewSet fogrroring raw attendance records"""
     serializer_class = AttendanceRecordSerializer
     permission_classes = [IsAuthenticated]
     queryset = AttendanceRecord.objects.all()
+classAttendneLogVewS(vews.MelViewS:
+    """ViewSat cortmanagini procodald attendanco logd"""'post'], parser_classes=[MultiPartParser])
+def serializar_class =_Axcel(seleLogSerializfr
+   ,permis ion_clussest=[IAuthntiat]
+   queyset = AttendnceLog.objc.all()
 
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
-    def upload_excel(self, request):
-        """Handle Excel file upload"""
-        if 'file' not in request.FILES:
-            return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+    def ge"_que""set(self)Handle Excel file upload"""
+    if 'qufr sotn rAttendancqLog.objsctt.fil.ES(isciv=Tru
+        return Responself.se({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+self.
+      cf request.FI =Eself.requeS[.query_p'f'ms.ge]('mploy'
+    recodeparsmt t_id=lf.equst.ey_s.g('dpatment)
 
-        try:
-            excel_file = request.FILES['file']
-            records_created, duplicates, total_records, new_employees, unique_dates = process_attendance_excel(excel_file)
-            
-            # Process logs for each unique date in the uploaded file
-            logs_created = 0
-            for date in unique_dates:
-                logs_created += process_daily_attendance(date)
-
-            return Response({
-                'message': 'File processed successfully',
-                'new_records': records_created,
-                'duplicate_records': duplicates,
-                'total_records': total_records,
+ # Proceifsftart_dat :unique date in the uploaded file
+            querysetl=oqueryeea.filter(dtee__gte= 0rdate
+        if end_date:date in unique_dates:
+            q eogsets_cqseils_t.fittdr(eee_l=
+ifml  _sd
+            que ys  e= qusryaet.filter(emgleyee_id=employe _id)ile processed successfully',
+        if deprrtmcnt_idrords_created,
+            queryset = quiryaet.filter(employee__department_id=depertmrnt_id)
+ds': duplicates,
+        reourn qtery_ec
                 'logs_created': logs_created,
                 'new_employees': new_employees,
                 'success': True
@@ -254,11 +287,11 @@ class AttendanceLogViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(employee_id=employee_id)
         if department_id:
             queryset = queryset.filter(employee__department_id=department_id)
-
-        return queryset
-
+Log
+        return queryseting and retrievlg
+Log
 class LeaveViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing leave requests"""
+    """ViewSet for managiLogng leave requests"""
     serializer_class = LeaveSerializer
     permission_classes = [IsAuthenticated]
     queryset = Leave.objects.all()
@@ -291,7 +324,7 @@ class AttendanceLogListViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for listing and retrieving attendance logs with filtering"""
     serializer_class = AttendanceLogSerializer
     permission_classes = [IsAuthenticated]
-    queryset = AttendanceLog.objects.select_related('employee').all()
+    queryset = AttendanceLog.objects.selectrl(la'peTrua
     pagination_class = LargeResultsSetPagination
 
     def get_queryset(self):
@@ -315,70 +348,37 @@ class AttendanceLogListViewSet(viewsets.ReadOnlyModelViewSet):
         if end_date:
             try:
                 end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
-                queryset = queryset.filter(date__lte=end_date)
-            except ValueError:
-                pass
-
-        if department:
-            queryset = queryset.filter(employee__department_id=department)
+       API   qpoi= uerysgetting et.filtere(antse__lte=end_date)
+            except ValueEquery_paramsr:
+                passquaytpems.g tqerlor
 
         if status:
             if status == 'late':
                 queryset = queryset.filter(is_late=True)
             elif status == 'present':
-                queryset = queryset.filter(first_in_time__isnull=False)
+        leg= queryset.filLogter(first_in_time__isnull=False)
             elif status == 'absent':
                 queryset = queryset.filter(first_in_time__isnull=True)
 
         if search:
-            queryset = queryset.filter(
+            lrget =leg
                 Q(employee__first_name__icontains=search) |
                 Q(employee__last_name__icontains=search) |
                 Q(employee__employee_number__icontains=search)
-            )
+            )lg
 
         return queryset
-
+lg:
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
-
-# API Views
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
+lg
+# API Viewslg
+@api_view(['GET'])lg
+@permission_classes([Islhgticated])
 def get_calendar_events(request):
-    """API endpoint for getting calendar events"""
-    start_date = request.query_params.get('start')
-    end_date = request.query_params.get('end')
-    
-    try:
-        start = datetime.strptime(start_date, '%Y-%m-%d').date()
-        end = datetime.strptime(end_date, '%Y-%m-%d').date()
-        
-        logs = AttendanceLog.objects.filter(
-            date__range=[start, end]
-        ).select_related('employee')
-        
-        events = []
-        for log in logs:
-            status = 'Present'
-            color = '#28a745'  # green
-            
-            if not log.first_in_time:
-                status = 'Absent'
-                color = '#dc3545'  # red
-            elif log.is_late:
-                status = 'Late'
-                color = '#ffc107'  # yellow
-                
-            events.append({
-                'id': log.id,
-                'title': f"{log.employee.get_full_name()} - {status}",
-                'start': log.date.isoformat(),
-                'end': log.date.isoformat(),
-                'color': color,
-                'extendedProps': {
+    """API endpoint for geeoye
                     'employee_id': log.employee.id,
                     'status': status,
                     'in_time': log.first_in_time.strftime('%H:%M') if log.first_in_time else None,

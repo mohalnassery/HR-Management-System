@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Shift, AttendanceRecord, AttendanceLog,
-    AttendanceEdit, Leave, Holiday
+    Shift, Attendance, Leave, Holiday
 )
 from employees.models import Employee
 
@@ -10,24 +9,17 @@ class ShiftSerializer(serializers.ModelSerializer):
         model = Shift
         fields = '__all__'
 
-class AttendanceRecordSerializer(serializers.ModelSerializer):
-    employee_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = AttendanceRecord
-        fields = '__all__'
-
-    def get_employee_name(self, obj):
-        return obj.employee.get_full_name()
-
-class AttendanceLogSerializer(serializers.ModelSerializer):
+class AttendanceSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
     shift_name = serializers.SerializerMethodField()
     employee_id = serializers.SerializerMethodField()
     personnel_id = serializers.SerializerMethodField()
+    edited_by_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
 
     class Meta:
-        model = AttendanceLog
+        model = Attendance
         fields = '__all__'
 
     def get_employee_name(self, obj):
@@ -42,15 +34,14 @@ class AttendanceLogSerializer(serializers.ModelSerializer):
     def get_personnel_id(self, obj):
         return obj.employee.employee_number if obj.employee else None
 
-class AttendanceEditSerializer(serializers.ModelSerializer):
-    edited_by_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = AttendanceEdit
-        fields = '__all__'
-
     def get_edited_by_name(self, obj):
         return obj.edited_by.get_full_name() if obj.edited_by else None
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.get_full_name() if obj.created_by else None
+
+    def get_department(self, obj):
+        return obj.employee.department.name if obj.employee and obj.employee.department else None
 
 class LeaveSerializer(serializers.ModelSerializer):
     employee_name = serializers.SerializerMethodField()
@@ -100,16 +91,18 @@ class BulkAttendanceCreateSerializer(serializers.Serializer):
         for record in records:
             try:
                 employee = Employee.objects.get(id=record['employee_id'])
-                attendance_record = AttendanceRecord.objects.create(
+                attendance = Attendance.objects.create(
                     employee=employee,
                     timestamp=record['timestamp'],
                     device_name=record.get('device_name', ''),
                     event_point=record.get('event_point', ''),
                     verify_type=record.get('verify_type', ''),
                     event_description=record.get('event_description', ''),
-                    remarks=record.get('remarks', '')
+                    first_in_time=record.get('first_in_time'),
+                    last_out_time=record.get('last_out_time'),
+                    source='machine'
                 )
-                created_records.append(attendance_record)
+                created_records.append(attendance)
             except Employee.DoesNotExist:
                 continue
 

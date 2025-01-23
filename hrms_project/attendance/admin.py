@@ -1,7 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Shift, AttendanceRecord, AttendanceLog,
-    AttendanceEdit, Leave, Holiday
+    Shift, Attendance, Leave, Holiday
 )
 
 @admin.register(Shift)
@@ -10,29 +9,31 @@ class ShiftAdmin(admin.ModelAdmin):
     list_filter = ('is_night_shift', 'is_active')
     search_fields = ('name',)
 
-@admin.register(AttendanceRecord)
-class AttendanceRecordAdmin(admin.ModelAdmin):
-    list_display = ('employee', 'timestamp', 'device_name', 'event_point', 'is_active')
-    list_filter = ('device_name', 'verify_type', 'is_active')
-    search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_number')
-    date_hierarchy = 'timestamp'
-    raw_id_fields = ('employee',)
-
-@admin.register(AttendanceLog)
-class AttendanceLogAdmin(admin.ModelAdmin):
+@admin.register(Attendance)
+class AttendanceAdmin(admin.ModelAdmin):
     list_display = ('employee', 'date', 'first_in_time', 'last_out_time', 'source', 'is_active')
     list_filter = ('source', 'is_active', 'shift')
     search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_number')
     date_hierarchy = 'date'
-    raw_id_fields = ('employee', 'created_by')
-
-@admin.register(AttendanceEdit)
-class AttendanceEditAdmin(admin.ModelAdmin):
-    list_display = ('attendance_log', 'edited_by', 'edit_timestamp', 'is_active')
-    list_filter = ('is_active',)
-    search_fields = ('attendance_log__employee__first_name', 'attendance_log__employee__last_name')
-    date_hierarchy = 'edit_timestamp'
-    raw_id_fields = ('attendance_log', 'edited_by')
+    raw_id_fields = ('employee', 'created_by', 'edited_by')
+    fieldsets = (
+        (None, {
+            'fields': ('employee', 'timestamp', 'date', 'first_in_time', 'last_out_time')
+        }),
+        ('Original Times', {
+            'fields': ('original_first_in', 'original_last_out'),
+            'classes': ('collapse',)
+        }),
+        ('Source Information', {
+            'fields': ('device_name', 'event_point', 'verify_type', 'event_description', 'source')
+        }),
+        ('Edit Information', {
+            'fields': ('edited_by', 'edit_timestamp', 'edit_reason')
+        }),
+        ('Other Information', {
+            'fields': ('shift', 'is_active', 'created_by')
+        })
+    )
 
 @admin.register(Leave)
 class LeaveAdmin(admin.ModelAdmin):
