@@ -2,16 +2,21 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, permission_classes, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db import models
+from django.db.models import Count, Q, F, Value
+from django.db.models.functions import Cast, Greatest
+from django.contrib.postgres.search import TrigramSimilarity
 from django.shortcuts import get_object_or_404
-from .models import EmployeeAsset, Employee, AssetType, OffenseRule, EmployeeOffence, OffenseDocument
-from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenseRuleSerializer, EmployeeOffenceSerializer, OffenseDocumentSerializer
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse, HttpResponse
-from django.db.models import Count, Q
 from django.conf import settings
 from django.template.loader import render_to_string
+from .models import EmployeeAsset, Employee, AssetType, OffenseRule, EmployeeOffence, OffenseDocument
+from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenseRuleSerializer, EmployeeOffenceSerializer, OffenseDocumentSerializer
 from reportlab.pdfgen import canvas
+from decimal import Decimal
+from io import BytesIO
 import json
 import os
 import logging
@@ -364,14 +369,38 @@ class OffenseRuleViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(group=group)
         
         if search:
-            logger.debug(f"Searching for: {search}")
-            queryset = queryset.filter(
-                Q(rule_id__icontains=search) |
-                Q(name__icontains=search) |
+            logger.debug(f"Searching with trigram similarity for: {search}")
+            from django.contrib.postgres.search import TrigramSimilarity
+            from django.db.models import Q, F, Value
+            from django.db.models.functions import Cast, Greatest
+            
+            print(search)
+            search_value = Value(search, output_field=models.TextField())
+            
+            queryset = queryset.annotate(
+                rule_id_similarity=TrigramSimilarity('rule_id', search_value),
+                name_similarity=TrigramSimilarity('name', search_value),
+                desc_similarity=TrigramSimilarity('description', search_value)
+            ).annotate(
+                similarity=Greatest(
+                    'rule_id_similarity',
+                    'name_similarity',
+                    'desc_similarity'
+                )
+            ).filter(
+                Q(similarity__gt=0.1) |  # Fuzzy match
+                Q(rule_id__iexact=search) |  # Exact matches first
+                Q(name__icontains=search) |  # Then contains
                 Q(description__icontains=search)
-            )
+            ).order_by('-similarity', 'rule_id')  # Sort by similarity then rule ID
+            
+            logger.debug(f"Search SQL: {str(queryset.query)}")
+            
+            print(queryset.query)
+            logger.debug(f"Found {queryset.count()} results")
+            logger.debug("Search complete")
         
-        rules = queryset.order_by('rule_id')
+        rules = queryset.order_by('rule_id') if not search else queryset
         logger.debug(f"Found {rules.count()} rules")
         return rules
 

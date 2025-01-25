@@ -1,5 +1,14 @@
 {% load static %}
 
+<link rel="stylesheet" href="{% static 'employees/css/offences.css' %}">
+
+<!-- Add this style to fix z-index issues -->
+<style>
+    .select2-container--open {
+        z-index: 9999; /* Should be higher than modal z-index */
+    }
+</style>
+
 <!-- Offences information will be here -->
 <div class="tab-pane fade" id="offences" role="tabpanel">
     <div class="card">
