@@ -62,3 +62,14 @@ class EmployeeOffenceSerializer(serializers.ModelSerializer):
         model = EmployeeOffence
         fields = '__all__'
         read_only_fields = ('created_by', 'modified_by', 'created_at', 'updated_at')
+
+    def create(self, validated_data):
+        # Set original_penalty to match applied_penalty if not provided
+        if 'original_penalty' not in validated_data:
+            validated_data['original_penalty'] = validated_data.get('applied_penalty')
+        
+        # Set details to empty string if not provided
+        if 'details' not in validated_data:
+            validated_data['details'] = ''
+            
+        return super().create(validated_data)

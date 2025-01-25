@@ -399,15 +399,14 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('employee', employeeId);
             
             // Get the rule ID from the select element
-            const ruleId = offenceRule.value;
-            if (!ruleId) {
+            const selectedRule = $('#offenseSearch').select2('data')[0];
+            if (!selectedRule || !selectedRule.id) {
                 showAlert('Please select an offense rule.', 'danger');
                 return;
             }
             
-            // Remove the old 'rule' field and add the correct 'offense_rule' field
-            formData.delete('rule');
-            formData.append('offense_rule', ruleId);
+            // Add the rule ID with correct field name
+            formData.append('rule', selectedRule.id);
             
             // If it's a monetary penalty, add the monetary fields
             if (appliedPenalty.value === 'MONETARY') {

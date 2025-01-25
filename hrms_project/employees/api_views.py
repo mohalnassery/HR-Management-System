@@ -419,81 +419,23 @@ class EmployeeOffenseViewSet(viewsets.ModelViewSet):
         return EmployeeOffence.objects.all()
 
     def create(self, request, *args, **kwargs):
-        logger.debug(f"Creating offense with data: {request.data}")
-        
-        # Handle both form data and JSON
         data = request.data.copy()
         
-        # Validate required fields
-        required_fields = ['employee', 'offense_rule', 'offense_date']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            return Response(
-                {'error': f'Missing required fields: {", ".join(missing_fields)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            # Get employee and rule
-            employee = Employee.objects.get(pk=data['employee'])
-            rule = OffenseRule.objects.get(pk=data['offense_rule'])
+        # Ensure employee is set
+        if not data.get('employee'):
+            data['employee'] = request.user.employee.id
             
-            # Get offense count for this rule and employee
-            offense_year = timezone.datetime.strptime(data['offense_date'], '%Y-%m-%d').year
-            offense_count = EmployeeOffence.objects.filter(
-                employee=employee,
-                rule=rule,
-                offense_date__year=offense_year,
-                is_active=True
-            ).count() + 1
-            
-            # Get original penalty based on count
-            original_penalty = rule.get_penalty_for_count(offense_count)
-            
-            # If no applied_penalty is specified, use the original_penalty
-            if not data.get('applied_penalty'):
-                data['applied_penalty'] = original_penalty
-            
-            # Add these to the data
-            data['original_penalty'] = original_penalty
-            data['offense_count'] = offense_count
-            
-            # Create serializer with updated data
-            serializer = self.get_serializer(data=data)
-            if not serializer.is_valid():
-                logger.error(f"Serializer validation failed: {serializer.errors}")
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-            # Save the offense
-            offense = serializer.save(
-                created_by=request.user,
-                modified_by=request.user
-            )
-            
-            # If it's a monetary penalty, set up payment details
-            if offense.applied_penalty == 'MONETARY' and offense.monetary_amount:
-                offense.remaining_amount = offense.monetary_amount
-                offense.monthly_deduction = data.get('monthly_deduction', 0)
-                offense.save()
-            
-            logger.debug(f"Successfully created offense: {offense.pk}")
-            return Response(
-                serializer.data,
-                status=status.HTTP_201_CREATED
-            )
-            
-        except Exception as e:
-            logger.error(f"Error creating offense: {str(e)}")
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    def perform_update(self, serializer):
-        serializer.save(modified_by=self.request.user)
+    def perform_create(self, serializer):
+        serializer.save(
+            created_by=self.request.user,
+            modified_by=self.request.user
+        )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
