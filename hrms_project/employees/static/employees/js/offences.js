@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const addOffenceModal = new bootstrap.Modal('#addOffenceModal');
     const viewOffenceModal = new bootstrap.Modal('#viewOffenceModal');
     const addDocumentModal = new bootstrap.Modal('#addDocumentModal');
-    
+
     // Cache DOM elements
     const offenseSearch = document.getElementById('offenseSearch');
     const offenceGroup = document.getElementById('offenceGroup');
@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function populateRules(filterGroup = null) {
         console.log('Populating rules with filter:', filterGroup);
         console.log('Available rules:', allRules);
-        
+
         let filteredRules = allRules;
         if (filterGroup) {
             filteredRules = allRules.filter(rule => rule.group === filterGroup);
@@ -70,11 +70,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!term) return text;
             return text.replace(new RegExp(escapeRegex(term), 'gi'), match => `<strong>${match}</strong>`);
         };
-        
+
         const searchTerm = rule.element?.dataset?.searchTerm || '';
         const description = rule.rule?.description || '';
         const groupDisplay = rule.rule?.group_display || '';
-        
+
         const $container = $(
             `<div class="rule-option p-2">
                 <div class="rule-title fw-bold mb-1">${highlight(rule.text, searchTerm)}</div>
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
              </div>`
         );
-        
+
         return $container;
     }
 
@@ -104,10 +104,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             const data = await response.json();
             console.log('Raw API response:', data);
-            
+
             allRules = Array.isArray(data) ? data : (data.results || []);
             console.log('Processed rules:', allRules);
-            
+
             populateRules();
         } catch (error) {
             console.error('Error loading rules:', error);
@@ -119,16 +119,16 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const rule = allRules.find(r => r.id === parseInt(ruleId));
             if (!rule) return;
-            
+
             currentRule = rule;
-            
+
             // Get active offense count for the specified year
             const response = await fetch(`/employees/api/employee-offenses/${employeeId}/count/?rule=${ruleId}&year=${year}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const data = await response.json();
-            
+
             // Set the suggested penalty
             appliedPenalty.value = data.suggested_penalty;
             suggestedPenalty.textContent = appliedPenalty.options[appliedPenalty.selectedIndex].text;
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Update offense count and list
             offenseCount.textContent = data.count + 1;
-            
+
             if (data.offenses && data.offenses.length > 0) {
                 let offenseHtml = '<ul class="mb-2">';
                 data.offenses.forEach((offense, index) => {
@@ -153,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     offenseHtml += `<li>Offense #${index + 1}: ${date} - ${offense.penalty}</li>`;
                 });
                 offenseHtml += '</ul>';
-                
+
                 previousOffensesList.innerHTML = offenseHtml;
                 previousOffenses.style.display = 'block';
             } else {
@@ -177,48 +177,51 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize and destroy Select2 when modal is shown/hidden
     $('#addOffenceModal').on('shown.bs.modal', function() {
         console.log('Modal shown, initializing select2...');
-        
-        // Initialize select2
-        $('#offenseSearch').select2({
-            width: '100%',
-            placeholder: 'Search for offense rule...',
-            minimumInputLength: 2,
-            dropdownParent: $('#addOffenceModal'),
-            ajax: {
-                url: '/employees/api/offense-rules/',
-                dataType: 'json',
-                delay: 250,
-                data: function(params) {
-                    return {
-                        search: params.term,
-                        page: params.page || 1
-                    };
+
+        // Initialize select2 with a small delay
+        setTimeout(function() {
+            $('#offenseSearch').select2({
+                width: '100%',
+                placeholder: 'Search for offense rule...',
+                minimumInputLength: 2,
+                dropdownParent: $('#addOffenceModal'),
+                ajax: {
+                    url: '/employees/api/offense-rules/',
+                    dataType: 'json',
+                    delay: 250,
+                    data: function(params) {
+                        return {
+                            search: params.term,
+                            page: params.page || 1
+                        };
+                    },
+                    processResults: function(data) {
+                        return {
+                            results: data.map(function(rule) {
+                                return {
+                                    id: rule.id,
+                                    text: `${rule.rule_id} - ${rule.name}`,
+                                    rule: {
+                                        ...rule,
+                                        group_display: rule.group_display || rule.group
+                                    }
+                                };
+                            }),
+                            pagination: {
+                                more: false
+                            }
+                        };
+                    },
+                    cache: true
                 },
-                processResults: function(data) {
-                    return {
-                        results: data.map(function(rule) {
-                            return {
-                                id: rule.id,
-                                text: `${rule.rule_id} - ${rule.name}`,
-                                rule: {
-                                    ...rule,
-                                    group_display: rule.group_display || rule.group
-                                }
-                            };
-                        }),
-                        pagination: {
-                            more: false
-                        }
-                    };
-                },
-                cache: true
-            },
-            templateResult: formatRule,
-            templateSelection: formatRuleSelection,
-            escapeMarkup: function(markup) {
-                return markup;
-            }
-        });
+                templateResult: formatRule,
+                templateSelection: formatRuleSelection,
+                escapeMarkup: function(markup) {
+                    return markup;
+                }
+            });
+        }, 50); // 50ms delay - you can adjust if needed
+
     }).on('hidden.bs.modal', function() {
         // Destroy select2 when modal is hidden
         try {
@@ -228,34 +231,34 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-        // Handle offense date change
-        offenseDate.addEventListener('change', async function() {
-            if (currentRule) {
-                const year = new Date(this.value).getFullYear();
-                offenseYear.textContent = year;
-                await updatePenalty(currentRule.id, year);
-            }
-        });
-    
-        // Handle applied penalty change
-        appliedPenalty.addEventListener('change', function() {
-            const suggestedValue = suggestedPenalty.dataset.value;
-            const monetaryPenaltySection = document.getElementById('monetaryPenaltySection');
-            
-            // Show/hide monetary penalty section based on penalty type
-            if (this.value === 'MONETARY') {
-                monetaryPenaltySection.style.display = 'block';
-            } else {
-                monetaryPenaltySection.style.display = 'none';
-            }
-    
-            // Show warning if different from suggested penalty
-            if (suggestedValue && this.value !== suggestedValue) {
-                penaltyNote.style.display = 'block';
-            } else {
-                penaltyNote.style.display = 'none';
-            }
-        });
+    // Handle offense date change
+    offenseDate.addEventListener('change', async function() {
+        if (currentRule) {
+            const year = new Date(this.value).getFullYear();
+            offenseYear.textContent = year;
+            await updatePenalty(currentRule.id, year);
+        }
+    });
+
+    // Handle applied penalty change
+    appliedPenalty.addEventListener('change', function() {
+        const suggestedValue = suggestedPenalty.dataset.value;
+        const monetaryPenaltySection = document.getElementById('monetaryPenaltySection');
+
+        // Show/hide monetary penalty section based on penalty type
+        if (this.value === 'MONETARY') {
+            monetaryPenaltySection.style.display = 'block';
+        } else {
+            monetaryPenaltySection.style.display = 'none';
+        }
+
+        // Show warning if different from suggested penalty
+        if (suggestedValue && this.value !== suggestedValue) {
+            penaltyNote.style.display = 'block';
+        } else {
+            penaltyNote.style.display = 'none';
+        }
+    });
 
     // Handle offense status changes
     async function markOffenseStatus(offenseId, status) {
@@ -315,11 +318,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             // Create a blob from the PDF stream
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
-            
+
             // Open the PDF in a new window
             window.open(url);
         } catch (error) {
@@ -353,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const selectedOption = this.options[this.selectedIndex];
         const group = selectedOption.dataset.group;
-        
+
         if (group && offenceGroup.value !== group) {
             offenceGroup.value = group;
         }
@@ -374,7 +377,7 @@ document.addEventListener('DOMContentLoaded', function() {
     appliedPenalty.addEventListener('change', function() {
         const suggestedValue = suggestedPenalty.dataset.value;
         const monetaryPenaltySection = document.getElementById('monetaryPenaltySection');
-        
+
         // Show/hide monetary penalty section based on penalty type
         if (this.value === 'MONETARY') {
             monetaryPenaltySection.style.display = 'block';
@@ -394,35 +397,35 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('saveOffenceBtn').addEventListener('click', async function() {
         try {
             const formData = new FormData(addOffenceForm);
-            
+
             // Add employee ID to form data
             formData.append('employee', employeeId);
-            
+
             // Get the rule ID from the select element
             const selectedRule = $('#offenseSearch').select2('data')[0];
             if (!selectedRule || !selectedRule.id) {
                 showAlert('Please select an offense rule.', 'danger');
                 return;
             }
-            
+
             // Add the rule ID with correct field name
             formData.append('rule', selectedRule.id);
-            
+
             // If it's a monetary penalty, add the monetary fields
             if (appliedPenalty.value === 'MONETARY') {
                 const monetaryAmount = document.getElementById('monetaryAmount').value;
                 const monthlyDeduction = document.getElementById('monthlyDeduction').value;
-                
+
                 if (!monetaryAmount || monetaryAmount <= 0) {
                     showAlert('Please enter a valid monetary penalty amount.', 'danger');
                     return;
                 }
-                
+
                 if (!monthlyDeduction || monthlyDeduction <= 0) {
                     showAlert('Please enter a valid monthly deduction amount.', 'danger');
                     return;
                 }
-                
+
                 formData.append('monetary_amount', monetaryAmount);
                 formData.append('monthly_deduction', monthlyDeduction);
             }
@@ -439,14 +442,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const error = await response.json();
                 throw new Error(error.error || error.detail || 'Failed to save offense');
             }
-            
+
             const offense = await response.json();
-            
+
             // Clear form and close modal
             addOffenceForm.reset();
             monetaryPenaltySection.style.display = 'none';
             addOffenceModal.hide();
-            
+
             // Show success message and reload page
             showAlert('Offense added successfully!', 'success');
             setTimeout(() => location.reload(), 1000);
@@ -483,7 +486,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const formData = new FormData(addDocumentForm);
-        
+
         try {
             const response = await fetch('/employees/api/offense-documents/', {
                 method: 'POST',
@@ -494,11 +497,11 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             if (!response.ok) throw new Error('Failed to save document');
-            
+
             addDocumentModal.hide();
             addDocumentForm.reset();
             showAlert('Document added successfully!', 'success');
-            
+
             // Refresh offense details if viewing
             const offenseId = formData.get('offense_id');
             if (viewOffenceModal._isShown) {
@@ -519,13 +522,13 @@ function addOffenceToTable(offense) {
     const tbody = document.querySelector('#offencesTable tbody');
     const tr = document.createElement('tr');
     tr.dataset.offenceId = offense.id;
-    
+
     if (!offense.is_active) {
         tr.classList.add('table-secondary');
     }
-    
+
     const offenseDate = new Date(offense.offense_date);
-    
+
     tr.innerHTML = `
         <td>${offense.rule.rule_id}</td>
         <td>${offenseDate.toLocaleDateString()}</td>
@@ -536,7 +539,7 @@ function addOffenceToTable(offense) {
         <td>${offense.original_penalty_display}</td>
         <td>${offense.applied_penalty_display}</td>
         <td>
-            ${offense.is_active ? 
+            ${offense.is_active ?
                 `<span class="badge ${offense.is_acknowledged ? 'bg-success' : 'bg-warning'}">
                     ${offense.is_acknowledged ? 'Acknowledged' : 'Pending'}
                 </span>` :
@@ -547,14 +550,14 @@ function addOffenceToTable(offense) {
             <button type="button" class="btn btn-sm btn-info view-offence" data-offence-id="${offense.id}" title="View Details">
                 <i class="fas fa-eye"></i>
             </button>
-            ${offense.is_active ? 
+            ${offense.is_active ?
                 `<button type="button" class="btn btn-sm btn-primary add-document" data-offence-id="${offense.id}" title="Add Document">
                     <i class="fas fa-file-upload"></i>
                 </button>` : ''
             }
         </td>
     `;
-    
+
     tbody.insertBefore(tr, tbody.firstChild);
 }
 
@@ -563,7 +566,7 @@ async function viewOffence(offenseId) {
         // Get offense details
         const response = await fetch(`/employees/api/employee-offenses/${offenseId}/`);
         const offense = await response.json();
-        
+
         // Update offense details
         document.getElementById('viewRuleId').textContent = offense.rule.rule_id;
         document.getElementById('viewRuleName').textContent = offense.rule.name;
@@ -572,7 +575,7 @@ async function viewOffence(offenseId) {
         document.getElementById('viewDate').textContent = new Date(offense.offense_date).toLocaleDateString();
         document.getElementById('viewOriginalPenalty').textContent = offense.original_penalty_display;
         document.getElementById('viewAppliedPenalty').textContent = offense.applied_penalty_display;
-        document.getElementById('viewStatus').innerHTML = offense.is_active ? 
+        document.getElementById('viewStatus').innerHTML = offense.is_active ?
             `<span class="badge ${offense.is_acknowledged ? 'bg-success' : 'bg-warning'}">
                 ${offense.is_acknowledged ? 'Acknowledged' : 'Pending'}
             </span>` :
@@ -589,7 +592,7 @@ async function viewOffence(offenseId) {
         // Show previous offenses if any exist
         const viewPreviousOffenses = document.getElementById('viewPreviousOffenses');
         const viewPreviousOffensesList = document.getElementById('viewPreviousOffensesList');
-        
+
         if (countData.offenses && countData.offenses.length > 0) {
             let offenseHtml = `<p class="mb-2">This is offense #${countData.count} for this rule in ${year}.</p>`;
             offenseHtml += '<ul class="mb-0">';
@@ -599,7 +602,7 @@ async function viewOffence(offenseId) {
                 offenseHtml += `<li${isCurrent ? ' class="fw-bold"' : ''}>${date} - ${o.penalty}${isCurrent ? ' (Current)' : ''}</li>`;
             });
             offenseHtml += '</ul>';
-            
+
             viewPreviousOffensesList.innerHTML = offenseHtml;
             viewPreviousOffenses.style.display = 'block';
         } else {
