@@ -2,16 +2,21 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, permission_classes, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db import models
+from django.db.models import Count, Q, F, Value
+from django.db.models.functions import Cast, Greatest
+from django.contrib.postgres.search import TrigramSimilarity
 from django.shortcuts import get_object_or_404
-from .models import EmployeeAsset, Employee, AssetType, OffenseRule, EmployeeOffence, OffenseDocument
-from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenseRuleSerializer, EmployeeOffenceSerializer, OffenseDocumentSerializer
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse, HttpResponse
-from django.db.models import Count, Q
 from django.conf import settings
 from django.template.loader import render_to_string
+from .models import EmployeeAsset, Employee, AssetType, OffenseRule, EmployeeOffence, OffenseDocument
+from .serializers import EmployeeAssetSerializer, AssetTypeSerializer, BulkEmployeeAssetSerializer, OffenseRuleSerializer, EmployeeOffenceSerializer, OffenseDocumentSerializer
 from reportlab.pdfgen import canvas
+from decimal import Decimal
+from io import BytesIO
 import json
 import os
 import logging
@@ -364,14 +369,38 @@ class OffenseRuleViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(group=group)
         
         if search:
-            logger.debug(f"Searching for: {search}")
-            queryset = queryset.filter(
-                Q(rule_id__icontains=search) |
-                Q(name__icontains=search) |
+            logger.debug(f"Searching with trigram similarity for: {search}")
+            from django.contrib.postgres.search import TrigramSimilarity
+            from django.db.models import Q, F, Value
+            from django.db.models.functions import Cast, Greatest
+            
+            print(search)
+            search_value = Value(search, output_field=models.TextField())
+            
+            queryset = queryset.annotate(
+                rule_id_similarity=TrigramSimilarity('rule_id', search_value),
+                name_similarity=TrigramSimilarity('name', search_value),
+                desc_similarity=TrigramSimilarity('description', search_value)
+            ).annotate(
+                similarity=Greatest(
+                    'rule_id_similarity',
+                    'name_similarity',
+                    'desc_similarity'
+                )
+            ).filter(
+                Q(similarity__gt=0.1) |  # Fuzzy match
+                Q(rule_id__iexact=search) |  # Exact matches first
+                Q(name__icontains=search) |  # Then contains
                 Q(description__icontains=search)
-            )
+            ).order_by('-similarity', 'rule_id')  # Sort by similarity then rule ID
+            
+            logger.debug(f"Search SQL: {str(queryset.query)}")
+            
+            print(queryset.query)
+            logger.debug(f"Found {queryset.count()} results")
+            logger.debug("Search complete")
         
-        rules = queryset.order_by('rule_id')
+        rules = queryset.order_by('rule_id') if not search else queryset
         logger.debug(f"Found {rules.count()} rules")
         return rules
 
@@ -390,81 +419,23 @@ class EmployeeOffenseViewSet(viewsets.ModelViewSet):
         return EmployeeOffence.objects.all()
 
     def create(self, request, *args, **kwargs):
-        logger.debug(f"Creating offense with data: {request.data}")
-        
-        # Handle both form data and JSON
         data = request.data.copy()
         
-        # Validate required fields
-        required_fields = ['employee', 'offense_rule', 'offense_date']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            return Response(
-                {'error': f'Missing required fields: {", ".join(missing_fields)}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            # Get employee and rule
-            employee = Employee.objects.get(pk=data['employee'])
-            rule = OffenseRule.objects.get(pk=data['offense_rule'])
+        # Ensure employee is set
+        if not data.get('employee'):
+            data['employee'] = request.user.employee.id
             
-            # Get offense count for this rule and employee
-            offense_year = timezone.datetime.strptime(data['offense_date'], '%Y-%m-%d').year
-            offense_count = EmployeeOffence.objects.filter(
-                employee=employee,
-                rule=rule,
-                offense_date__year=offense_year,
-                is_active=True
-            ).count() + 1
-            
-            # Get original penalty based on count
-            original_penalty = rule.get_penalty_for_count(offense_count)
-            
-            # If no applied_penalty is specified, use the original_penalty
-            if not data.get('applied_penalty'):
-                data['applied_penalty'] = original_penalty
-            
-            # Add these to the data
-            data['original_penalty'] = original_penalty
-            data['offense_count'] = offense_count
-            
-            # Create serializer with updated data
-            serializer = self.get_serializer(data=data)
-            if not serializer.is_valid():
-                logger.error(f"Serializer validation failed: {serializer.errors}")
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-            # Save the offense
-            offense = serializer.save(
-                created_by=request.user,
-                modified_by=request.user
-            )
-            
-            # If it's a monetary penalty, set up payment details
-            if offense.applied_penalty == 'MONETARY' and offense.monetary_amount:
-                offense.remaining_amount = offense.monetary_amount
-                offense.monthly_deduction = data.get('monthly_deduction', 0)
-                offense.save()
-            
-            logger.debug(f"Successfully created offense: {offense.pk}")
-            return Response(
-                serializer.data,
-                status=status.HTTP_201_CREATED
-            )
-            
-        except Exception as e:
-            logger.error(f"Error creating offense: {str(e)}")
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    def perform_update(self, serializer):
-        serializer.save(modified_by=self.request.user)
+    def perform_create(self, serializer):
+        serializer.save(
+            created_by=self.request.user,
+            modified_by=self.request.user
+        )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
