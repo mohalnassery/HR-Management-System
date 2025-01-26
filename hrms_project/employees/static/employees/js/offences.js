@@ -65,23 +65,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function formatRule(rule) {
         if (!rule.id) return rule.text;
-
-        const highlight = (text, term) => {
-            if (!term) return text;
-            return text.replace(new RegExp(escapeRegex(term), 'gi'), match => `<strong>${match}</strong>`);
-        };
-        
-        const searchTerm = rule.element?.dataset?.searchTerm || '';
-        const description = rule.rule?.description || '';
-        const groupDisplay = rule.rule?.group_display || '';
         
         const $container = $(
-            `<div class="rule-option p-2">
-                <div class="rule-title fw-bold mb-1">${highlight(rule.text, searchTerm)}</div>
-                <div class="rule-info small text-muted">
-                    <div class="mb-1"><strong>Group:</strong> ${groupDisplay}</div>
-                    <div class="text-wrap">${highlight(description, searchTerm)}</div>
-                </div>
+            `<div class="rule-option">
+                <div class="rule-title">${rule.text}</div>
+                <div class="rule-description text-muted small">${rule.rule?.description || ''}</div>
              </div>`
         );
         
@@ -89,8 +77,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function formatRuleSelection(rule) {
-        if (!rule.id) return rule.text;
-        return `${rule.rule?.rule_id} - ${rule.rule?.name}`;
+        return rule.text || rule.rule_id;
     }
 
     // API Functions
@@ -166,96 +153,64 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-
-
-
-
-    function escapeRegex(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    // Initialize and destroy Select2 when modal is shown/hidden
-    $('#addOffenceModal').on('shown.bs.modal', function() {
-        console.log('Modal shown, initializing select2...');
-        
-        // Initialize select2
-        $('#offenseSearch').select2({
-            width: '100%',
-            placeholder: 'Search for offense rule...',
-            minimumInputLength: 2,
-            dropdownParent: $('#addOffenceModal'),
-            ajax: {
-                url: '/employees/api/offense-rules/',
-                dataType: 'json',
-                delay: 250,
-                data: function(params) {
-                    return {
-                        search: params.term,
-                        page: params.page || 1
-                    };
-                },
-                processResults: function(data) {
-                    return {
-                        results: data.map(function(rule) {
-                            return {
-                                id: rule.id,
-                                text: `${rule.rule_id} - ${rule.name}`,
-                                rule: {
-                                    ...rule,
-                                    group_display: rule.group_display || rule.group
-                                }
-                            };
-                        }),
-                        pagination: {
-                            more: false
-                        }
-                    };
-                },
-                cache: true
+    // Initialize select2
+    $(offenseSearch).select2({
+        placeholder: 'Search for offense rule...',
+        allowClear: true,
+        width: '100%',
+        ajax: {
+            url: '/employees/api/offense-rules/',
+            dataType: 'json',
+            delay: 250,
+            data: function(params) {
+                return {
+                    search: params.term,
+                    page: params.page
+                };
             },
-            templateResult: formatRule,
-            templateSelection: formatRuleSelection,
-            escapeMarkup: function(markup) {
-                return markup;
-            }
-        });
-    }).on('hidden.bs.modal', function() {
-        // Destroy select2 when modal is hidden
-        try {
-            $('#offenseSearch').select2('destroy');
-        } catch (e) {
-            console.log('No select2 instance to destroy');
+            processResults: function(data) {
+                return {
+                    results: data.map(rule => ({
+                        id: rule.id,
+                        text: `${rule.rule_id} - ${rule.name}`,
+                        rule: rule
+                    }))
+                };
+            },
+            cache: true
+        },
+        templateResult: formatRule,
+        templateSelection: formatRuleSelection
+    });
+
+    // Handle offense date change
+    offenseDate.addEventListener('change', async function() {
+        if (currentRule) {
+            const year = new Date(this.value).getFullYear();
+            offenseYear.textContent = year;
+            await updatePenalty(currentRule.id, year);
         }
     });
 
-        // Handle offense date change
-        offenseDate.addEventListener('change', async function() {
-            if (currentRule) {
-                const year = new Date(this.value).getFullYear();
-                offenseYear.textContent = year;
-                await updatePenalty(currentRule.id, year);
-            }
-        });
-    
-        // Handle applied penalty change
-        appliedPenalty.addEventListener('change', function() {
-            const suggestedValue = suggestedPenalty.dataset.value;
-            const monetaryPenaltySection = document.getElementById('monetaryPenaltySection');
-            
-            // Show/hide monetary penalty section based on penalty type
-            if (this.value === 'MONETARY') {
-                monetaryPenaltySection.style.display = 'block';
-            } else {
-                monetaryPenaltySection.style.display = 'none';
-            }
-    
-            // Show warning if different from suggested penalty
-            if (suggestedValue && this.value !== suggestedValue) {
-                penaltyNote.style.display = 'block';
-            } else {
-                penaltyNote.style.display = 'none';
-            }
-        });
+    // Handle applied penalty change
+    appliedPenalty.addEventListener('change', function() {
+        const suggestedValue = suggestedPenalty.dataset.value;
+        const monetaryPenaltySection = document.getElementById('monetaryPenaltySection');
+        
+        // Show/hide monetary penalty section based on penalty type
+        if (this.value === 'MONETARY') {
+            monetaryPenaltySection.style.display = 'block';
+        } else {
+            monetaryPenaltySection.style.display = 'none';
+        }
+
+        // Show warning if different from suggested penalty
+        if (suggestedValue && this.value !== suggestedValue) {
+            penaltyNote.style.display = 'block';
+        } else {
+            penaltyNote.style.display = 'none';
+        }
+    });
 
     // Handle offense status changes
     async function markOffenseStatus(offenseId, status) {
@@ -361,35 +316,6 @@ document.addEventListener('DOMContentLoaded', function() {
         await updatePenalty(ruleId);
     });
 
-    // Handle offense date change
-    offenseDate.addEventListener('change', async function() {
-        if (currentRule) {
-            const year = new Date(this.value).getFullYear();
-            offenseYear.textContent = year;
-            await updatePenalty(currentRule.id, year);
-        }
-    });
-
-    // Handle applied penalty change
-    appliedPenalty.addEventListener('change', function() {
-        const suggestedValue = suggestedPenalty.dataset.value;
-        const monetaryPenaltySection = document.getElementById('monetaryPenaltySection');
-        
-        // Show/hide monetary penalty section based on penalty type
-        if (this.value === 'MONETARY') {
-            monetaryPenaltySection.style.display = 'block';
-        } else {
-            monetaryPenaltySection.style.display = 'none';
-        }
-
-        // Show warning if different from suggested penalty
-        if (suggestedValue && this.value !== suggestedValue) {
-            penaltyNote.style.display = 'block';
-        } else {
-            penaltyNote.style.display = 'none';
-        }
-    });
-
     // Handle save offense
     document.getElementById('saveOffenceBtn').addEventListener('click', async function() {
         try {
@@ -399,14 +325,15 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('employee', employeeId);
             
             // Get the rule ID from the select element
-            const selectedRule = $('#offenseSearch').select2('data')[0];
-            if (!selectedRule || !selectedRule.id) {
+            const ruleId = offenceRule.value;
+            if (!ruleId) {
                 showAlert('Please select an offense rule.', 'danger');
                 return;
             }
             
-            // Add the rule ID with correct field name
-            formData.append('rule', selectedRule.id);
+            // Remove the old 'rule' field and add the correct 'offense_rule' field
+            formData.delete('rule');
+            formData.append('offense_rule', ruleId);
             
             // If it's a monetary penalty, add the monetary fields
             if (appliedPenalty.value === 'MONETARY') {
@@ -425,6 +352,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 formData.append('monetary_amount', monetaryAmount);
                 formData.append('monthly_deduction', monthlyDeduction);
+            }
+
+            // Debug: Log form data
+            for (let pair of formData.entries()) {
+                console.log(pair[0] + ': ' + pair[1]);
             }
 
             const response = await fetch('/employees/api/employee-offenses/', {

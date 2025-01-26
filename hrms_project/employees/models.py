@@ -521,9 +521,9 @@ class EmployeeOffence(models.Model):
     rule = models.ForeignKey(OffenseRule, on_delete=models.PROTECT)
     offense_date = models.DateField()
     applied_penalty = models.CharField(max_length=10, choices=OffenseRule.PENALTY_CHOICES)
-    original_penalty = models.CharField(max_length=10, choices=OffenseRule.PENALTY_CHOICES, null=True, blank=True)
+    original_penalty = models.CharField(max_length=10, choices=OffenseRule.PENALTY_CHOICES)
     offense_count = models.PositiveIntegerField(default=1)
-    details = models.TextField(blank=True)
+    details = models.TextField()
     
     # Monetary penalty fields
     monetary_amount = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
