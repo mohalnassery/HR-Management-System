@@ -1,19 +1,4 @@
 // Utility Functions
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
 function formatDate(date) {
     return new Date(date).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -24,321 +9,209 @@ function formatDate(date) {
 
 function formatTime(time) {
     if (!time) return '-';
-    return time.substring(0, 5); // HH:mm format
+    return new Date(`2000-01-01T${time}`).toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
 }
 
-// Calendar Functions
-class AttendanceCalendar {
-    constructor(elementId, options = {}) {
-        this.calendar = new FullCalendar.Calendar(document.getElementById(elementId), {
-            initialView: 'dayGridMonth',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,dayGridWeek'
-            },
-            events: this.fetchEvents.bind(this),
-            eventClick: this.handleEventClick.bind(this),
-            ...options
-        });
+function calculateDuration(startDate, endDate, startHalf = false, endHalf = false) {
+    const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
+    let deductions = 0;
+    if (startHalf) deductions += 0.5;
+    if (endHalf) deductions += 0.5;
+    return days - deductions;
+}
 
-        this.calendar.render();
+// Toast Notifications
+function showToast(message, type = 'success') {
+    const toastHtml = `
+        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+            <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', toastHtml);
+    const toast = document.querySelector('.toast:last-child');
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    // Remove toast from DOM after it's hidden
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+
+// Form Validation
+function validateDateRange(startDate, endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    return start <= end;
+}
+
+function validateFileSize(file, maxSize = 5) {
+    // maxSize in MB
+    return file.size <= maxSize * 1024 * 1024;
+}
+
+function validateFileType(file, allowedTypes = ['pdf', 'jpg', 'jpeg', 'png']) {
+    const extension = file.name.split('.').pop().toLowerCase();
+    return allowedTypes.includes(extension);
+}
+
+// AJAX Helpers
+function sendRequest(url, method = 'GET', data = null, options = {}) {
+    const defaultOptions = {
+        method: method,
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            ...options.headers
+        }
+    };
+
+    if (data) {
+        if (data instanceof FormData) {
+            defaultOptions.body = data;
+        } else {
+            defaultOptions.headers['Content-Type'] = 'application/json';
+            defaultOptions.body = JSON.stringify(data);
+        }
     }
 
-    async fetchEvents(info, successCallback, failureCallback) {
-        try {
-            const response = await fetch(
-                `/api/attendance/calendar-events/?start=${info.startStr}&end=${info.endStr}`
+    return fetch(url, { ...defaultOptions, ...options })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(json => Promise.reject(json));
+            }
+            return response.json();
+        });
+}
+
+// Attendance Status Handling
+const STATUS_COLORS = {
+    'Present': 'success',
+    'Absent': 'danger',
+    'Late': 'warning',
+    'Leave': 'info',
+    'Holiday': 'primary'
+};
+
+function getStatusBadge(status) {
+    const color = STATUS_COLORS[status] || 'secondary';
+    return `<span class="badge bg-${color}">${status}</span>`;
+}
+
+// Calendar Event Helpers
+function getEventColor(type, status) {
+    if (type === 'holiday') return '#0d6efd';  // primary
+    if (type === 'leave') return '#0dcaf0';    // info
+    
+    switch (status) {
+        case 'Present': return '#198754';  // success
+        case 'Absent': return '#dc3545';   // danger
+        case 'Late': return '#ffc107';     // warning
+        default: return '#6c757d';         // secondary
+    }
+}
+
+// Form Handling
+function initializeLeaveForm() {
+    const leaveType = document.getElementById('leave_type');
+    const startDate = document.getElementById('start_date');
+    const endDate = document.getElementById('end_date');
+    const startHalf = document.getElementById('start_half');
+    const endHalf = document.getElementById('end_half');
+    const submitBtn = document.querySelector('button[type="submit"]');
+
+    function updateDuration() {
+        if (startDate.value && endDate.value) {
+            const duration = calculateDuration(
+                startDate.value,
+                endDate.value,
+                startHalf.checked,
+                endHalf.checked
             );
-            const data = await response.json();
-            
-            const events = data.map(event => ({
-                title: event.title,
-                start: event.date,
-                backgroundColor: this.getStatusColor(event.status),
-                extendedProps: {
-                    attendance_id: event.id,
-                    status: event.status,
-                    employee: event.employee_name
-                }
-            }));
-
-            successCallback(events);
-        } catch (error) {
-            failureCallback(error);
+            document.getElementById('duration-info').textContent = 
+                `Duration: ${duration} day${duration !== 1 ? 's' : ''}`;
         }
     }
 
-    handleEventClick(info) {
-        const { attendance_id } = info.event.extendedProps;
-        showAttendanceDetails(attendance_id);
-    }
+    [startDate, endDate, startHalf, endHalf].forEach(el => 
+        el.addEventListener('change', updateDuration)
+    );
 
-    getStatusColor(status) {
-        const colors = {
-            'present': '#28a745',
-            'absent': '#dc3545',
-            'late': '#ffc107',
-            'leave': '#17a2b8',
-            'holiday': '#007bff'
-        };
-        return colors[status] || '#6c757d';
-    }
-
-    refresh() {
-        this.calendar.refetchEvents();
-    }
+    leaveType.addEventListener('change', function() {
+        const requiresDoc = this.options[this.selectedIndex].dataset.requiresDocument === 'true';
+        const docSection = document.getElementById('document-section');
+        if (docSection) {
+            docSection.style.display = requiresDoc ? 'block' : 'none';
+            const docInput = docSection.querySelector('input[type="file"]');
+            docInput.required = requiresDoc;
+        }
+    });
 }
 
-// Attendance List Functions
-class AttendanceList {
-    constructor(options = {}) {
-        this.page = 1;
-        this.filters = {};
-        this.setupEventListeners();
-        this.options = options;
-    }
-
-    setupEventListeners() {
-        // Date range filters
-        document.getElementById('start-date')?.addEventListener('change', () => this.loadData());
-        document.getElementById('end-date')?.addEventListener('change', () => this.loadData());
-        
-        // Other filters
-        document.getElementById('department-filter')?.addEventListener('change', () => this.loadData());
-        document.getElementById('status-filter')?.addEventListener('change', () => this.loadData());
-        
-        // Search input with debounce
-        const searchInput = document.getElementById('search-input');
-        if (searchInput) {
-            let timeout;
-            searchInput.addEventListener('input', () => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => this.loadData(), 500);
+// Document Preview
+function initializeDocumentPreview() {
+    const input = document.querySelector('input[type="file"]');
+    const preview = document.getElementById('document-preview');
+    
+    if (input && preview) {
+        input.addEventListener('change', function() {
+            preview.innerHTML = '';
+            
+            [...this.files].forEach(file => {
+                if (!validateFileType(file) || !validateFileSize(file)) {
+                    showToast('Invalid file type or size', 'danger');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const div = document.createElement('div');
+                    div.className = 'mb-2';
+                    
+                    if (file.type.startsWith('image/')) {
+                        div.innerHTML = `
+                            <img src="${e.target.result}" class="img-thumbnail" style="max-height: 200px">
+                            <div class="small text-muted mt-1">${file.name}</div>
+                        `;
+                    } else {
+                        div.innerHTML = `
+                            <div class="p-2 border rounded">
+                                <i class="fas fa-file-pdf"></i> ${file.name}
+                            </div>
+                        `;
+                    }
+                    preview.appendChild(div);
+                };
+                reader.readAsDataURL(file);
             });
-        }
-
-        // File upload handling
-        const uploadBtn = document.getElementById('upload-btn');
-        if (uploadBtn) {
-            uploadBtn.addEventListener('click', () => this.handleFileUpload());
-        }
-    }
-
-    async loadData(page = 1) {
-        this.page = page;
-        this.filters = {
-            start_date: document.getElementById('start-date')?.value,
-            end_date: document.getElementById('end-date')?.value,
-            department: document.getElementById('department-filter')?.value,
-            status: document.getElementById('status-filter')?.value,
-            search: document.getElementById('search-input')?.value
-        };
-
-        const params = new URLSearchParams({
-            ...this.filters,
-            page: this.page
         });
-
-        try {
-            const response = await fetch(`/api/attendance/logs/?${params}`);
-            const data = await response.json();
-            
-            this.updateTable(data.results);
-            this.updatePagination(data.total_pages, data.current_page);
-            this.updateSummary(data.summary);
-            
-        } catch (error) {
-            console.error('Error loading attendance data:', error);
-        }
-    }
-
-    updateTable(records) {
-        const tbody = document.querySelector('#attendance-table tbody');
-        if (!tbody) return;
-
-        tbody.innerHTML = records.map(record => `
-            <tr>
-                <td>${record.employee_number}</td>
-                <td>${record.employee_name}</td>
-                <td>${record.department}</td>
-                <td>${formatDate(record.date)}</td>
-                <td>${formatTime(record.first_in_time)}</td>
-                <td>${formatTime(record.last_out_time)}</td>
-                <td>
-                    <span class="badge bg-${this.getStatusBadgeClass(record.status)}">
-                        ${record.status}
-                    </span>
-                </td>
-                <td>${record.source}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="editAttendance(${record.id})">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                </td>
-            </tr>
-        `).join('');
-    }
-
-    updatePagination(totalPages, currentPage) {
-        const pagination = document.getElementById('pagination');
-        if (!pagination) return;
-
-        let html = '';
-        if (totalPages > 1) {
-            html = this.generatePaginationHTML(currentPage, totalPages);
-        }
-        pagination.innerHTML = html;
-    }
-
-    generatePaginationHTML(currentPage, totalPages) {
-        return `
-            <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-                <a class="page-link" href="#" onclick="attendanceList.loadData(${currentPage - 1})">Previous</a>
-            </li>
-            ${Array.from({ length: totalPages }, (_, i) => i + 1).map(page => `
-                <li class="page-item ${currentPage === page ? 'active' : ''}">
-                    <a class="page-link" href="#" onclick="attendanceList.loadData(${page})">${page}</a>
-                </li>
-            `).join('')}
-            <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-                <a class="page-link" href="#" onclick="attendanceList.loadData(${currentPage + 1})">Next</a>
-            </li>
-        `;
-    }
-
-    updateSummary(summary) {
-        for (const [key, value] of Object.entries(summary)) {
-            const element = document.getElementById(`${key}-count`);
-            if (element) {
-                element.textContent = value;
-            }
-        }
-    }
-
-    getStatusBadgeClass(status) {
-        const classes = {
-            'present': 'success',
-            'absent': 'danger',
-            'late': 'warning',
-            'leave': 'info',
-            'holiday': 'primary'
-        };
-        return classes[status] || 'secondary';
-    }
-
-    async handleFileUpload() {
-        const fileInput = document.getElementById('attendance-file');
-        if (!fileInput?.files[0]) {
-            alert('Please select a file to upload');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-
-        try {
-            const response = await fetch('/api/attendance/records/upload_excel/', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken')
-                }
-            });
-
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            alert(`Successfully processed ${data.records_created} records`);
-            this.loadData();
-            bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
-            
-        } catch (error) {
-            alert('Error uploading file: ' + error.message);
-        } finally {
-            fileInput.value = '';
-        }
     }
 }
 
-// Leave Management Functions
-class LeaveManager {
-    constructor() {
-        this.setupEventListeners();
-    }
-
-    setupEventListeners() {
-        const submitBtn = document.getElementById('submit-leave');
-        if (submitBtn) {
-            submitBtn.addEventListener('click', () => this.submitLeaveRequest());
-        }
-    }
-
-    async submitLeaveRequest() {
-        const form = document.getElementById('leave-form');
-        const formData = new FormData(form);
-
-        try {
-            const response = await fetch('/api/attendance/leaves/', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken')
-                }
-            });
-
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            alert('Leave request submitted successfully');
-            window.location.reload();
-            
-        } catch (error) {
-            alert('Error submitting leave request: ' + error.message);
-        }
-    }
-
-    async updateLeaveStatus(leaveId, status, remarks = '') {
-        try {
-            const response = await fetch(`/api/attendance/leaves/${leaveId}/`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify({ status, remarks })
-            });
-
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            window.location.reload();
-            
-        } catch (error) {
-            alert('Error updating leave status: ' + error.message);
-        }
-    }
-}
-
-// Initialize on page load
+// Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize components based on current page
-    if (document.getElementById('attendance-calendar')) {
-        window.calendar = new AttendanceCalendar('attendance-calendar');
+    // Initialize any forms
+    if (document.querySelector('form.needs-validation')) {
+        initializeLeaveForm();
     }
     
-    if (document.getElementById('attendance-table')) {
-        window.attendanceList = new AttendanceList();
-        window.attendanceList.loadData();
+    // Initialize document preview
+    if (document.querySelector('input[type="file"]')) {
+        initializeDocumentPreview();
     }
     
-    if (document.getElementById('leave-form')) {
-        window.leaveManager = new LeaveManager();
-    }
+    // Initialize all tooltips
+    var tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltips.map(function (tooltip) {
+        return new bootstrap.Tooltip(tooltip);
+    });
 });

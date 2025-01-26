@@ -1,0 +1,376 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Leave Requests</h5>
+        <div>
+            <a href="{% url 'attendance:leave_request_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Apply for Leave
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Filters -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="status-filter">
+                    <option value="">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Leave Type</label>
+                <select class="form-select" id="type-filter">
+                    <option value="">All Types</option>
+                    {% for type in leave_types %}
+                    <option value="{{ type.code }}">{{ type.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Department</label>
+                <select class="form-select" id="department-filter">
+                    <option value="">All Departments</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}">{{ dept.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-primary" id="apply-filters">Apply Filters</button>
+            </div>
+        </div>
+
+        <!-- Leave Balance Summary -->
+        {% if user_leave_balances %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title">Your Leave Balances</h6>
+                        <div class="row">
+                            {% for balance in user_leave_balances %}
+                            <div class="col-md-3 mb-2">
+                                <div class="d-flex justify-content-between">
+                                    <span>{{ balance.leave_type.name }}:</span>
+                                    <strong>{{ balance.available_days }} days</strong>
+                                </div>
+                                {% if balance.pending_days > 0 %}
+                                <small class="text-muted">
+                                    ({{ balance.pending_days }} days pending approval)
+                                </small>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Leave Requests Table -->
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Leave Type</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for leave in leaves %}
+                    <tr>
+                        <td>
+                            {{ leave.employee.get_full_name }}
+                            <br>
+                            <small class="text-muted">{{ leave.employee.department.name }}</small>
+                        </td>
+                        <td>
+                            {{ leave.leave_type.name }}
+                            {% if leave.start_half or leave.end_half %}
+                            <br>
+                            <small class="text-muted">
+                                {% if leave.start_half %}Start: Half Day{% endif %}
+                                {% if leave.end_half %}End: Half Day{% endif %}
+                            </small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ leave.duration }} days
+                            <br>
+                            <small class="text-muted">
+                                {{ leave.start_date|date:"M d, Y" }} - {{ leave.end_date|date:"M d, Y" }}
+                            </small>
+                        </td>
+                        <td>
+                            {% if leave.status == 'pending' %}
+                            <span class="badge bg-warning">Pending</span>
+                            {% elif leave.status == 'approved' %}
+                            <span class="badge bg-success">Approved</span>
+                            {% elif leave.status == 'rejected' %}
+                            <span class="badge bg-danger">Rejected</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Cancelled</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ leave.created_at|date:"M d, Y" }}
+                            <br>
+                            <small class="text-muted">{{ leave.created_at|time:"H:i" }}</small>
+                        </td>
+                        <td>
+                            <a href="{% url 'attendance:leave_request_detail' pk=leave.id %}" 
+                               class="btn btn-sm btn-info">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if leave.status == 'pending' and leave.employee == user.employee %}
+                            <button class="btn btn-sm btn-danger cancel-leave" data-id="{{ leave.id }}">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            {% endif %}
+                            {% if perms.attendance.can_approve_leave and leave.status == 'pending' %}
+                            <button class="btn btn-sm btn-success approve-leave" data-id="{{ leave.id }}">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger reject-leave" data-id="{{ leave.id }}">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center">No leave requests found</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if is_paginated %}
+        <nav aria-label="Page navigation" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1">&laquo; First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                </li>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last &raquo;</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Action Modals -->
+<!-- Cancel Leave Modal -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Cancel Leave Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="cancelForm">
+                    <div class="mb-3">
+                        <label for="cancellation_reason" class="form-label">Reason for Cancellation</label>
+                        <textarea class="form-control" id="cancellation_reason" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-danger" id="confirmCancel">Cancel Leave</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approve Leave Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Approve Leave Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="approveForm">
+                    <div class="mb-3">
+                        <label for="approval_remarks" class="form-label">Remarks (Optional)</label>
+                        <textarea class="form-control" id="approval_remarks" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-success" id="confirmApprove">Approve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Leave Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Reject Leave Request</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="rejectForm">
+                    <div class="mb-3">
+                        <label for="rejection_reason" class="form-label">Reason for Rejection</label>
+                        <textarea class="form-control" id="rejection_reason" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-danger" id="confirmReject">Reject</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+$(document).ready(function() {
+    let currentLeaveId = null;
+
+    // Cancel leave request
+    $('.cancel-leave').click(function() {
+        currentLeaveId = $(this).data('id');
+        $('#cancelModal').modal('show');
+    });
+
+    $('#confirmCancel').click(function() {
+        const reason = $('#cancellation_reason').val();
+        if (!reason) {
+            alert('Please provide a reason for cancellation');
+            return;
+        }
+
+        $.ajax({
+            url: `/attendance/leave/${currentLeaveId}/cancel/`,
+            type: 'POST',
+            data: { reason: reason },
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            success: function() {
+                location.reload();
+            },
+            error: function(xhr) {
+                alert('Error cancelling leave request');
+            }
+        });
+        $('#cancelModal').modal('hide');
+    });
+
+    // Approve leave request
+    $('.approve-leave').click(function() {
+        currentLeaveId = $(this).data('id');
+        $('#approveModal').modal('show');
+    });
+
+    $('#confirmApprove').click(function() {
+        const remarks = $('#approval_remarks').val();
+        $.ajax({
+            url: `/attendance/leave/${currentLeaveId}/approve/`,
+            type: 'POST',
+            data: { remarks: remarks },
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            success: function() {
+                location.reload();
+            },
+            error: function(xhr) {
+                alert('Error approving leave request');
+            }
+        });
+        $('#approveModal').modal('hide');
+    });
+
+    // Reject leave request
+    $('.reject-leave').click(function() {
+        currentLeaveId = $(this).data('id');
+        $('#rejectModal').modal('show');
+    });
+
+    $('#confirmReject').click(function() {
+        const reason = $('#rejection_reason').val();
+        if (!reason) {
+            alert('Please provide a reason for rejection');
+            return;
+        }
+
+        $.ajax({
+            url: `/attendance/leave/${currentLeaveId}/reject/`,
+            type: 'POST',
+            data: { reason: reason },
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            success: function() {
+                location.reload();
+            },
+            error: function(xhr) {
+                alert('Error rejecting leave request');
+            }
+        });
+        $('#rejectModal').modal('hide');
+    });
+
+    // Apply filters
+    $('#apply-filters').click(function() {
+        const status = $('#status-filter').val();
+        const type = $('#type-filter').val();
+        const department = $('#department-filter').val();
+        
+        window.location.href = `?status=${status}&type=${type}&department=${department}`;
+    });
+});
+</script>
+{% endblock %}

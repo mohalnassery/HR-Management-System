@@ -4,117 +4,154 @@
 {% block extra_css %}
 {{ block.super }}
 <style>
-    #employee-search-container {
-        position: relative;
-        margin-bottom: 1rem;
-    }
-    #employee-search-results {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        z-index: 1000;
-        max-height: 200px;
-        overflow-y: auto;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        display: none;
-    }
-    .employee-result {
-        padding: 0.5rem 1rem;
-        cursor: pointer;
-    }
-    .employee-result:hover {
-        background-color: #f8f9fa;
-    }
-    .fc-event {
-        cursor: pointer;
-    }
-    .badge .fa-times {
-        cursor: pointer;
-    }
-    .badge .fa-times:hover {
-        opacity: 0.8;
-    }
+.fc-event {
+    cursor: pointer;
+}
+
+.fc-day-friday {
+    background-color: rgba(0,0,0,0.05);
+}
+
+.fc-day-today {
+    background-color: rgba(0,123,255,0.1) !important;
+}
+
+.calendar-legend {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legend-color {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+}
+
+.tooltip-inner {
+    max-width: 300px;
+}
+
+#filter-collapse {
+    transition: all 0.3s ease-in-out;
+}
 </style>
 {% endblock %}
 
 {% block attendance_content %}
 <div class="card">
     <div class="card-header">
-        <h5 class="mb-0">Attendance Calendar</h5>
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0 d-inline-block">Attendance Calendar</h5>
+                <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filter-collapse">
+                    <i class="fas fa-filter"></i> Filters
+                </button>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary" id="prev-month">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="btn btn-outline-secondary" id="today">Today</button>
+                <button class="btn btn-outline-secondary" id="next-month">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
     </div>
     <div class="card-body">
-        <!-- Employee Search -->
-        <div id="employee-search-container" class="mb-3">
-            <input type="text" id="employee-search" class="form-control" placeholder="Search employee by ID or name...">
-            <div id="employee-search-results"></div>
+        <!-- Filters -->
+        <div class="collapse mb-4" id="filter-collapse">
+            <div class="card card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Department</label>
+                        <select class="form-select" id="department-filter">
+                            <option value="">All Departments</option>
+                            {% for dept in departments %}
+                            <option value="{{ dept.id }}">{{ dept.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Employee</label>
+                        <select class="form-select" id="employee-filter">
+                            <option value="">All Employees</option>
+                            {% for emp in employees %}
+                            <option value="{{ emp.id }}">{{ emp.get_full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">View Type</label>
+                        <select class="form-select" id="view-type">
+                            <option value="dayGridMonth">Month</option>
+                            <option value="dayGridWeek">Week</option>
+                            <option value="dayGridDay">Day</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button class="btn btn-primary w-100" id="apply-filters">
+                            Apply Filters
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <!-- Selected Employee Info -->
-        <div id="selected-employee-info" class="mb-3" style="display: none;"></div>
-        
-        <!-- Calendar View Toggle -->
-        <div class="btn-group mb-3">
-            <button type="button" class="btn btn-outline-primary active" data-view="dayGridMonth">Month</button>
-            <button type="button" class="btn btn-outline-primary" data-view="dayGridWeek">Week</button>
+
+        <!-- Calendar Legend -->
+        <div class="calendar-legend">
+            <div class="legend-item">
+                <div class="legend-color bg-success"></div>
+                <span>Present</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color bg-danger"></div>
+                <span>Absent</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color bg-warning"></div>
+                <span>Late</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color bg-info"></div>
+                <span>Leave</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color bg-primary"></div>
+                <span>Holiday</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: rgba(0,0,0,0.05);"></div>
+                <span>Friday</span>
+            </div>
         </div>
-        
-        <!-- Calendar Container -->
-        <div id="attendance-calendar"></div>
+
+        <!-- Calendar -->
+        <div id="calendar"></div>
     </div>
 </div>
 
-<!-- Attendance Details Modal -->
-<div class="modal fade" id="attendance-modal" tabindex="-1">
+<!-- Event Detail Modal -->
+<div class="modal fade" id="eventModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Attendance Details</h5>
+                <h5 class="modal-title" id="eventTitle">Event Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="row mb-3">
-                    <div class="col-4"><strong>Date:</strong></div>
-                    <div class="col-8" id="modal-date"></div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>Employee:</strong></div>
-                    <div class="col-8" id="modal-employee"></div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>Status:</strong></div>
-                    <div class="col-8" id="modal-status"></div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>Source:</strong></div>
-                    <div class="col-8" id="modal-source"></div>
-                </div>
-                <hr>
-                <h6>Original Times</h6>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>In:</strong></div>
-                    <div class="col-8" id="modal-original-in"></div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>Out:</strong></div>
-                    <div class="col-8" id="modal-original-out"></div>
-                </div>
-                <hr>
-                <h6>Current Times</h6>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>In:</strong></div>
-                    <div class="col-8" id="modal-current-in"></div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-4"><strong>Out:</strong></div>
-                    <div class="col-8" id="modal-current-out"></div>
-                </div>
+            <div class="modal-body" id="eventDetails">
+                <!-- Event details will be loaded here -->
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <a href="#" class="btn btn-primary" id="edit-attendance-btn">Edit</a>
             </div>
         </div>
     </div>
@@ -124,134 +161,181 @@
 {% block extra_js %}
 {{ block.super }}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize calendar
-        var calendarEl = document.getElementById('attendance-calendar');
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,dayGridWeek'
-            },
-            events: function(info, successCallback, failureCallback) {
-                const selectedEmployeeId = document.querySelector('#selected-employee-info .badge')?.dataset?.employeeId;
-                if (!selectedEmployeeId) {
-                    successCallback([]);
-                    return;
-                }
-                
-                fetch(`{% url 'attendance:calendar_events' %}?employee_id=${selectedEmployeeId}&start=${info.startStr}&end=${info.endStr}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        successCallback(data);
-                    })
-                    .catch(error => {
-                        console.error('Error fetching events:', error);
-                        failureCallback(error);
-                    });
-            },
-            eventClick: function(info) {
-                showAttendanceDetails(info.event);
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: false,
+        dayHeaderFormat: { weekday: 'short' },
+        firstDay: 0, // Start week on Sunday
+        height: 'auto',
+        dayCellDidMount: function(info) {
+            // Add class to Fridays
+            if (info.date.getDay() === 5) { // 5 is Friday
+                info.el.classList.add('fc-day-friday');
             }
-        });
-        calendar.render();
-
-        // Employee search functionality
-        const searchInput = document.getElementById('employee-search');
-        const searchResults = document.getElementById('employee-search-results');
-        const selectedEmployeeInfo = document.getElementById('selected-employee-info');
-
-        let searchTimeout;
-        searchInput.addEventListener('input', function(e) {
-            clearTimeout(searchTimeout);
-            const query = e.target.value.trim();
-            
-            if (query.length < 2) {
-                searchResults.style.display = 'none';
-                return;
-            }
-
-            searchTimeout = setTimeout(() => {
-                fetch(`{% url 'attendance:search_employees' %}?q=${encodeURIComponent(query)}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        searchResults.innerHTML = data.map(emp => `
-                            <div class="employee-result" data-id="${emp.id}" data-number="${emp.employee_number}">
-                                ${emp.employee_number} - ${emp.full_name}
-                            </div>
-                        `).join('');
-                        searchResults.style.display = 'block';
-                    });
-            }, 300);
-        });
-
-        // Handle employee selection
-        searchResults.addEventListener('click', function(e) {
-            const result = e.target.closest('.employee-result');
-            if (result) {
-                const empId = result.dataset.id;
-                const empNumber = result.dataset.number;
-                const empName = result.textContent.trim();
-                
-                selectedEmployeeInfo.innerHTML = `
-                    <span class="badge bg-primary" data-employee-id="${empId}">
-                        ${empNumber} - ${empName}
-                        <i class="fas fa-times ms-2"></i>
-                    </span>
-                `;
-                selectedEmployeeInfo.style.display = 'block';
-                searchInput.value = '';
-                searchResults.style.display = 'none';
-                calendar.refetchEvents();
-            }
-        });
-
-        // Handle employee deselection
-        selectedEmployeeInfo.addEventListener('click', function(e) {
-            if (e.target.classList.contains('fa-times')) {
-                selectedEmployeeInfo.style.display = 'none';
-                selectedEmployeeInfo.innerHTML = '';
-                calendar.refetchEvents();
-            }
-        });
-
-        // View toggle buttons
-        document.querySelectorAll('[data-view]').forEach(button => {
-            button.addEventListener('click', function() {
-                const view = this.dataset.view;
-                calendar.changeView(view);
-                
-                // Update active state
-                document.querySelectorAll('[data-view]').forEach(btn => {
-                    btn.classList.remove('active');
-                });
-                this.classList.add('active');
+        },
+        eventDidMount: function(info) {
+            // Add tooltips
+            $(info.el).tooltip({
+                title: info.event.extendedProps.tooltip || info.event.title,
+                placement: 'top',
+                container: 'body'
             });
+        },
+        eventClick: function(info) {
+            showEventDetails(info.event);
+        },
+        events: function(info, successCallback, failureCallback) {
+            // Get filter values
+            const department = $('#department-filter').val();
+            const employee = $('#employee-filter').val();
+            
+            $.ajax({
+                url: '{% url "attendance:calendar_events" %}',
+                data: {
+                    start: info.startStr,
+                    end: info.endStr,
+                    department: department,
+                    employee: employee
+                },
+                success: function(response) {
+                    successCallback(response.events);
+                },
+                error: function() {
+                    failureCallback('Error loading events');
+                }
+            });
+        }
+    });
+
+    calendar.render();
+
+    // Navigation buttons
+    $('#prev-month').click(() => calendar.prev());
+    $('#next-month').click(() => calendar.next());
+    $('#today').click(() => calendar.today());
+
+    // View type change
+    $('#view-type').change(function() {
+        calendar.changeView($(this).val());
+    });
+
+    // Apply filters
+    $('#apply-filters').click(function() {
+        calendar.refetchEvents();
+    });
+
+    // Department filter change - update employee list
+    $('#department-filter').change(function() {
+        const departmentId = $(this).val();
+        $.ajax({
+            url: '{% url "attendance:get_department_employees" %}',
+            data: { department: departmentId },
+            success: function(response) {
+                const employeeSelect = $('#employee-filter');
+                employeeSelect.empty();
+                employeeSelect.append('<option value="">All Employees</option>');
+                response.employees.forEach(function(emp) {
+                    employeeSelect.append(
+                        `<option value="${emp.id}">${emp.name}</option>`
+                    );
+                });
+            }
         });
     });
 
-    function showAttendanceDetails(event) {
-        const modal = new bootstrap.Modal(document.getElementById('attendance-modal'));
-        // Fetch and display attendance details
-        fetch(`{% url 'attendance:attendance_details' log_id=0 %}`.replace('0', event.id))
-            .then(response => response.json())
-            .then(data => {
-                // Update modal content with attendance details
-                document.getElementById('modal-date').textContent = data.date;
-                document.getElementById('modal-employee').textContent = data.employee;
-                document.getElementById('modal-status').textContent = data.status;
-                document.getElementById('modal-source').textContent = data.source;
-                document.getElementById('modal-original-in').textContent = data.original_in;
-                document.getElementById('modal-original-out').textContent = data.original_out;
-                document.getElementById('modal-current-in').textContent = data.current_in;
-                document.getElementById('modal-current-out').textContent = data.current_out;
-
-                // Update edit button link
-                document.getElementById('edit-attendance-btn').href = `{% url 'attendance:attendance_detail' 0 %}`.replace('0', event.id);
-
-                modal.show();
-            });
+    function showEventDetails(event) {
+        const modal = $('#eventModal');
+        const title = event.title;
+        const details = event.extendedProps;
+        
+        modal.find('#eventTitle').text(title);
+        
+        let detailsHtml = '<dl class="row mb-0">';
+        
+        // Common fields
+        if (details.employee) {
+            detailsHtml += `
+                <dt class="col-sm-4">Employee</dt>
+                <dd class="col-sm-8">${details.employee}</dd>
+            `;
+        }
+        
+        if (details.department) {
+            detailsHtml += `
+                <dt class="col-sm-4">Department</dt>
+                <dd class="col-sm-8">${details.department}</dd>
+            `;
+        }
+        
+        // Attendance specific fields
+        if (details.type === 'attendance') {
+            detailsHtml += `
+                <dt class="col-sm-4">Status</dt>
+                <dd class="col-sm-8">
+                    <span class="badge bg-${details.status_color}">${details.status}</span>
+                </dd>
+                <dt class="col-sm-4">Time In</dt>
+                <dd class="col-sm-8">${details.time_in || '-'}</dd>
+                <dt class="col-sm-4">Time Out</dt>
+                <dd class="col-sm-8">${details.time_out || '-'}</dd>
+            `;
+            
+            if (details.status === 'Late') {
+                detailsHtml += `
+                    <dt class="col-sm-4">Late By</dt>
+                    <dd class="col-sm-8">${details.late_by}</dd>
+                `;
+            }
+        }
+        
+        // Leave specific fields
+        if (details.type === 'leave') {
+            detailsHtml += `
+                <dt class="col-sm-4">Leave Type</dt>
+                <dd class="col-sm-8">${details.leave_type}</dd>
+                <dt class="col-sm-4">Duration</dt>
+                <dd class="col-sm-8">${details.duration} days</dd>
+                <dt class="col-sm-4">Status</dt>
+                <dd class="col-sm-8">
+                    <span class="badge bg-${details.status_color}">${details.status}</span>
+                </dd>
+            `;
+            
+            if (details.reason) {
+                detailsHtml += `
+                    <dt class="col-sm-4">Reason</dt>
+                    <dd class="col-sm-8">${details.reason}</dd>
+                `;
+            }
+        }
+        
+        // Holiday specific fields
+        if (details.type === 'holiday') {
+            detailsHtml += `
+                <dt class="col-sm-4">Holiday Type</dt>
+                <dd class="col-sm-8">${details.holiday_type}</dd>
+            `;
+            
+            if (details.description) {
+                detailsHtml += `
+                    <dt class="col-sm-4">Description</dt>
+                    <dd class="col-sm-8">${details.description}</dd>
+                `;
+            }
+        }
+        
+        detailsHtml += '</dl>';
+        
+        modal.find('#eventDetails').html(detailsHtml);
+        modal.modal('show');
     }
+
+    // Clean up tooltips when events are removed
+    calendar.on('eventRemove', function(info) {
+        $(info.el).tooltip('dispose');
+    });
+});
 </script>
 {% endblock %}

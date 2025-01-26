@@ -1,0 +1,216 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">{% if form.instance.pk %}Edit Holiday{% else %}Add Holiday{% endif %}</h5>
+    </div>
+    <div class="card-body">
+        <form method="post" class="needs-validation" novalidate>
+            {% csrf_token %}
+            
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+                {% for error in form.non_field_errors %}
+                {{ error }}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Holiday Name -->
+            <div class="mb-3">
+                <label for="name" class="form-label">Holiday Name *</label>
+                <input type="text" 
+                       class="form-control {% if form.name.errors %}is-invalid{% endif %}" 
+                       id="name" 
+                       name="name"
+                       value="{{ form.name.value|default:'' }}"
+                       required>
+                {% if form.name.errors %}
+                <div class="invalid-feedback">
+                    {{ form.name.errors|join:", " }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Holiday Date -->
+            <div class="mb-3">
+                <label for="date" class="form-label">Date *</label>
+                <input type="date" 
+                       class="form-control {% if form.date.errors %}is-invalid{% endif %}" 
+                       id="date" 
+                       name="date"
+                       value="{{ form.date.value|date:'Y-m-d'|default:'' }}"
+                       required>
+                {% if form.date.errors %}
+                <div class="invalid-feedback">
+                    {{ form.date.errors|join:", " }}
+                </div>
+                {% endif %}
+                <div id="friday-notice" class="text-muted small mt-1" style="display: none;">
+                    <i class="fas fa-info-circle"></i> This is a Friday
+                </div>
+            </div>
+
+            <!-- Holiday Type -->
+            <div class="mb-3">
+                <label for="holiday_type" class="form-label">Holiday Type *</label>
+                <select class="form-select {% if form.holiday_type.errors %}is-invalid{% endif %}" 
+                        id="holiday_type" 
+                        name="holiday_type"
+                        required>
+                    <option value="">Select Type</option>
+                    <option value="PUBLIC" {% if form.holiday_type.value == 'PUBLIC' %}selected{% endif %}>Public Holiday</option>
+                    <option value="COMPANY" {% if form.holiday_type.value == 'COMPANY' %}selected{% endif %}>Company Holiday</option>
+                    <option value="OPTIONAL" {% if form.holiday_type.value == 'OPTIONAL' %}selected{% endif %}>Optional Holiday</option>
+                </select>
+                {% if form.holiday_type.errors %}
+                <div class="invalid-feedback">
+                    {{ form.holiday_type.errors|join:", " }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Description -->
+            <div class="mb-3">
+                <label for="description" class="form-label">Description</label>
+                <textarea class="form-control {% if form.description.errors %}is-invalid{% endif %}" 
+                          id="description" 
+                          name="description" 
+                          rows="3">{{ form.description.value|default:'' }}</textarea>
+                {% if form.description.errors %}
+                <div class="invalid-feedback">
+                    {{ form.description.errors|join:", " }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Applicable Departments -->
+            <div class="mb-3">
+                <label class="form-label">Applicable Departments</label>
+                <div class="border rounded p-3">
+                    <div class="mb-2">
+                        <input type="checkbox" 
+                               class="form-check-input" 
+                               id="select-all-departments">
+                        <label class="form-check-label" for="select-all-departments">
+                            Select All
+                        </label>
+                    </div>
+                    <div class="row">
+                        {% for dept in departments %}
+                        <div class="col-md-4 mb-2">
+                            <div class="form-check">
+                                <input type="checkbox" 
+                                       class="form-check-input department-checkbox" 
+                                       id="dept_{{ dept.id }}" 
+                                       name="applicable_departments" 
+                                       value="{{ dept.id }}"
+                                       {% if dept.id in form.applicable_departments.value %}checked{% endif %}>
+                                <label class="form-check-label" for="dept_{{ dept.id }}">
+                                    {{ dept.name }}
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% if form.applicable_departments.errors %}
+                <div class="text-danger small mt-1">
+                    {{ form.applicable_departments.errors|join:", " }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Holiday Options -->
+            <div class="mb-3">
+                <div class="form-check">
+                    <input type="checkbox" 
+                           class="form-check-input" 
+                           id="is_recurring" 
+                           name="is_recurring"
+                           {% if form.is_recurring.value %}checked{% endif %}>
+                    <label class="form-check-label" for="is_recurring">
+                        Recurring Holiday (repeats yearly)
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" 
+                           class="form-check-input" 
+                           id="is_paid" 
+                           name="is_paid"
+                           {% if form.is_paid.value %}checked{% endif %}>
+                    <label class="form-check-label" for="is_paid">
+                        Paid Holiday
+                    </label>
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">
+                    {% if form.instance.pk %}Update{% else %}Create{% endif %} Holiday
+                </button>
+                <a href="{% url 'attendance:holiday_list' %}" class="btn btn-secondary">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+$(document).ready(function() {
+    // Handle select all departments
+    $('#select-all-departments').change(function() {
+        $('.department-checkbox').prop('checked', $(this).prop('checked'));
+    });
+
+    // Update select all when individual checkboxes change
+    $('.department-checkbox').change(function() {
+        if ($('.department-checkbox:checked').length === $('.department-checkbox').length) {
+            $('#select-all-departments').prop('checked', true);
+        } else {
+            $('#select-all-departments').prop('checked', false);
+        }
+    });
+
+    // Show notice when date is Friday
+    $('#date').change(function() {
+        const date = new Date($(this).val());
+        if (date.getDay() === 5) { // 5 is Friday (0 is Sunday)
+            $('#friday-notice').show();
+        } else {
+            $('#friday-notice').hide();
+        }
+    });
+
+    // Form validation
+    (function() {
+        'use strict';
+        var forms = document.querySelectorAll('.needs-validation');
+        Array.prototype.slice.call(forms).forEach(function(form) {
+            form.addEventListener('submit', function(event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    })();
+
+    // If editing, check Friday on page load
+    if ($('#date').val()) {
+        const date = new Date($('#date').val());
+        if (date.getDay() === 5) {
+            $('#friday-notice').show();
+        }
+    }
+});
+</script>
+{% endblock %}

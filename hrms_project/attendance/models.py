@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from employees.models import Employee
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.utils import timezone
 
 class Shift(models.Model):
@@ -106,16 +107,112 @@ class AttendanceEdit(models.Model):
     def __str__(self):
         return f"Edit on {self.attendance_log} at {self.edit_timestamp}"
 
-class Leave(models.Model):
-    LEAVE_TYPES = [
-        ('annual', 'Annual Leave'),
-        ('sick', 'Sick Leave'),
-        ('permission', 'Permission')
+class LeaveType(models.Model):
+    """Define leave types and their rules"""
+    CATEGORY_CHOICES = [
+        ('REGULAR', 'Regular Leave'),
+        ('SPECIAL', 'Special Leave'),
+        ('MEDICAL', 'Medical Leave'),
     ]
+    
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=20, unique=True)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    description = models.TextField(blank=True)
+    
+    # Leave allowance configuration
+    days_allowed = models.PositiveIntegerField(help_text="Number of days allowed per period")
+    is_paid = models.BooleanField(default=True)
+    requires_document = models.BooleanField(default=False)
+    gender_specific = models.CharField(
+        max_length=1, 
+        choices=[('M', 'Male Only'), ('F', 'Female Only'), ('A', 'All')],
+        default='A'
+    )
+    
+    # Accrual settings
+    accrual_enabled = models.BooleanField(default=False)
+    accrual_days = models.DecimalField(
+        max_digits=4, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        help_text="Days accrued per month/period"
+    )
+    accrual_period = models.CharField(
+        max_length=10,
+        choices=[('MONTHLY', 'Monthly'), ('WORKED', 'Per Worked Days')],
+        null=True,
+        blank=True
+    )
+    
+    # Reset configuration
+    reset_period = models.CharField(
+        max_length=10,
+        choices=[
+            ('YEARLY', 'Yearly'),
+            ('NEVER', 'Never Reset'),
+            ('EVENT', 'Per Event')
+        ],
+        default='YEARLY'
+    )
+    
+    # System fields
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+    
+    class Meta:
+        ordering = ['name']
+
+class LeaveBalance(models.Model):
+    """Track leave balances for employees"""
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='leave_balances'
+    )
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.CASCADE,
+        related_name='employee_balances'
+    )
+    
+    total_days = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    used_days = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    pending_days = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    
+    last_accrual_date = models.DateField(null=True, blank=True)
+    last_reset_date = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.employee} - {self.leave_type} Balance"
+    
+    @property
+    def available_days(self):
+        """Calculate available days excluding pending requests"""
+        return self.total_days - self.used_days - self.pending_days
+
+    class Meta:
+        unique_together = ['employee', 'leave_type']
+        ordering = ['employee', 'leave_type']
+
+class Leave(models.Model):
+    """Track leave requests and their status"""
     LEAVE_STATUS = [
-        ('pending', 'Pending'),
+        ('draft', 'Draft'),
+        ('pending', 'Pending Approval'),
         ('approved', 'Approved'),
-        ('rejected', 'Rejected')
+        ('rejected', 'Rejected'),
+        ('cancelled', 'Cancelled')
     ]
 
     employee = models.ForeignKey(
@@ -123,21 +220,48 @@ class Leave(models.Model):
         on_delete=models.CASCADE,
         related_name='leaves'
     )
-    leave_type = models.CharField(max_length=20, choices=LEAVE_TYPES)
+    leave_type = models.ForeignKey(
+        LeaveType,
+        on_delete=models.PROTECT,
+        related_name='leave_requests'
+    )
+    
+    # Request details
     start_date = models.DateField()
     end_date = models.DateField()
+    duration = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        help_text="Duration in days"
+    )
+    start_half = models.BooleanField(
+        default=False,
+        help_text="True if starting with half day"
+    )
+    end_half = models.BooleanField(
+        default=False,
+        help_text="True if ending with half day"
+    )
+    reason = models.TextField()
+    
+    # Status tracking
     status = models.CharField(
         max_length=20,
         choices=LEAVE_STATUS,
-        default='pending'
+        default='draft'
     )
+    submitted_at = models.DateTimeField(null=True, blank=True)
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name='approved_leaves'
     )
-    remarks = models.TextField(blank=True, null=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+    cancellation_reason = models.TextField(blank=True)
+    
+    # System fields
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -153,11 +277,81 @@ class Leave(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+class LeaveDocument(models.Model):
+    """Store documents related to leave requests"""
+    leave = models.ForeignKey(
+        Leave,
+        on_delete=models.CASCADE,
+        related_name='documents'
+    )
+    document = models.FileField(
+        upload_to='leave_documents/%Y/%m/',
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=['pdf', 'jpg', 'jpeg', 'png']
+            )
+        ]
+    )
+    document_type = models.CharField(max_length=50)
+    notes = models.TextField(blank=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.leave} - {self.document_type}"
+
+class LeaveActivity(models.Model):
+    """Track all activities related to leave requests"""
+    leave = models.ForeignKey(
+        Leave,
+        on_delete=models.CASCADE,
+        related_name='activities'
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True
+    )
+    action = models.CharField(max_length=50)
+    details = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.leave} - {self.action} by {self.actor}"
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'Leave activities'
 
 class Holiday(models.Model):
-    date = models.DateField(unique=True)
-    description = models.CharField(max_length=200)
+    """Define holidays and their configurations"""
+    HOLIDAY_TYPES = [
+        ('PUBLIC', 'Public Holiday'),
+        ('COMPANY', 'Company Holiday'),
+        ('OPTIONAL', 'Optional Holiday')
+    ]
+    
+    name = models.CharField(max_length=100)
+    date = models.DateField()
+    holiday_type = models.CharField(
+        max_length=20,
+        choices=HOLIDAY_TYPES,
+        default='PUBLIC'
+    )
+    is_recurring = models.BooleanField(
+        default=False,
+        help_text="If True, holiday repeats every year"
+    )
+    description = models.TextField(blank=True)
     is_paid = models.BooleanField(default=True)
+    
+    # Specific employee groups this holiday applies to
+    applicable_departments = models.ManyToManyField(
+        'employees.Department',
+        blank=True,
+        related_name='holidays'
+    )
+    
+    # System fields
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -165,6 +359,7 @@ class Holiday(models.Model):
         null=True
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-date']

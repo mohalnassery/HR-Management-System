@@ -1,0 +1,269 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Apply for Leave</h5>
+    </div>
+    <div class="card-body">
+        <!-- Leave Balance Summary -->
+        <div class="card bg-light mb-4">
+            <div class="card-body">
+                <h6 class="card-title">Your Leave Balances</h6>
+                <div class="row">
+                    {% for balance in leave_balances %}
+                    <div class="col-md-3 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span>{{ balance.leave_type.name }}:</span>
+                            <strong>{{ balance.available_days }} days</strong>
+                        </div>
+                        {% if balance.pending_days > 0 %}
+                        <small class="text-muted">
+                            ({{ balance.pending_days }} days pending approval)
+                        </small>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="needs-validation" novalidate>
+            {% csrf_token %}
+            
+            {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+                {% for error in form.non_field_errors %}
+                {{ error }}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Leave Type Selection -->
+            <div class="mb-3">
+                <label for="leave_type" class="form-label">Leave Type *</label>
+                <select class="form-select {% if form.leave_type.errors %}is-invalid{% endif %}" 
+                        id="leave_type" 
+                        name="leave_type"
+                        required>
+                    <option value="">Select Leave Type</option>
+                    {% for type in leave_types %}
+                    <option value="{{ type.id }}" 
+                            data-requires-document="{{ type.requires_document|yesno:'true,false' }}"
+                            data-balance="{{ type.balance }}"
+                            data-gender-specific="{{ type.gender_specific }}"
+                            {% if type.id == form.leave_type.value|stringformat:'i' %}selected{% endif %}>
+                        {{ type.name }}
+                        {% if type.balance %}({{ type.balance }} days available){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if form.leave_type.errors %}
+                <div class="invalid-feedback">
+                    {{ form.leave_type.errors|join:", " }}
+                </div>
+                {% endif %}
+                <div id="leave-type-info" class="form-text mt-1"></div>
+            </div>
+
+            <!-- Date Range -->
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="start_date" class="form-label">Start Date *</label>
+                    <input type="date" 
+                           class="form-control {% if form.start_date.errors %}is-invalid{% endif %}" 
+                           id="start_date" 
+                           name="start_date"
+                           value="{{ form.start_date.value|date:'Y-m-d'|default:'' }}"
+                           required>
+                    {% if form.start_date.errors %}
+                    <div class="invalid-feedback">
+                        {{ form.start_date.errors|join:", " }}
+                    </div>
+                    {% endif %}
+                    <div class="form-check mt-2">
+                        <input type="checkbox" 
+                               class="form-check-input" 
+                               id="start_half" 
+                               name="start_half"
+                               {% if form.start_half.value %}checked{% endif %}>
+                        <label class="form-check-label" for="start_half">
+                            Half Day (Morning)
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="end_date" class="form-label">End Date *</label>
+                    <input type="date" 
+                           class="form-control {% if form.end_date.errors %}is-invalid{% endif %}" 
+                           id="end_date" 
+                           name="end_date"
+                           value="{{ form.end_date.value|date:'Y-m-d'|default:'' }}"
+                           required>
+                    {% if form.end_date.errors %}
+                    <div class="invalid-feedback">
+                        {{ form.end_date.errors|join:", " }}
+                    </div>
+                    {% endif %}
+                    <div class="form-check mt-2">
+                        <input type="checkbox" 
+                               class="form-check-input" 
+                               id="end_half" 
+                               name="end_half"
+                               {% if form.end_half.value %}checked{% endif %}>
+                        <label class="form-check-label" for="end_half">
+                            Half Day (Afternoon)
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Duration Summary -->
+            <div class="mb-3">
+                <div class="alert alert-info" id="duration-info">
+                    Please select dates to see leave duration
+                </div>
+            </div>
+
+            <!-- Reason -->
+            <div class="mb-3">
+                <label for="reason" class="form-label">Reason *</label>
+                <textarea class="form-control {% if form.reason.errors %}is-invalid{% endif %}" 
+                          id="reason" 
+                          name="reason" 
+                          rows="3"
+                          required>{{ form.reason.value|default:'' }}</textarea>
+                {% if form.reason.errors %}
+                <div class="invalid-feedback">
+                    {{ form.reason.errors|join:", " }}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Documents -->
+            <div id="document-section" class="mb-3" style="display: none;">
+                <label class="form-label">Supporting Documents</label>
+                <div class="input-group">
+                    <input type="file" 
+                           class="form-control {% if form.documents.errors %}is-invalid{% endif %}" 
+                           id="documents" 
+                           name="documents"
+                           multiple
+                           accept=".pdf,.jpg,.jpeg,.png">
+                    <label class="input-group-text" for="documents">Upload</label>
+                </div>
+                {% if form.documents.errors %}
+                <div class="invalid-feedback d-block">
+                    {{ form.documents.errors|join:", " }}
+                </div>
+                {% endif %}
+                <div class="form-text">
+                    Supported formats: PDF, JPG, PNG. Maximum file size: 5MB
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary" id="submit-btn">Submit Leave Request</button>
+                <a href="{% url 'attendance:leave_request_list' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+$(document).ready(function() {
+    // Handle leave type change
+    $('#leave_type').change(function() {
+        const selected = $(this).find('option:selected');
+        const requiresDocument = selected.data('requires-document');
+        const genderSpecific = selected.data('gender-specific');
+        const balance = selected.data('balance');
+        
+        // Show/hide document section
+        if (requiresDocument) {
+            $('#document-section').slideDown();
+            $('#documents').prop('required', true);
+        } else {
+            $('#document-section').slideUp();
+            $('#documents').prop('required', false);
+        }
+        
+        // Update info text
+        let infoText = [];
+        if (balance !== undefined) {
+            infoText.push(`Available balance: ${balance} days`);
+        }
+        if (requiresDocument) {
+            infoText.push('Supporting documents required');
+        }
+        if (genderSpecific && genderSpecific !== 'A') {
+            infoText.push(`Only available for ${genderSpecific === 'M' ? 'male' : 'female'} employees`);
+        }
+        
+        $('#leave-type-info').html(infoText.join(' • '));
+    });
+
+    // Calculate duration
+    function calculateDuration() {
+        const startDate = $('#start_date').val();
+        const endDate = $('#end_date').val();
+        const startHalf = $('#start_half').prop('checked');
+        const endHalf = $('#end_half').prop('checked');
+        
+        if (startDate && endDate) {
+            $.ajax({
+                url: '{% url "attendance:calculate_leave_duration" %}',
+                data: {
+                    start_date: startDate,
+                    end_date: endDate,
+                    start_half: startHalf,
+                    end_half: endHalf
+                },
+                success: function(response) {
+                    $('#duration-info').html(
+                        `Leave duration: ${response.days} day${response.days !== 1 ? 's' : ''}<br>` +
+                        `Working days: ${response.working_days} day${response.working_days !== 1 ? 's' : ''}`
+                    );
+                }
+            });
+        }
+    }
+
+    $('#start_date, #end_date, #start_half, #end_half').on('change', calculateDuration);
+
+    // Validate end date not before start date
+    $('#end_date').change(function() {
+        const startDate = new Date($('#start_date').val());
+        const endDate = new Date($(this).val());
+        
+        if (endDate < startDate) {
+            alert('End date cannot be before start date');
+            $(this).val($('#start_date').val());
+        }
+    });
+
+    // Form validation
+    (function() {
+        'use strict';
+        var forms = document.querySelectorAll('.needs-validation');
+        Array.prototype.slice.call(forms).forEach(function(form) {
+            form.addEventListener('submit', function(event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                form.classList.add('was-validated');
+            }, false);
+        });
+    })();
+
+    // Initialize leave type info if type is pre-selected
+    $('#leave_type').trigger('change');
+});
+</script>
+{% endblock %}
