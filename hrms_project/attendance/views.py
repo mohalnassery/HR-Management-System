@@ -10,13 +10,21 @@ from django.http import JsonResponse, Http404
 from django.db.models import Q
 from datetime import datetime, date, timedelta, time
 from employees.models import Employee, Department
-from .models import Shift, Attendance, Leave, Holiday
+from time import time as time_func
+from django.utils.dateparse import parse_datetime
+
+from .models import (
+    Shift, AttendanceRecord, AttendanceLog,
+    AttendanceEdit, Leave, Holiday
+)
 from .serializers import (
-    ShiftSerializer, AttendanceSerializer,
+    ShiftSerializer, AttendanceRecordSerializer,
+    AttendanceLogSerializer, AttendanceEditSerializer,
     LeaveSerializer, HolidaySerializer
 )
 from .utils import (
-    process_attendance_excel, validate_attendance_edit,
+    process_attendance_excel, generate_attendance_log,
+    process_daily_attendance, validate_attendance_edit,
     get_attendance_summary
 )
 
@@ -61,10 +69,10 @@ def upload_attendance(request):
     return render(request, 'attendance/upload_attendance.html')
 
 @login_required
-def attendance_detail_view(request, attendance_id):
+def attendance_detail_view(request, log_id):
     """View for displaying and editing attendance details"""
     try:
-        attendance = Attendance.objects.select_related('employee', 'employee__department').get(id=attendance_id)
+        log = AttendanceLog.objects.select_related('employee', 'employee__department').get(id=log_id)
         personnel_id = request.GET.get('personnel_id')
         date_str = request.GET.get('date')
         
@@ -77,58 +85,108 @@ def attendance_detail_view(request, attendance_id):
         except ValueError:
             raise Http404("Invalid date format")
             
-        # Verify this attendance record belongs to the correct employee and date
-        if str(attendance.employee.employee_number) != str(personnel_id) or attendance.date != date:
+        # Verify this log belongs to the correct employee and date
+        if str(log.employee.employee_number) != str(personnel_id) or log.date != date:
             raise Http404("Invalid attendance record")
-        
-        # Calculate total hours
-        total_hours = timedelta()
-        if attendance.first_in_time and attendance.last_out_time:
-            in_datetime = datetime.combine(date, attendance.first_in_time)
-            out_datetime = datetime.combine(date, attendance.last_out_time)
             
-            # Handle case where checkout is next day
-            if out_datetime < in_datetime:
-                out_datetime += timedelta(days=1)
+        # Get all raw attendance records for this employee on this date
+        attendance_records = AttendanceRecord.objects.filter(
+            employee=log.employee,
+            timestamp__date=date,
+            is_active=True
+        ).order_by('timestamp')
+        
+        # Calculate statistics
+        total_hours = timedelta()
+        status = 'Absent'
+        is_late = False
+        first_in = None
+        last_out = None
+        
+        # Default shift start time (8:00 AM)
+        shift_start = time(8, 0)  # Using datetime.time
+        
+        records = []
+        if attendance_records:
+            # First record of the day is IN, last is OUT
+            first_record = attendance_records.first()
+            last_record = attendance_records.last()
+            
+            # Set first IN
+            first_in = first_record.timestamp.time()
+            is_late = first_in > shift_start
+            status = 'Late' if is_late else 'Present'
+            
+            # Set last OUT
+            last_out = last_record.timestamp.time()
+            
+            # Calculate total hours from first IN to last OUT
+            if first_in and last_out:
+                in_datetime = datetime.combine(date, first_in)
+                out_datetime = datetime.combine(date, last_out)
                 
-            total_hours = out_datetime - in_datetime
+                # Handle case where checkout is next day
+                if out_datetime < in_datetime:
+                    out_datetime += timedelta(days=1)
+                    
+                total_hours = out_datetime - in_datetime
+            
+            # Prepare records for template, alternating between IN and OUT
+            for i, record in enumerate(attendance_records):
+                # First record is IN, last record is OUT, others alternate
+                if record == first_record:
+                    record_type = 'IN'
+                    is_special = True
+                    badge_class = 'bg-primary'
+                    label = ' (First)'
+                elif record == last_record:
+                    record_type = 'OUT'
+                    is_special = True
+                    badge_class = 'bg-primary'
+                    label = ' (Last)'
+                else:
+                    # Alternate between IN and OUT for middle records
+                    record_type = 'IN' if i % 2 == 0 else 'OUT'
+                    is_special = False
+                    badge_class = 'bg-success' if record_type == 'IN' else 'bg-danger'
+                    label = ''
+                
+                records.append({
+                    'id': record.id,
+                    'time': record.timestamp.strftime('%I:%M %p'),
+                    'type': record_type,
+                    'label': label,
+                    'source': record.event_description or '-',
+                    'device_name': record.device_name or '-',
+                    'is_special': is_special,
+                    'badge_class': badge_class
+                })
         
         # Format total hours as decimal
         total_hours_decimal = total_hours.total_seconds() / 3600
         
-        # Default shift start time (8:00 AM)
-        shift_start = time(8, 0)
-        is_late = attendance.first_in_time > shift_start if attendance.first_in_time else False
-        status = 'Late' if is_late else ('Present' if attendance.first_in_time else 'Absent')
-        
         context = {
-            'attendance': attendance,
-            'employee_name': attendance.employee.get_full_name(),
-            'personnel_id': attendance.employee.employee_number,
-            'department': attendance.employee.department.name if attendance.employee.department else '-',
-            'designation': attendance.employee.designation or '-',
+            'log': log,
+            'employee_name': log.employee.get_full_name(),
+            'personnel_id': log.employee.employee_number,
+            'department': log.employee.department.name if log.employee.department else '-',
+            'designation': log.employee.designation or '-',
             'date': date.strftime('%b %d, %Y'),
             'day': date.strftime('%A'),
+            'records': records,
             'stats': {
                 'total_hours': f"{total_hours_decimal:.2f}",
                 'is_late': is_late,
                 'status': status,
-                'first_in': attendance.first_in_time.strftime('%I:%M %p') if attendance.first_in_time else '-',
-                'last_out': attendance.last_out_time.strftime('%I:%M %p') if attendance.last_out_time else '-',
-            },
-            'edit_history': {
-                'original_in': attendance.original_first_in.strftime('%I:%M %p') if attendance.original_first_in else '-',
-                'original_out': attendance.original_last_out.strftime('%I:%M %p') if attendance.original_last_out else '-',
-                'edited_by': attendance.edited_by.get_full_name() if attendance.edited_by else '-',
-                'edit_timestamp': attendance.edit_timestamp.strftime('%b %d, %Y %I:%M %p') if attendance.edit_timestamp else '-',
-                'edit_reason': attendance.edit_reason or '-'
+                'first_in': first_in.strftime('%I:%M %p') if first_in else '-',
+                'last_out': last_out.strftime('%I:%M %p') if last_out else '-',
             }
         }
             
         return render(request, 'attendance/attendance_detail.html', context)
         
-    except Attendance.DoesNotExist:
-        raise Http404("Attendance record not found")
+    except AttendanceLog.DoesNotExist:
+        raise Http404("Attendance log not found")
 
 # API ViewSets
 class ShiftViewSet(viewsets.ModelViewSet):
@@ -139,11 +197,11 @@ class ShiftViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Shift.objects.filter(is_active=True)
 
-class AttendanceViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing attendance records with comprehensive functionality"""
-    serializer_class = AttendanceSerializer
+class AttendanceRecordViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing raw attendance records"""
+    serializer_class = AttendanceRecordSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Attendance.objects.all()
+    queryset = AttendanceRecord.objects.all()
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def upload_excel(self, request):
@@ -153,11 +211,20 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
         try:
             excel_file = request.FILES['file']
-            records_created = process_attendance_excel(excel_file)
+            records_created, duplicates, total_records, new_employees, unique_dates = process_attendance_excel(excel_file)
             
+            # Process logs for each unique date in the uploaded file
+            logs_created = 0
+            for date in unique_dates:
+                logs_created += process_daily_attendance(date)
+
             return Response({
                 'message': 'File processed successfully',
-                'records_created': records_created,
+                'new_records': records_created,
+                'duplicate_records': duplicates,
+                'total_records': total_records,
+                'logs_created': logs_created,
+                'new_employees': new_employees,
                 'success': True
             })
         except Exception as e:
@@ -166,63 +233,29 @@ class AttendanceViewSet(viewsets.ModelViewSet):
                 'success': False
             }, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['patch'])
-    def edit_record(self, request, pk=None):
-        """Edit attendance record with validation and tracking"""
-        instance = self.get_object()
-        edit_data = request.data.get('edit_data', {})
-        
-        # Validate edit request
-        validation_result = validate_attendance_edit(instance, edit_data)
-        if not validation_result['valid']:
-            return Response({
-                'message': validation_result['errors'],
-                'success': False
-            }, status=status.HTTP_400_BAD_REQUEST)
+class AttendanceLogViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing processed attendance logs"""
+    serializer_class = AttendanceLogSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = AttendanceLog.objects.all()
 
-        try:
-            with transaction.atomic():
-                # Update fields
-                for field, value in edit_data.items():
-                    if hasattr(instance, field):
-                        setattr(instance, field, value)
-                
-                # Add edit tracking info
-                instance.edited_by = request.user
-                instance.edit_timestamp = datetime.now()
-                instance.save()
-                
-                return Response({
-                    'message': 'Record updated successfully',
-                    'success': True
-                })
-        except Exception as e:
-            return Response({
-                'message': str(e),
-                'success': False
-            }, status=status.HTTP_400_BAD_REQUEST)
+    def get_queryset(self):
+        queryset = AttendanceLog.objects.filter(is_active=True)
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        employee_id = self.request.query_params.get('employee')
+        department_id = self.request.query_params.get('department')
 
-    @action(detail=False, methods=['get'])
-    def get_summary(self, request):
-        """Get attendance summary for specified parameters"""
-        try:
-            employee_id = request.query_params.get('employee')
-            start_date = request.query_params.get('start_date')
-            end_date = request.query_params.get('end_date')
-            
-            if not all([employee_id, start_date, end_date]):
-                return Response({
-                    'message': 'Missing required parameters',
-                    'success': False
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-            summary = get_attendance_summary(employee_id, start_date, end_date)
-            return Response(summary)
-        except Exception as e:
-            return Response({
-                'message': str(e),
-                'success': False
-            }, status=status.HTTP_400_BAD_REQUEST)
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        if department_id:
+            queryset = queryset.filter(employee__department_id=department_id)
+
+        return queryset
 
 class LeaveViewSet(viewsets.ModelViewSet):
     """ViewSet for managing leave requests"""
@@ -254,11 +287,11 @@ class LargeResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 1000
 
-class AttendanceListViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for listing attendance records with filtering"""
-    serializer_class = AttendanceSerializer
+class AttendanceLogListViewSet(viewsets.ReadOnlyModelViewSet):
+    """ViewSet for listing and retrieving attendance logs with filtering"""
+    serializer_class = AttendanceLogSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Attendance.objects.select_related('employee').all()
+    queryset = AttendanceLog.objects.select_related('employee').all()
     pagination_class = LargeResultsSetPagination
 
     def get_queryset(self):
@@ -291,7 +324,7 @@ class AttendanceListViewSet(viewsets.ReadOnlyModelViewSet):
 
         if status:
             if status == 'late':
-                queryset = queryset.filter(first_in_time__gt=time(8, 0))
+                queryset = queryset.filter(is_late=True)
             elif status == 'present':
                 queryset = queryset.filter(first_in_time__isnull=False)
             elif status == 'absent':
@@ -315,71 +348,38 @@ class AttendanceListViewSet(viewsets.ReadOnlyModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_calendar_events(request):
-    """Get attendance events for calendar view"""
-    start_date = request.GET.get('start')
-    end_date = request.GET.get('end')
+    """API endpoint for getting calendar events"""
+    start_date = request.query_params.get('start')
+    end_date = request.query_params.get('end')
     
-    if not start_date or not end_date:
-        return Response({'error': 'Start and end dates are required'}, status=400)
-        
     try:
         start = datetime.strptime(start_date, '%Y-%m-%d').date()
         end = datetime.strptime(end_date, '%Y-%m-%d').date()
         
-        attendance_records = Attendance.objects.filter(
+        logs = AttendanceLog.objects.filter(
             date__range=[start, end]
         ).select_related('employee')
         
         events = []
-        for record in attendance_records:
+        for log in logs:
             status = 'Present'
             color = '#28a745'  # green
             
-            if not record.first_in_time:
+            if not log.first_in_time:
                 status = 'Absent'
                 color = '#dc3545'  # red
-            elif record.first_in_time.hour >= 8:  # Assuming 8 AM is the cutoff for late
+            elif log.is_late:
                 status = 'Late'
                 color = '#ffc107'  # yellow
                 
             events.append({
-                'id': record.id,
-                'title': f"{record.employee.get_full_name()} - {status}",
-                'start': record.date.isoformat(),
-                'end': record.date.isoformat(),
+                'id': log.id,
+                'title': f"{log.employee.get_full_name()} - {status}",
+                'start': log.date.isoformat(),
+                'end': log.date.isoformat(),
                 'color': color,
                 'extendedProps': {
-                    'employee_id': record.employee.id,
-                    'status': status,
-                    'first_in': record.first_in_time.strftime('%I:%M %p') if record.first_in_time else None,
-                    'last_out': record.last_out_time.strftime('%I:%M %p') if record.last_out_time else None
-                }
-            })
-            
-        return Response(events)
-    except ValueError:
-        return Response({'error': 'Invalid date format'}, status=400)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def search_employees(request):
-    """Search employees by ID or name"""
-    search_term = request.GET.get('q', '').strip()
-    if not search_term:
-        return Response([])
-        
-    employees = Employee.objects.filter(
-        Q(employee_number__icontains=search_term) |
-        Q(first_name__icontains=search_term) |
-        Q(last_name__icontains=search_term)
-    )[:10]
-    
-    results = []
-    for emp in employees:
-        results.append({
-            'id': emp.id,
-            'text': f"{emp.employee_number} - {emp.get_full_name()}",
-            'employee_number': emp.employee_number,
+                    'employee_id': log.employee.id,
                     'status': status,
                     'in_time': log.first_in_time.strftime('%H:%M') if log.first_in_time else None,
                     'out_time': log.last_out_time.strftime('%H:%M') if log.last_out_time else None
