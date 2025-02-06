@@ -99,10 +99,9 @@ def upload_attendance(request):
     return render(request, 'attendance/upload_attendance.html')
 
 @login_required
-def attendance_detail_view(request, log_id):
+def attendance_detail_view(request):
     """View for displaying and editing attendance details"""
     try:
-        log = AttendanceLog.objects.select_related('employee', 'employee__department').get(id=log_id)
         personnel_id = request.GET.get('personnel_id')
         date_str = request.GET.get('date')
         
@@ -115,9 +114,19 @@ def attendance_detail_view(request, log_id):
         except ValueError:
             raise Http404("Invalid date format")
             
-        # Verify this log belongs to the correct employee and date
-        if str(log.employee.employee_number) != str(personnel_id) or log.date != date:
-            raise Http404("Invalid attendance record")
+        try:
+            employee = Employee.objects.get(employee_number=personnel_id)
+        except Employee.DoesNotExist:
+            raise Http404("Employee not found")
+
+        # Get or create the attendance log
+        log, created = AttendanceLog.objects.get_or_create(
+            employee=employee,
+            date=date,
+            defaults={
+                'source': 'Web Interface'
+            }
+        )
             
         # Get all raw attendance records for this employee on this date
         attendance_records = AttendanceRecord.objects.filter(
@@ -572,10 +581,22 @@ def get_employee_attendance(request, employee_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def attendance_detail_api(request, log_id):
+def attendance_detail_api(request):
     """API endpoint for getting attendance details"""
     try:
-        log = AttendanceLog.objects.select_related('employee').get(id=log_id)
+        personnel_id = request.GET.get('personnel_id')
+        date_str = request.GET.get('date')
+        
+        if not personnel_id or not date_str:
+            return Response({'error': 'Missing required parameters'}, status=400)
+        
+        try:
+            date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
+        except ValueError:
+            return Response({'error': 'Invalid date format'}, status=400)
+            
+        employee = Employee.objects.get(employee_number=personnel_id)
+        log = AttendanceLog.objects.select_related('employee').get(employee=employee, date=date)
         data = {
             'id': log.id,
             'employee_name': log.employee.get_full_name(),
@@ -813,10 +834,22 @@ def calendar_events(request):
         return Response({'error': str(e)}, status=400)
 
 @api_view(['GET'])
-def attendance_details(request, log_id):
+def attendance_details(request):
     """Get detailed attendance information for a specific log"""
     try:
-        log = AttendanceLog.objects.select_related('employee').get(id=log_id)
+        personnel_id = request.GET.get('personnel_id')
+        date_str = request.GET.get('date')
+        
+        if not personnel_id or not date_str:
+            return Response({'error': 'Missing required parameters'}, status=400)
+        
+        try:
+            date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
+        except ValueError:
+            return Response({'error': 'Invalid date format'}, status=400)
+            
+        employee = Employee.objects.get(employee_number=personnel_id)
+        log = AttendanceLog.objects.select_related('employee').get(employee=employee, date=date)
         
         # Get raw attendance records for this date
         records = AttendanceRecord.objects.filter(

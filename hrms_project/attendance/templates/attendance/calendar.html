@@ -303,9 +303,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const employeeId = $('#employee-filter').val();
         
         // Prepare URL for attendance details
-        let url = `{% url "attendance:attendance_detail" log_id=0 %}`.replace('0', 'temp');
-        url = url.replace('temp', '');
-        url += '?date=' + date;
+        let url = `{% url "attendance:attendance_detail" %}?date=${date}`;
         
         if (employeeId) {
             const empNumber = $('#employee-filter').select2('data')[0]?.employee_number;

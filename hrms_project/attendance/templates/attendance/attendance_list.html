@@ -299,7 +299,7 @@ function updatePagination(data) {
 
 function viewDetails(logId, personnelId) {
     const date = document.getElementById(`log-date-${logId}`).textContent;
-    window.location.href = `{% url 'attendance:attendance_detail' 0 %}`.replace('0', logId) + `?personnel_id=${personnelId}&date=${date}`;
+    window.location.href = `{% url 'attendance:attendance_detail' %}?personnel_id=${personnelId}&date=${date}`;
 }
 </script>
 {% endblock %}

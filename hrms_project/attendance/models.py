@@ -320,6 +320,7 @@ class Leave(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
 class LeaveDocument(models.Model):
     """Store documents related to leave requests"""
     leave = models.ForeignKey(
