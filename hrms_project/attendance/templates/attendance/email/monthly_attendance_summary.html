@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 3px solid #28a745;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .summary-box {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        .summary-item {
+            padding: 15px;
+            text-align: center;
+            min-width: 120px;
+        }
+        .summary-number {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .summary-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 15px 0;
+        }
+        .stats-card {
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+        }
+        .stats-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .detail-table th,
+        .detail-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .detail-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .detail-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        .chart-container {
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .chart-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+        .attendance-pattern {
+            display: flex;
+            gap: 2px;
+            margin: 15px 0;
+        }
+        .pattern-day {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+        .present { background-color: #28a745; }
+        .absent { background-color: #dc3545; }
+        .late { background-color: #ffc107; }
+        .leave { background-color: #17a2b8; }
+        .weekend { background-color: #6c757d; }
+        .holiday { background-color: #6610f2; }
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+        .trend-indicator {
+            display: inline-block;
+            margin-left: 5px;
+        }
+        .trend-up { color: #28a745; }
+        .trend-down { color: #dc3545; }
+        .trend-neutral { color: #6c757d; }
+        .highlight-box {
+            background-color: #e8f4ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Monthly Attendance Summary</h2>
+        <p>{{ month_name }} {{ year }}</p>
+    </div>
+
+    <div class="content">
+        <p>Dear {{ employee.get_full_name }},</p>
+
+        <p>Here's your attendance summary for {{ month_name }} {{ year }}:</p>
+
+        <div class="summary-box">
+            <div class="summary-item">
+                <div class="summary-number">{{ total_working_days }}</div>
+                <div class="summary-label">Working Days</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ present_days }}</div>
+                <div class="summary-label">Present Days</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ late_days }}</div>
+                <div class="summary-label">Late Arrivals</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ absent_days }}</div>
+                <div class="summary-label">Absent Days</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ leave_days }}</div>
+                <div class="summary-label">Leave Days</div>
+            </div>
+        </div>
+
+        <div class="highlight-box">
+            <h4>Monthly Highlights</h4>
+            <ul>
+                <li>Attendance Rate: {{ attendance_rate }}%
+                    <span class="trend-indicator {{ attendance_trend_class }}">
+                        {{ attendance_trend_icon }} {{ attendance_trend }}%
+                    </span>
+                </li>
+                <li>Average Arrival Time: {{ avg_arrival_time }}
+                    <span class="trend-indicator {{ arrival_trend_class }}">
+                        {{ arrival_trend_icon }}
+                    </span>
+                </li>
+                <li>Total Working Hours: {{ total_working_hours }} hours</li>
+                {% if overtime_hours %}
+                <li>Overtime Hours: {{ overtime_hours }} hours</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stats-card">
+                <div class="stats-title">Arrival Time Distribution</div>
+                <table class="detail-table">
+                    <tr>
+                        <td>On Time (Before {{ regular_time }})</td>
+                        <td>{{ ontime_count }} days</td>
+                    </tr>
+                    <tr>
+                        <td>Late ({{ grace_period }} grace period)</td>
+                        <td>{{ late_within_grace }} days</td>
+                    </tr>
+                    <tr>
+                        <td>Late (After grace period)</td>
+                        <td>{{ late_after_grace }} days</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="stats-card">
+                <div class="stats-title">Leave Summary</div>
+                <table class="detail-table">
+                    {% for leave in leave_summary %}
+                    <tr>
+                        <td>{{ leave.type }}</td>
+                        <td>{{ leave.days }} days</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">Monthly Attendance Pattern</div>
+            <div class="attendance-pattern">
+                {% for day in attendance_pattern %}
+                <div class="pattern-day {{ day.status }}" title="{{ day.date|date:'D, M d' }}: {{ day.status|title }}"></div>
+                {% endfor %}
+            </div>
+            <div style="margin-top: 10px;">
+                <small>
+                    <span class="pattern-day present" style="display: inline-block;"></span> Present
+                    <span class="pattern-day absent" style="display: inline-block; margin-left: 10px;"></span> Absent
+                    <span class="pattern-day late" style="display: inline-block; margin-left: 10px;"></span> Late
+                    <span class="pattern-day leave" style="display: inline-block; margin-left: 10px;"></span> Leave
+                    <span class="pattern-day weekend" style="display: inline-block; margin-left: 10px;"></span> Weekend
+                    <span class="pattern-day holiday" style="display: inline-block; margin-left: 10px;"></span> Holiday
+                </small>
+            </div>
+        </div>
+
+        {% if improvement_areas %}
+        <div class="highlight-box">
+            <h4>Areas for Improvement</h4>
+            <ul>
+                {% for area in improvement_areas %}
+                <li>{{ area }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if next_month_holidays %}
+        <div class="highlight-box">
+            <h4>Upcoming Holidays ({{ next_month_name }})</h4>
+            <ul>
+                {% for holiday in next_month_holidays %}
+                <li>{{ holiday.date|date:"F j" }} - {{ holiday.description }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>This is an automated monthly summary from the HR Management System.</p>
+        <p>Generated on: {{ generated_at|date:"l, F j, Y" }}</p>
+        <p>For detailed attendance records, please visit the HR Portal.</p>
+        {% if portal_link %}
+        <p><a href="{{ portal_link }}">Access HR Portal</a></p>
+        {% endif %}
+        <p>If you notice any discrepancies, please contact HR within 3 working days.</p>
+    </div>
+</body>
+</html>

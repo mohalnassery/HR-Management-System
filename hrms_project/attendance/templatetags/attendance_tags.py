@@ -1,166 +1,77 @@
 from django import template
 from django.utils import timezone
-from datetime import datetime, time
-from django.utils.html import format_html
+from django.utils.safestring import mark_safe
+from django.db.models import Sum
+from datetime import datetime, date
+from attendance.models import (
+    AttendanceLog, Leave, LeaveBalance, Holiday
+)
 
 register = template.Library()
 
 @register.filter
-def format_duration(days):
-    """Format duration in days to a human-readable string"""
-    if not days:
-        return '0 days'
-    
-    try:
-        days = float(days)
-        if days == 1:
-            return '1 day'
-        elif days == 0.5:
-            return '½ day'
-        elif days % 1 == 0:
-            return f'{int(days)} days'
-        else:
-            return f'{days} days'
-    except (ValueError, TypeError):
-        return str(days)
+def format_time(time_obj):
+    """Format time object as HH:MM AM/PM"""
+    if not time_obj:
+        return '-'
+    return time_obj.strftime('%I:%M %p')
 
 @register.filter
-def status_badge(status, size=''):
-    """Render a status badge with appropriate color"""
+def format_duration(duration):
+    """Format duration in days, handling half days"""
+    if not duration:
+        return '0'
+    if duration.is_integer():
+        return str(int(duration))
+    return f"{duration:.1f}"
+
+@register.simple_tag
+def attendance_status_badge(status, is_late=False):
+    """Return HTML badge for attendance status"""
     colors = {
-        'pending': 'warning',
-        'approved': 'success',
-        'rejected': 'danger',
-        'cancelled': 'secondary',
         'present': 'success',
         'absent': 'danger',
         'late': 'warning',
         'leave': 'info',
-        'holiday': 'primary'
+        'holiday': 'secondary'
     }
     
-    status = str(status).lower()
-    color = colors.get(status, 'secondary')
-    size_class = f'badge-{size}' if size else ''
+    status = status.lower()
+    if status == 'present' and is_late:
+        status = 'late'
+        
+    color = colors.get(status, 'light')
     
-    return format_html(
-        '<span class="badge bg-{} {}">{}</span>',
-        color,
-        size_class,
-        status.title()
+    return mark_safe(
+        f'<span class="badge bg-{color}">{status.title()}</span>'
     )
 
-@register.filter
-def format_time(value):
-    """Format time value to 12-hour format"""
-    if not value:
-        return '-'
+@register.simple_tag
+def leave_type_badge(leave_type):
+    """Return HTML badge for leave type"""
+    colors = {
+        'annual': 'primary',
+        'sick': 'danger',
+        'emergency': 'warning',
+        'injury': 'danger',
+        'maternity': 'info',
+        'paternity': 'info',
+        'marriage': 'success',
+        'death': 'dark',
+        'permission': 'secondary'
+    }
     
-    if isinstance(value, str):
-        try:
-            value = datetime.strptime(value, '%H:%M:%S').time()
-        except ValueError:
-            try:
-                value = datetime.strptime(value, '%H:%M').time()
-            except ValueError:
-                return value
+    color = colors.get(leave_type.code.lower(), 'light')
     
-    if isinstance(value, time):
-        return value.strftime('%I:%M %p')
-    
-    return str(value)
-
-@register.filter
-def time_difference(time1, time2):
-    """Calculate time difference in hours and minutes"""
-    if not time1 or not time2:
-        return '-'
-    
-    if isinstance(time1, str):
-        time1 = datetime.strptime(time1, '%H:%M:%S').time()
-    if isinstance(time2, str):
-        time2 = datetime.strptime(time2, '%H:%M:%S').time()
-    
-    dt1 = datetime.combine(timezone.now().date(), time1)
-    dt2 = datetime.combine(timezone.now().date(), time2)
-    
-    diff = dt2 - dt1
-    hours = diff.seconds // 3600
-    minutes = (diff.seconds % 3600) // 60
-    
-    if hours == 0:
-        return f'{minutes} mins'
-    elif minutes == 0:
-        return f'{hours} hrs'
-    else:
-        return f'{hours} hrs {minutes} mins'
+    return mark_safe(
+        f'<span class="badge bg-{color}">{leave_type.name}</span>'
+    )
 
 @register.simple_tag
-def is_late(check_in_time, shift_start=None):
-    """Check if check-in time is late based on shift"""
-    if not check_in_time:
-        return False
-        
-    if not shift_start:
-        # Default shift start time (8:00 AM)
-        shift_start = time(8, 0)
-    
-    if isinstance(check_in_time, str):
-        check_in_time = datetime.strptime(check_in_time, '%H:%M:%S').time()
-    
-    return check_in_time > shift_start
-
-@register.filter
-def late_by(check_in_time, shift_start=None):
-    """Calculate how late the check-in was"""
-    if not check_in_time:
-        return '-'
-        
-    if not shift_start:
-        # Default shift start time (8:00 AM)
-        shift_start = time(8, 0)
-    
-    if isinstance(check_in_time, str):
-        check_in_time = datetime.strptime(check_in_time, '%H:%M:%S').time()
-    
-    if check_in_time <= shift_start:
-        return '-'
-    
-    dt1 = datetime.combine(timezone.now().date(), shift_start)
-    dt2 = datetime.combine(timezone.now().date(), check_in_time)
-    
-    diff = dt2 - dt1
-    minutes = diff.seconds // 60
-    
-    if minutes < 60:
-        return f'{minutes} mins'
-    else:
-        hours = minutes // 60
-        remaining_mins = minutes % 60
-        if remaining_mins == 0:
-            return f'{hours} hrs'
-        return f'{hours} hrs {remaining_mins} mins'
-
-@register.filter
-def friday_attendance(employee, date):
-    """Get Friday attendance status based on Thursday/Saturday rule"""
-    from attendance.services import FridayRuleService
-    
-    if not isinstance(date, datetime):
-        try:
-            date = datetime.strptime(date, '%Y-%m-%d')
-        except (ValueError, TypeError):
-            return '-'
-    
-    if date.weekday() != 4:  # 4 is Friday
-        return None
-        
-    return FridayRuleService.get_friday_status(employee, date.date())
-
-@register.filter
-def leave_balance(employee, leave_type):
-    """Get employee's leave balance for a specific leave type"""
-    from attendance.models import LeaveBalance
+def leave_balance_display(employee, leave_type, date_obj=None):
+    """Display leave balance with consumed/remaining days"""
+    if not date_obj:
+        date_obj = timezone.now().date()
     
     try:
         balance = LeaveBalance.objects.get(
@@ -168,65 +79,131 @@ def leave_balance(employee, leave_type):
             leave_type=leave_type,
             is_active=True
         )
-        return balance.available_days
+        
+        # Get leaves taken this year
+        year_start = date(date_obj.year, 1, 1)
+        year_end = date(date_obj.year, 12, 31)
+        
+        consumed = Leave.objects.filter(
+            employee=employee,
+            leave_type=leave_type,
+            start_date__gte=year_start,
+            end_date__lte=year_end,
+            status='approved',
+            is_active=True
+        ).aggregate(total=Sum('duration'))['total'] or 0
+        
+        remaining = balance.available_days
+        
+        return mark_safe(
+            f'<span class="text-muted">{consumed}</span> / '
+            f'<strong class="text-primary">{remaining}</strong>'
+        )
+        
     except LeaveBalance.DoesNotExist:
-        return 0
-
-@register.filter
-def pending_leave_requests(employee):
-    """Get count of pending leave requests for an employee"""
-    from attendance.models import Leave
-    
-    return Leave.objects.filter(
-        employee=employee,
-        status='pending',
-        is_active=True
-    ).count()
+        return mark_safe(
+            '<span class="text-muted">0</span> / '
+            '<strong class="text-primary">0</strong>'
+        )
 
 @register.simple_tag
-def get_attendance_stats(employee, start_date=None, end_date=None):
-    """Get attendance statistics for an employee in a date range"""
-    if not start_date:
-        start_date = timezone.now().replace(day=1).date()
-    if not end_date:
-        end_date = timezone.now().date()
-        
-    from attendance.models import AttendanceLog, Leave, Holiday
+def monthly_attendance_summary(employee, year, month):
+    """Generate monthly attendance summary"""
+    start_date = date(year, month, 1)
+    if month == 12:
+        end_date = date(year + 1, 1, 1)
+    else:
+        end_date = date(year, month + 1, 1)
     
-    # Get counts
-    present = AttendanceLog.objects.filter(
+    logs = AttendanceLog.objects.filter(
         employee=employee,
-        date__range=(start_date, end_date),
-        is_active=True,
-        first_in_time__isnull=False
-    ).count()
+        date__gte=start_date,
+        date__lt=end_date,
+        is_active=True
+    )
     
-    absent = (end_date - start_date).days + 1 - present
+    summary = {
+        'present': logs.filter(status='present', is_late=False).count(),
+        'late': logs.filter(status='present', is_late=True).count(),
+        'absent': logs.filter(status='absent').count(),
+        'leave': logs.filter(status='leave').count(),
+        'holiday': logs.filter(status='holiday').count(),
+    }
     
-    late = AttendanceLog.objects.filter(
-        employee=employee,
-        date__range=(start_date, end_date),
-        is_active=True,
-        is_late=True
-    ).count()
-    
+    return mark_safe(
+        '<div class="attendance-summary">'
+        f'<div class="present">Present: {summary["present"]}</div>'
+        f'<div class="late">Late: {summary["late"]}</div>'
+        f'<div class="absent">Absent: {summary["absent"]}</div>'
+        f'<div class="leave">Leave: {summary["leave"]}</div>'
+        f'<div class="holiday">Holiday: {summary["holiday"]}</div>'
+        '</div>'
+    )
+
+@register.simple_tag
+def is_holiday(date_obj):
+    """Check if a date is a holiday"""
+    return Holiday.objects.filter(
+        date=date_obj,
+        is_active=True
+    ).exists()
+
+@register.simple_tag
+def get_leave_status(employee, date_obj):
+    """Get leave status for a date"""
     leave = Leave.objects.filter(
         employee=employee,
+        start_date__lte=date_obj,
+        end_date__gte=date_obj,
         status='approved',
-        start_date__lte=end_date,
-        end_date__gte=start_date,
         is_active=True
-    ).count()
+    ).first()
     
-    holidays = Holiday.objects.filter(
-        date__range=(start_date, end_date),
+    if leave:
+        return {
+            'on_leave': True,
+            'type': leave.leave_type,
+            'start_date': leave.start_date,
+            'end_date': leave.end_date
+        }
+    
+    return {'on_leave': False}
+
+@register.filter
+def attendance_date_class(date_obj, employee):
+    """Return CSS class for calendar date based on attendance"""
+    classes = []
+    
+    # Check if weekend
+    if date_obj.weekday() in [4, 5]:  # Friday, Saturday
+        classes.append('weekend')
+    
+    # Check if holiday
+    if is_holiday(date_obj):
+        classes.append('holiday')
+        return ' '.join(classes)
+    
+    # Check if on leave
+    leave_status = get_leave_status(employee, date_obj)
+    if leave_status['on_leave']:
+        classes.append('leave')
+        return ' '.join(classes)
+    
+    # Get attendance status
+    log = AttendanceLog.objects.filter(
+        employee=employee,
+        date=date_obj,
         is_active=True
-    ).count()
+    ).first()
     
-    return {
-        'present': present,
-        'absent': absent - leave - holidays,  # Exclude leaves and holidays from absents
-        'late': late,
-        'leave': leave,
-        'holidays': holidays
-    }
+    if log:
+        if log.is_late:
+            classes.append('late')
+        elif log.status == 'present':
+            classes.append('present')
+        elif log.status == 'absent':
+            classes.append('absent')
+    elif date_obj < timezone.now().date():
+        classes.append('absent')
+        
+    return ' '.join(classes)

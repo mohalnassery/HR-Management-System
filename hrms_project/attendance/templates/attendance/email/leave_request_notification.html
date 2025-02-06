@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 3px solid #007bff;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .leave-details {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .detail-table th,
+        .detail-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .detail-table th {
+            background-color: #f1f3f5;
+            font-weight: bold;
+            width: 35%;
+        }
+        .balance-info {
+            background-color: #e8f4ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .action-buttons {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 0 10px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .btn-approve {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-reject {
+            background-color: #dc3545;
+            color: white;
+        }
+        .note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+        .document-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .document-list {
+            list-style: none;
+            padding: 0;
+        }
+        .document-list li {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        .status-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-pending {
+            background-color: #ffc107;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Leave Request Notification</h2>
+        <span class="status-tag status-pending">Pending Approval</span>
+    </div>
+
+    <div class="content">
+        <h3>New Leave Request</h3>
+        <p>A new leave request has been submitted and requires your approval.</p>
+
+        <div class="leave-details">
+            <h4>Request Details</h4>
+            <table class="detail-table">
+                <tr>
+                    <th>Employee:</th>
+                    <td>{{ leave.employee.get_full_name }} ({{ leave.employee.employee_number }})</td>
+                </tr>
+                <tr>
+                    <th>Department:</th>
+                    <td>{{ leave.employee.department.name }}</td>
+                </tr>
+                <tr>
+                    <th>Leave Type:</th>
+                    <td>{{ leave.get_leave_type_display }}</td>
+                </tr>
+                <tr>
+                    <th>Start Date:</th>
+                    <td>{{ leave.start_date|date:"l, F j, Y" }}</td>
+                </tr>
+                <tr>
+                    <th>End Date:</th>
+                    <td>{{ leave.end_date|date:"l, F j, Y" }}</td>
+                </tr>
+                <tr>
+                    <th>Duration:</th>
+                    <td>{{ leave.duration }} day{{ leave.duration|pluralize }}</td>
+                </tr>
+                {% if leave.reason %}
+                <tr>
+                    <th>Reason:</th>
+                    <td>{{ leave.reason }}</td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+
+        <div class="balance-info">
+            <h4>Leave Balance Information</h4>
+            <table class="detail-table">
+                <tr>
+                    <th>Current Balance:</th>
+                    <td>{{ leave.balance_before }} days</td>
+                </tr>
+                <tr>
+                    <th>Requested Days:</th>
+                    <td>{{ leave.duration }} days</td>
+                </tr>
+                <tr>
+                    <th>Remaining Balance:</th>
+                    <td>{{ leave.balance_after }} days</td>
+                </tr>
+            </table>
+        </div>
+
+        {% if leave.documents.exists %}
+        <div class="document-section">
+            <h4>Supporting Documents</h4>
+            <ul class="document-list">
+                {% for doc in leave.documents.all %}
+                <li>
+                    <i class="far fa-file"></i>
+                    {{ doc.filename }}
+                    <a href="{{ doc.file.url }}" target="_blank">(View)</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="action-buttons">
+            <a href="{{ approve_url }}" class="btn btn-approve">Approve Request</a>
+            <a href="{{ reject_url }}" class="btn btn-reject">Reject Request</a>
+        </div>
+
+        {% if conflicts %}
+        <div class="note">
+            <h4>⚠️ Important Notes:</h4>
+            <ul>
+                {% for conflict in conflicts %}
+                <li>{{ conflict }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>This is an automated notification from the HR Management System.</p>
+        <p>Reference: {{ leave.reference_number }}<br>
+        Submitted: {{ leave.created_at|date:"l, F j, Y H:i" }}</p>
+        <p>Please review and respond to this request promptly. If you have any questions, please contact HR.</p>
+    </div>
+</body>
+</html>

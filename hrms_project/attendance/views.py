@@ -1,4 +1,4 @@
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from rest_framework import viewsets, status
@@ -12,10 +12,13 @@ from datetime import datetime, date, timedelta, time
 from employees.models import Employee, Department
 from time import time as time_func
 from django.utils.dateparse import parse_datetime
+from django.contrib import messages
+from django.utils import timezone
+from django.db import models
 
 from .models import (
     Shift, AttendanceRecord, AttendanceLog,
-    AttendanceEdit, Leave, Holiday
+    AttendanceEdit, Leave, Holiday, LeaveType
 )
 from .serializers import (
     ShiftSerializer, AttendanceRecordSerializer,
@@ -41,6 +44,33 @@ def attendance_list(request):
 def calendar_view(request):
     """View for displaying attendance calendar"""
     return render(request, 'attendance/calendar.html')
+
+@login_required
+def calendar_month(request):
+    """View for monthly calendar"""
+    context = {
+        'view_type': 'month',
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/calendar.html', context)
+
+@login_required
+def calendar_week(request):
+    """View for weekly calendar"""
+    context = {
+        'view_type': 'week',
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/calendar.html', context)
+
+@login_required
+def calendar_department(request):
+    """View for department-wise calendar"""
+    context = {
+        'view_type': 'department',
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/calendar.html', context)
 
 @login_required
 def mark_attendance(request):
@@ -187,6 +217,133 @@ def attendance_detail_view(request, log_id):
         
     except AttendanceLog.DoesNotExist:
         raise Http404("Attendance log not found")
+
+@login_required
+def attendance_report(request):
+    """View for displaying attendance reports and analytics"""
+    context = {
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/attendance_report.html', context)
+
+@login_required
+def holiday_list(request):
+    """View for displaying list of holidays"""
+    holidays = Holiday.objects.all().order_by('-date')
+    context = {
+        'holidays': holidays
+    }
+    return render(request, 'attendance/holiday_list.html', context)
+
+@login_required
+def holiday_create(request):
+    """View for creating new holidays"""
+    if request.method == 'POST':
+        # Handle form submission
+        name = request.POST.get('name')
+        date = request.POST.get('date')
+        description = request.POST.get('description')
+        is_recurring = request.POST.get('is_recurring', False)
+        
+        Holiday.objects.create(
+            name=name,
+            date=date,
+            description=description,
+            is_recurring=is_recurring
+        )
+        return redirect('attendance:holiday_list')
+    
+    return render(request, 'attendance/holiday_create.html')
+
+@login_required
+def recurring_holidays(request):
+    """View for managing recurring holidays"""
+    holidays = Holiday.objects.filter(is_recurring=True).order_by('-date')
+    context = {
+        'holidays': holidays
+    }
+    return render(request, 'attendance/recurring_holidays.html', context)
+
+@login_required
+def leave_balance(request):
+    """View for showing employee leave balances"""
+    employee = None  # Initialize employee to None
+    try:
+        employee = request.user.employee
+    except AttributeError:
+        messages.error(request, "No employee record found for your user account. Please contact HR.")
+        return redirect('attendance:attendance_list')
+
+    if not employee:
+        # Handle the case where employee is None
+        messages.error(request, "No employee record found for your user account. Please contact HR.")
+        return redirect('attendance:attendance_list')
+
+    leave_types = LeaveType.objects.all()
+    balances = []
+    
+    for leave_type in leave_types:
+        used_leaves = Leave.objects.filter(
+            employee=employee,
+            leave_type=leave_type,
+            status='APPROVED',
+            start_date__year=timezone.now().year
+        ).aggregate(
+            total_days=models.Sum('days')
+        )['total_days'] or 0
+        
+        remaining = leave_type.days_allowed - used_leaves
+        balances.append({
+            'leave_type': leave_type,
+            'allowed_days': leave_type.days_allowed,
+            'used_days': used_leaves,
+            'remaining_days': remaining
+        })
+    
+    context = {
+        'balances': balances
+    }
+    return render(request, 'attendance/leave_balance.html', context)
+
+@login_required
+def leave_types(request):
+    """View for managing leave types"""
+    leave_types = LeaveType.objects.all().order_by('name')
+    context = {
+        'leave_types': leave_types
+    }
+    return render(request, 'attendance/leave_types.html', context)
+
+@login_required
+def get_department_employees(request):
+    """AJAX view to get employees by department"""
+    department_id = request.GET.get('department')
+    search_query = request.GET.get('q', '').strip()
+
+    if search_query:
+        employees = Employee.objects.filter(
+            Q(employee_number__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query)
+        )
+        if department_id:
+            employees = employees.filter(department_id=department_id)
+    elif department_id:
+        employees = Employee.objects.filter(department_id=department_id)
+    else:
+        employees = Employee.objects.all()
+
+    employees = employees.values('id', 'user__first_name', 'user__last_name')
+
+    employee_list = [
+        {
+            'id': emp['id'],
+            'name': f"{emp['user__first_name']} {emp['user__last_name']}"
+        }
+        for emp in employees
+    ]
+
+    return JsonResponse({'employees': employee_list})
 
 # API ViewSets
 class ShiftViewSet(viewsets.ModelViewSet):
@@ -533,67 +690,120 @@ def add_attendance_record(request):
 def search_employees(request):
     """Search employees by ID or name"""
     query = request.GET.get('q', '').strip()
-    if len(query) < 2:
+    department_id = request.GET.get('department')
+    
+    if not query:
         return Response([])
-    
-    employees = Employee.objects.filter(
-        Q(employee_number__icontains=query) |
-        Q(first_name__icontains=query) |
-        Q(last_name__icontains=query)
-    )[:10]  # Limit to 10 results
-    
-    return Response([{
-        'id': emp.id,
-        'employee_number': emp.employee_number,
-        'full_name': emp.get_full_name()
-    } for emp in employees])
+        
+    try:
+        # Build the query
+        employee_query = Q(employee_number__icontains=query) | \
+                        Q(first_name__icontains=query) | \
+                        Q(last_name__icontains=query)
+                        
+        # Add department filter if specified
+        if department_id:
+            employee_query &= Q(department_id=department_id)
+            
+        # Get employees matching the criteria
+        employees = Employee.objects.filter(employee_query, is_active=True) \
+                                 .select_related('department') \
+                                 .order_by('employee_number')[:10]
+        
+        # Format response
+        employee_list = [{
+            'id': emp.id,
+            'employee_number': emp.employee_number,
+            'full_name': emp.get_full_name(),
+            'department': emp.department.name if emp.department else None
+        } for emp in employees]
+        
+        return Response(employee_list)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def calendar_events(request):
     """Get attendance events for calendar"""
-    employee_id = request.GET.get('employee_id')
-    start_str = request.GET.get('start', '')
-    end_str = request.GET.get('end', '')
-    
-    if not all([employee_id, start_str, end_str]):
-        return Response([])
-    
     try:
-        # Parse ISO format dates
-        start_date = parse_datetime(start_str).date()
-        end_date = parse_datetime(end_str).date()
+        start_str = request.GET.get('start', '')
+        end_str = request.GET.get('end', '')
+        department = request.GET.get('department')
+        employee = request.GET.get('employee')
         
-        if not start_date or not end_date:
-            return Response({'error': 'Invalid date format'}, status=400)
+        # Parse dates from ISO format, handling timezone if present
+        try:
+            # Remove timezone part if present
+            start_str = start_str.split('+')[0]
+            end_str = end_str.split('+')[0]
             
-        # Get attendance logs for the date range
-        logs = AttendanceLog.objects.filter(
-            employee_id=employee_id,
-            date__range=[start_date, end_date]
-        ).select_related('employee')
+            # Parse dates
+            if 'T' in start_str:
+                start_date = datetime.strptime(start_str.split('T')[0], '%Y-%m-%d').date()
+            else:
+                start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+                
+            if 'T' in end_str:
+                end_date = datetime.strptime(end_str.split('T')[0], '%Y-%m-%d').date()
+            else:
+                end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
         
+        except (ValueError, IndexError):
+            return Response({'error': 'Invalid date format. Expected YYYY-MM-DD.'}, status=400)
+        
+        # Build query for attendance logs
+        logs_query = Q(date__range=[start_date, end_date])
+        if employee:
+            logs_query &= Q(employee_id=employee)
+        elif department:
+            logs_query &= Q(employee__department_id=department)
+            
+        # Get attendance logs
+        logs = AttendanceLog.objects.filter(
+            logs_query
+        ).select_related('employee', 'employee__department')
+        
+        # Convert logs to calendar events
         events = []
         for log in logs:
-            status = 'Present'
-            color = '#28a745'  # Green for present
-            
-            if not log.first_in_time:
+            if log.first_in_time is None and log.last_out_time is None:
                 status = 'Absent'
-                color = '#dc3545'  # Red for absent
+                color = 'danger'
             elif log.is_late:
                 status = 'Late'
-                color = '#ffc107'  # Yellow for late
-                
+                color = 'warning'
+            else:
+                status = 'Present'
+                color = 'success'
+            
+            title = f"{log.employee.employee_number} - {log.employee.get_full_name()}"
+            time_info = ''
+            if log.first_in_time:
+                time_info += f" (In: {log.first_in_time.strftime('%I:%M %p')}"
+                if log.last_out_time:
+                    time_info += f", Out: {log.last_out_time.strftime('%I:%M %p')})"
+                else:
+                    time_info += ")"
+            
             events.append({
                 'id': log.id,
-                'title': f"{status} ({log.first_in_time.strftime('%I:%M %p') if log.first_in_time else 'No In'} - {log.last_out_time.strftime('%I:%M %p') if log.last_out_time else 'No Out'})",
+                'title': f"{title} - {status}{time_info}",
                 'start': log.date.isoformat(),
                 'color': color,
                 'extendedProps': {
+                    'employee_id': log.employee.id,
+                    'employee_number': log.employee.employee_number,
+                    'employee': log.employee.get_full_name(),
+                    'department': log.employee.department.name if log.employee.department else '',
+                    'type': 'attendance',
                     'status': status,
-                    'first_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
-                    'last_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-',
-                    'total_hours': log.total_hours if log.total_hours else '0.00'
+                    'status_color': color,
+                    'time_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else None,
+                    'time_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else None,
                 }
             })
         

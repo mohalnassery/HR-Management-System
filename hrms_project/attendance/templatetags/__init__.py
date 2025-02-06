@@ -1,18 +1,28 @@
 """
-Attendance template tags and filters.
+Template tags for attendance app.
 
-This package provides Django template tags and filters for working with
-attendance, leaves, and holidays.
+Available template tags:
+- format_time: Format time object as HH:MM AM/PM
+- format_duration: Format duration in days, handling half days
+- attendance_status_badge: Return HTML badge for attendance status
+- leave_type_badge: Return HTML badge for leave type
+- leave_balance_display: Display leave balance with consumed/remaining days
+- monthly_attendance_summary: Generate monthly attendance summary
+- is_holiday: Check if a date is a holiday
+- get_leave_status: Get leave status for a date
+- attendance_date_class: Return CSS class for calendar date based on attendance
 
-Available tags and filters:
-- format_duration: Format duration in days to a human-readable string
-- status_badge: Render a status badge with appropriate color
-- format_time: Format time value to 12-hour format
-- time_difference: Calculate time difference in hours and minutes
-- is_late: Check if check-in time is late based on shift
-- late_by: Calculate how late the check-in was
-- friday_attendance: Get Friday attendance status based on Thursday/Saturday rule
-- leave_balance: Get employee's leave balance for a specific leave type
-- pending_leave_requests: Get count of pending leave requests for an employee
-- get_attendance_stats: Get attendance statistics for an employee in a date range
+Usage:
+    {% load attendance_tags %}
+    
+    {{ time_value|format_time }}
+    {{ duration_value|format_duration }}
+    
+    {% attendance_status_badge status is_late %}
+    {% leave_type_badge leave_type %}
+    {% leave_balance_display employee leave_type %}
+    {% monthly_attendance_summary employee year month %}
+    {% is_holiday date %}
+    {% get_leave_status employee date %}
+    {{ date|attendance_date_class:employee }}
 """

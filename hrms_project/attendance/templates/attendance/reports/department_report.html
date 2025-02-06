@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    {% load static %}
+    <link href="{% static 'attendance/css/reports.css' %}" rel="stylesheet">
+</head>
+<body>
+    <div class="header">
+        <h1>Department Attendance Report</h1>
+        <p>{{ period.start_date|date:"F j, Y" }} - {{ period.end_date|date:"F j, Y" }}</p>
+    </div>
+
+    <div class="department-info">
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Department</div>
+                <div class="info-value">{{ department.name }}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Department Code</div>
+                <div class="info-value">{{ department.code }}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Total Employees</div>
+                <div class="info-value">{{ statistics.total_employees }}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Report Period</div>
+                <div class="info-value">{{ period.total_days }} Days</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-container">
+        <div class="stat-card stat-present">
+            <div class="stat-value">{{ statistics.present_rate|floatformat:1 }}%</div>
+            <div class="stat-label">Present Rate</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ statistics.present_rate }}%; background-color: #28a745"></div>
+            </div>
+        </div>
+        <div class="stat-card stat-late">
+            <div class="stat-value">{{ statistics.late_rate|floatformat:1 }}%</div>
+            <div class="stat-label">Late Rate</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ statistics.late_rate }}%; background-color: #ffc107"></div>
+            </div>
+        </div>
+        <div class="stat-card stat-absent">
+            <div class="stat-value">{{ statistics.absent_rate|floatformat:1 }}%</div>
+            <div class="stat-label">Absent Rate</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ statistics.absent_rate }}%; background-color: #dc3545"></div>
+            </div>
+        </div>
+        <div class="stat-card stat-leave">
+            <div class="stat-value">{{ attendance.total_leave_days }}</div>
+            <div class="stat-label">Leave Days</div>
+        </div>
+    </div>
+
+    <div class="employee-list">
+        <h2>Employee Attendance Summary</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>ID</th>
+                        <th>Present Days</th>
+                        <th>Absent Days</th>
+                        <th>Late Days</th>
+                        <th>Leave Days</th>
+                        <th>Attendance Rate</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for employee in employees %}
+                    <tr>
+                        <td>{{ employee.get_full_name }}</td>
+                        <td>{{ employee.employee_number }}</td>
+                        <td>{{ employee.stats.present_days }}</td>
+                        <td>{{ employee.stats.absent_days }}</td>
+                        <td>{{ employee.stats.late_days }}</td>
+                        <td>{{ employee.stats.leave_days }}</td>
+                        <td>
+                            {{ employee.stats.attendance_rate|floatformat:1 }}%
+                            {% if employee.stats.trend > 0 %}
+                            <span class="trend-indicator trend-up">↑</span>
+                            {% elif employee.stats.trend < 0 %}
+                            <span class="trend-indicator trend-down">↓</span>
+                            {% else %}
+                            <span class="trend-indicator trend-neutral">→</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="leave-section">
+        <h2>Leave Statistics</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Leave Type</th>
+                        <th>Total Days</th>
+                        <th>Employees</th>
+                        <th>Average Per Employee</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in leave_stats %}
+                    <tr>
+                        <td>{{ stat.leave_type__name }}</td>
+                        <td>{{ stat.total_days }}</td>
+                        <td>{{ stat.total_employees }}</td>
+                        <td>{{ stat.average_days|floatformat:1 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Report generated on {{ generated_at|date:"l, F j, Y" }} at {{ generated_at|time:"h:i A" }}</p>
+        <p>For individual employee reports, please use the generate_report command with --employee option.</p>
+        <p>This is a system-generated report. Please contact HR for any discrepancies.</p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 3px solid #dc3545;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .alert-box {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .missing-records {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .records-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .records-table th,
+        .records-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .records-table th {
+            background-color: #f1f3f5;
+            font-weight: bold;
+        }
+        .records-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        .instructions {
+            background-color: #e8f4ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+        .action-required {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .summary-box {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+        }
+        .summary-item {
+            padding: 10px;
+        }
+        .summary-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #dc3545;
+        }
+        .summary-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .deadline-notice {
+            font-weight: bold;
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Missing Attendance Records Report</h2>
+    </div>
+
+    <div class="content">
+        <p>Dear {{ employee.get_full_name }},</p>
+
+        <div class="alert-box">
+            <h3>⚠️ Missing Attendance Records</h3>
+            <p>We have noticed that you have missing attendance records for the following period:</p>
+            <p><strong>Period:</strong> {{ period_start|date:"F j, Y" }} - {{ period_end|date:"F j, Y" }}</p>
+        </div>
+
+        <div class="summary-box">
+            <div class="summary-item">
+                <div class="summary-number">{{ total_missing_records }}</div>
+                <div class="summary-label">Total Missing Records</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ missing_in_records }}</div>
+                <div class="summary-label">Missing Check-ins</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-number">{{ missing_out_records }}</div>
+                <div class="summary-label">Missing Check-outs</div>
+            </div>
+        </div>
+
+        <div class="missing-records">
+            <h4>Missing Record Details</h4>
+            <table class="records-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Day</th>
+                        <th>Missing Record Type</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in missing_records %}
+                    <tr>
+                        <td>{{ record.date|date:"d/m/Y" }}</td>
+                        <td>{{ record.date|date:"l" }}</td>
+                        <td>{{ record.missing_type }}</td>
+                        <td>{{ record.status }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="action-required">
+            <h4>Action Required</h4>
+            <p>Please take the following actions:</p>
+            <ol>
+                <li>Review the missing records listed above</li>
+                <li>Submit justification for each missing record through the HR portal</li>
+                <li>Attach any supporting documents if available</li>
+                <li>Submit your response by <span class="deadline-notice">{{ submission_deadline|date:"F j, Y" }}</span></li>
+            </ol>
+        </div>
+
+        <div class="instructions">
+            <h4>How to Submit Your Response</h4>
+            <ol>
+                <li>Log in to the HR Portal</li>
+                <li>Go to the "Attendance" section</li>
+                <li>Click on "Missing Records Resolution"</li>
+                <li>Fill in the required information for each missing record</li>
+                <li>Submit for approval</li>
+            </ol>
+            {% if portal_link %}
+            <p><a href="{{ portal_link }}">Click here to access the HR Portal</a></p>
+            {% endif %}
+        </div>
+
+        {% if policy_reminders %}
+        <div class="instructions">
+            <h4>Policy Reminders</h4>
+            <ul>
+                {% for reminder in policy_reminders %}
+                <li>{{ reminder }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>This is an automated notification from the HR Management System.</p>
+        <p>Generated on: {{ generated_at|date:"l, F j, Y" }}</p>
+        <p>If you believe there is an error in this report or need assistance, please contact HR immediately.</p>
+        <p>Reference: {{ report_reference }}</p>
+    </div>
+</body>
+</html>

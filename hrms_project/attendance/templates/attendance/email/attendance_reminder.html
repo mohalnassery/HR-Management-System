@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 3px solid #17a2b8;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .reminder-box {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .time-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        .current-time {
+            font-size: 24px;
+            font-weight: bold;
+            color: #856404;
+            margin: 10px 0;
+        }
+        .schedule-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .info-table th,
+        .info-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .info-table th {
+            background-color: #f1f3f5;
+            font-weight: bold;
+            width: 40%;
+        }
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+        .action-buttons {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 0 10px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .clock-status {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .status-item {
+            padding: 15px;
+            border-radius: 4px;
+            min-width: 150px;
+        }
+        .status-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .status-value {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .status-pending {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+        }
+        .status-completed {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .quick-links {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .quick-links ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .quick-links li {
+            margin: 10px 0;
+        }
+        .quick-links a {
+            color: #17a2b8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Attendance Reminder</h2>
+        <p>{{ current_date|date:"l, F j, Y" }}</p>
+    </div>
+
+    <div class="content">
+        <p>Dear {{ employee.get_full_name }},</p>
+
+        <div class="reminder-box">
+            <h3>🕒 Daily Attendance Reminder</h3>
+            <p>This is a friendly reminder about your attendance for today.</p>
+        </div>
+
+        <div class="time-box">
+            <div class="current-time">{{ current_time|time:"h:i A" }}</div>
+            <p>Current Time</p>
+        </div>
+
+        <div class="clock-status">
+            <div class="status-item {% if clock_in_time %}status-completed{% else %}status-pending{% endif %}">
+                <div class="status-label">Clock In</div>
+                <div class="status-value">
+                    {% if clock_in_time %}
+                    {{ clock_in_time|time:"h:i A" }}
+                    {% else %}
+                    Pending
+                    {% endif %}
+                </div>
+            </div>
+            <div class="status-item {% if clock_out_time %}status-completed{% else %}status-pending{% endif %}">
+                <div class="status-label">Clock Out</div>
+                <div class="status-value">
+                    {% if clock_out_time %}
+                    {{ clock_out_time|time:"h:i A" }}
+                    {% else %}
+                    Pending
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="schedule-info">
+            <h4>Today's Schedule</h4>
+            <table class="info-table">
+                <tr>
+                    <th>Regular Start Time</th>
+                    <td>{{ schedule.start_time|time:"h:i A" }}</td>
+                </tr>
+                <tr>
+                    <th>Regular End Time</th>
+                    <td>{{ schedule.end_time|time:"h:i A" }}</td>
+                </tr>
+                <tr>
+                    <th>Grace Period</th>
+                    <td>{{ grace_period }} minutes</td>
+                </tr>
+            </table>
+        </div>
+
+        {% if missing_action %}
+        <div class="action-buttons">
+            <a href="{{ portal_link }}" class="btn btn-primary">{{ missing_action }}</a>
+        </div>
+        {% endif %}
+
+        <div class="quick-links">
+            <h4>Quick Links</h4>
+            <ul>
+                <li><a href="{{ attendance_history_link }}">View Attendance History</a></li>
+                <li><a href="{{ request_correction_link }}">Request Attendance Correction</a></li>
+                <li><a href="{{ leave_request_link }}">Submit Leave Request</a></li>
+                {% if support_link %}
+                <li><a href="{{ support_link }}">Technical Support</a></li>
+                {% endif %}
+            </ul>
+        </div>
+
+        {% if notifications %}
+        <div class="reminder-box">
+            <h4>Important Notifications</h4>
+            <ul>
+                {% for notification in notifications %}
+                <li>{{ notification }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>This is an automated reminder from the HR Management System.</p>
+        <p>For any issues with attendance recording, please contact your supervisor or HR immediately.</p>
+        {% if help_desk_contact %}
+        <p>Technical Support: {{ help_desk_contact }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>

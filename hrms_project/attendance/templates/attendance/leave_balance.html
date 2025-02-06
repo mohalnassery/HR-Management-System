@@ -1,0 +1,70 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-balance-scale"></i> Leave Balances
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for balance in balances %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">{{ balance.leave_type.name }}</h6>
+                        <div class="progress mb-3" style="height: 20px;">
+                            {% with percentage=balance.used_days|div:balance.allowed_days|mul:100 %}
+                            <div class="progress-bar {% if percentage > 75 %}bg-danger{% elif percentage > 50 %}bg-warning{% else %}bg-success{% endif %}"
+                                 role="progressbar"
+                                 style="width: {{ percentage }}%"
+                                 aria-valuenow="{{ percentage }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                                {{ percentage|floatformat:1 }}%
+                            </div>
+                            {% endwith %}
+                        </div>
+                        <div class="row text-center">
+                            <div class="col">
+                                <small class="text-muted d-block">Allowed</small>
+                                <strong>{{ balance.allowed_days }}</strong>
+                            </div>
+                            <div class="col">
+                                <small class="text-muted d-block">Used</small>
+                                <strong>{{ balance.used_days }}</strong>
+                            </div>
+                            <div class="col">
+                                <small class="text-muted d-block">Remaining</small>
+                                <strong>{{ balance.remaining_days }}</strong>
+                            </div>
+                        </div>
+                        {% if balance.leave_type.description %}
+                        <div class="mt-3">
+                            <small class="text-muted">{{ balance.leave_type.description }}</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="d-grid">
+                            <a href="{% url 'attendance:leave_request_create' %}?type={{ balance.leave_type.id }}" 
+                               class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-plus"></i> Apply for {{ balance.leave_type.name }}
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-12">
+                <div class="alert alert-info">
+                    No leave balances found.
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

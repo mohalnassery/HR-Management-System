@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        .header h1 {
+            color: #333;
+            margin: 0;
+            font-size: 24px;
+        }
+        .header .timestamp {
+            color: #666;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-present { background-color: #d4edda; color: #155724; }
+        .status-absent { background-color: #f8d7da; color: #721c24; }
+        .status-late { background-color: #fff3cd; color: #856404; }
+        .status-leave { background-color: #cce5ff; color: #004085; }
+        .status-holiday { background-color: #e2e3e5; color: #383d41; }
+        .summary {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .summary h2 {
+            font-size: 18px;
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .summary-item {
+            background-color: white;
+            padding: 15px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .summary-item .label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .summary-item .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        @media print {
+            body {
+                background-color: white;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+                padding: 0;
+            }
+            .summary {
+                break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ report_title }}</h1>
+            <div class="timestamp">Generated on: {{ generated_at|default:now }}</div>
+        </div>
+
+        {% if filters %}
+        <div class="filters">
+            <strong>Filters:</strong>
+            {% for key, value in filters.items %}
+            <span>{{ key }}: {{ value }}</span>{% if not forloop.last %} | {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="table-responsive">
+            {{ table_content|safe }}
+        </div>
+
+        {% if summary_data %}
+        <div class="summary">
+            <h2>Summary</h2>
+            <div class="summary-grid">
+                {% for label, value in summary_data.items %}
+                <div class="summary-item">
+                    <div class="label">{{ label }}</div>
+                    <div class="value">{{ value }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <script>
+            // Add status badges to status column
+            document.addEventListener('DOMContentLoaded', function() {
+                const statusCells = document.querySelectorAll('td:nth-child(5)'); // Adjust index based on status column
+                statusCells.forEach(cell => {
+                    const status = cell.textContent.trim().toLowerCase();
+                    cell.innerHTML = `<span class="status-badge status-${status}">${cell.textContent}</span>`;
+                });
+            });
+        </script>
+    </div>
+</body>
+</html>

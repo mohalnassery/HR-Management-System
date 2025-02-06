@@ -3,6 +3,7 @@
 
 {% block extra_css %}
 {{ block.super }}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <style>
 .fc-event {
     cursor: pointer;
@@ -42,6 +43,21 @@
 #filter-collapse {
     transition: all 0.3s ease-in-out;
 }
+
+/* Select2 Custom Styles */
+.select2-container--default .select2-selection--single {
+    height: 38px;
+    border: 1px solid #ced4da;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    line-height: 36px;
+    padding-left: 12px;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 36px;
+}
 </style>
 {% endblock %}
 
@@ -49,13 +65,14 @@
 <div class="card">
     <div class="card-header">
         <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-0 d-inline-block">Attendance Calendar</h5>
+            <div class="d-flex align-items-center">
+                <h5 class="mb-0 d-inline-block me-2">Attendance Calendar</h5>
+                <h6 class="mb-0 me-3" id="calendar-title"></h6>
                 <button class="btn btn-link" type="button" data-bs-toggle="collapse" data-bs-target="#filter-collapse">
                     <i class="fas fa-filter"></i> Filters
                 </button>
             </div>
-            <div class="btn-group">
+            <div class="btn-group ms-auto">
                 <button class="btn btn-outline-secondary" id="prev-month">
                     <i class="fas fa-chevron-left"></i>
                 </button>
@@ -82,11 +99,8 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Employee</label>
-                        <select class="form-select" id="employee-filter">
+                        <select class="form-control" id="employee-filter">
                             <option value="">All Employees</option>
-                            {% for emp in employees %}
-                            <option value="{{ emp.id }}">{{ emp.get_full_name }}</option>
-                            {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -160,8 +174,44 @@
 
 {% block extra_js %}
 {{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Select2
+    $('#employee-filter').select2({
+        placeholder: 'Search by ID or Name',
+        allowClear: true,
+        minimumInputLength: 1,
+        ajax: {
+            url: '{% url "attendance:search_employees" %}',
+            dataType: 'json',
+            delay: 250,
+            data: function(params) {
+                return {
+                    q: params.term,
+                    department: $('#department-filter').val()
+                };
+            },
+            processResults: function(data) {
+                return {
+                    results: data.map(function(emp) {
+                        return {
+                            id: emp.id,
+                            text: emp.employee_number + ' - ' + emp.full_name,
+                            employee_number: emp.employee_number
+                        };
+                    })
+                };
+            },
+            cache: true
+        }
+    });
+
+    // Update search when department changes
+    $('#department-filter').on('change', function() {
+        $('#employee-filter').val(null).trigger('change');
+    });
+
     var calendarEl = document.getElementById('calendar');
     var calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
@@ -186,6 +236,8 @@ document.addEventListener('DOMContentLoaded', function() {
         eventClick: function(info) {
             showEventDetails(info.event);
         },
+        displayEventTime: false, // Hide time from event display
+        eventDisplay: 'block', // Display events as blocks
         events: function(info, successCallback, failureCallback) {
             // Get filter values
             const department = $('#department-filter').val();
@@ -200,9 +252,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     employee: employee
                 },
                 success: function(response) {
-                    successCallback(response.events);
+                    if (response && Array.isArray(response)) {
+                        const events = response.map(event => ({
+                            ...event,
+                            display: 'block',
+                            classNames: [event.color ? `bg-${event.color}` : '']
+                        }));
+                        successCallback(events);
+                    } else {
+                        failureCallback('Invalid response format');
+                    }
                 },
-                error: function() {
+                error: function(xhr, status, error) {
+                    console.error('Error loading events:', error);
                     failureCallback('Error loading events');
                 }
             });
@@ -212,9 +274,18 @@ document.addEventListener('DOMContentLoaded', function() {
     calendar.render();
 
     // Navigation buttons
-    $('#prev-month').click(() => calendar.prev());
-    $('#next-month').click(() => calendar.next());
-    $('#today').click(() => calendar.today());
+    $('#prev-month').click(() => {
+        calendar.prev();
+        calendar.refetchEvents();
+    });
+    $('#next-month').click(() => {
+        calendar.next();
+        calendar.refetchEvents();
+    });
+    $('#today').click(() => {
+        calendar.today();
+        calendar.refetchEvents();
+    });
 
     // View type change
     $('#view-type').change(function() {
@@ -226,23 +297,44 @@ document.addEventListener('DOMContentLoaded', function() {
         calendar.refetchEvents();
     });
 
-    // Department filter change - update employee list
-    $('#department-filter').change(function() {
-        const departmentId = $(this).val();
-        $.ajax({
-            url: '{% url "attendance:get_department_employees" %}',
-            data: { department: departmentId },
-            success: function(response) {
-                const employeeSelect = $('#employee-filter');
-                employeeSelect.empty();
-                employeeSelect.append('<option value="">All Employees</option>');
-                response.employees.forEach(function(emp) {
-                    employeeSelect.append(
-                        `<option value="${emp.id}">${emp.name}</option>`
-                    );
-                });
+    // Handle date clicks
+    $(document).on('click', '.fc-daygrid-day', function(e) {
+        const date = $(this).data('date');
+        const employeeId = $('#employee-filter').val();
+        
+        // Prepare URL for attendance details
+        let url = `{% url "attendance:attendance_detail" log_id=0 %}`.replace('0', 'temp');
+        url = url.replace('temp', '');
+        url += '?date=' + date;
+        
+        if (employeeId) {
+            const empNumber = $('#employee-filter').select2('data')[0]?.employee_number;
+            if (empNumber) {
+                url += '&personnel_id=' + empNumber;
             }
+        }
+        
+        // Load attendance details in modal
+        $('#eventDetails').load(url, function() {
+            $('#eventModal').modal('show');
         });
+    });
+
+    // Update calendar title
+    function updateCalendarTitle() {
+        const date = calendar.getDate();
+        const title = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+        $('#calendar-title').text(title);
+    }
+
+    // Initialize calendar with current month
+    const today = new Date();
+    calendar.gotoDate(today);
+    updateCalendarTitle();
+
+    // Update title on navigation
+    calendar.on('datesSet', function(info) {
+        updateCalendarTitle();
     });
 
     function showEventDetails(event) {

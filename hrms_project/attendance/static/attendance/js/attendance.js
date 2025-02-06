@@ -1,217 +1,264 @@
-// Utility Functions
-function formatDate(date) {
-    return new Date(date).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
+// Initialize calendar and event handlers
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCalendar();
+    initializeLeaveForm();
+    initializeAttendanceMarking();
+    setupDateRangePicker();
+});
+
+// Calendar Functions
+function initializeCalendar() {
+    const calendarEl = document.getElementById('attendance-calendar');
+    if (!calendarEl) return;
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        events: '/attendance/api/calendar-events/',
+        eventDidMount: function(info) {
+            // Add tooltips to events
+            const status = info.event.extendedProps.status;
+            const timeIn = info.event.extendedProps.first_in || '';
+            const timeOut = info.event.extendedProps.last_out || '';
+            
+            tippy(info.el, {
+                content: `
+                    <strong>Status:</strong> ${status}<br>
+                    <strong>Time In:</strong> ${timeIn}<br>
+                    <strong>Time Out:</strong> ${timeOut}
+                `,
+                allowHTML: true
+            });
+        },
+        eventClick: function(info) {
+            showAttendanceDetail(info.event);
+        }
     });
+
+    calendar.render();
 }
 
-function formatTime(time) {
-    if (!time) return '-';
-    return new Date(`2000-01-01T${time}`).toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-    });
-}
-
-function calculateDuration(startDate, endDate, startHalf = false, endHalf = false) {
-    const days = Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1;
-    let deductions = 0;
-    if (startHalf) deductions += 0.5;
-    if (endHalf) deductions += 0.5;
-    return days - deductions;
-}
-
-// Toast Notifications
-function showToast(message, type = 'success') {
-    const toastHtml = `
-        <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
-            <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
+function showAttendanceDetail(event) {
+    // Fetch and display attendance details in modal
+    fetch(`/attendance/api/logs/${event.id}/details/`)
+        .then(response => response.json())
+        .then(data => {
+            const modal = new bootstrap.Modal(document.getElementById('attendance-detail-modal'));
+            document.getElementById('attendance-detail-content').innerHTML = `
+                <div class="attendance-detail">
+                    <h5>Attendance Details</h5>
+                    <div class="detail-row">
+                        <strong>Date:</strong> ${data.date}
                     </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    <div class="detail-row">
+                        <strong>Status:</strong> ${data.status}
+                    </div>
+                    <div class="detail-row">
+                        <strong>Time In:</strong> ${data.first_in || '-'}
+                    </div>
+                    <div class="detail-row">
+                        <strong>Time Out:</strong> ${data.last_out || '-'}
+                    </div>
+                    <div class="detail-row">
+                        <strong>Source:</strong> ${data.source}
+                    </div>
                 </div>
-            </div>
-        </div>
+            `;
+            modal.show();
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+// Leave Request Functions
+function initializeLeaveForm() {
+    const leaveForm = document.getElementById('leave-request-form');
+    if (!leaveForm) return;
+
+    const leaveTypeSelect = document.getElementById('leave_type');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+
+    // Update leave balance display when type changes
+    leaveTypeSelect?.addEventListener('change', function() {
+        updateLeaveBalance(this.value);
+    });
+
+    // Calculate duration when dates change
+    [startDateInput, endDateInput].forEach(input => {
+        input?.addEventListener('change', function() {
+            if (startDateInput.value && endDateInput.value) {
+                calculateLeaveDuration(startDateInput.value, endDateInput.value);
+            }
+        });
+    });
+
+    // Handle form submission
+    leaveForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitLeaveRequest(new FormData(this));
+    });
+}
+
+function updateLeaveBalance(leaveTypeId) {
+    if (!leaveTypeId) return;
+
+    fetch(`/attendance/api/leave-balance/${leaveTypeId}/`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('leave-balance-display').innerHTML = `
+                Available: ${data.available_days} days<br>
+                Consumed: ${data.consumed_days} days
+            `;
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function calculateLeaveDuration(startDate, endDate) {
+    fetch('/attendance/api/calculate-leave-duration/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: JSON.stringify({ start_date: startDate, end_date: endDate })
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('duration-display').textContent = 
+            `Duration: ${data.duration} days`;
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+function submitLeaveRequest(formData) {
+    fetch('/attendance/api/leave-requests/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', 'Leave request submitted successfully');
+            setTimeout(() => window.location.href = '/attendance/leaves/', 2000);
+        } else {
+            showAlert('danger', data.error || 'Error submitting leave request');
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Error submitting leave request');
+        console.error('Error:', error);
+    });
+}
+
+// Attendance Marking Functions
+function initializeAttendanceMarking() {
+    const markAttendanceForm = document.getElementById('mark-attendance-form');
+    if (!markAttendanceForm) return;
+
+    markAttendanceForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitAttendance(new FormData(this));
+    });
+
+    // Initialize employee search typeahead
+    const employeeInput = document.getElementById('employee_search');
+    if (employeeInput) {
+        new Bloodhound({
+            datumTokenizer: Bloodhound.tokenizers.obj.whitespace('value'),
+            queryTokenizer: Bloodhound.tokenizers.whitespace,
+            remote: {
+                url: '/attendance/api/search-employees/?q=%QUERY',
+                wildcard: '%QUERY'
+            }
+        });
+
+        $(employeeInput).typeahead(null, {
+            name: 'employees',
+            display: 'full_name',
+            source: employeeEngine
+        });
+    }
+}
+
+function submitAttendance(formData) {
+    fetch('/attendance/api/mark-attendance/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken()
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', 'Attendance marked successfully');
+            document.getElementById('mark-attendance-form').reset();
+        } else {
+            showAlert('danger', data.error || 'Error marking attendance');
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Error marking attendance');
+        console.error('Error:', error);
+    });
+}
+
+// Utility Functions
+function setupDateRangePicker() {
+    const dateRangePicker = document.getElementById('date-range');
+    if (!dateRangePicker) return;
+
+    $(dateRangePicker).daterangepicker({
+        autoUpdateInput: false,
+        locale: {
+            cancelLabel: 'Clear'
+        }
+    });
+
+    $(dateRangePicker).on('apply.daterangepicker', function(ev, picker) {
+        $(this).val(picker.startDate.format('MM/DD/YYYY') + ' - ' + picker.endDate.format('MM/DD/YYYY'));
+        updateDateRange(picker.startDate, picker.endDate);
+    });
+
+    $(dateRangePicker).on('cancel.daterangepicker', function(ev, picker) {
+        $(this).val('');
+    });
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     `;
     
-    document.body.insertAdjacentHTML('beforeend', toastHtml);
-    const toast = document.querySelector('.toast:last-child');
-    const bsToast = new bootstrap.Toast(toast);
-    bsToast.show();
-    
-    // Remove toast from DOM after it's hidden
-    toast.addEventListener('hidden.bs.toast', () => toast.remove());
-}
-
-// Form Validation
-function validateDateRange(startDate, endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    return start <= end;
-}
-
-function validateFileSize(file, maxSize = 5) {
-    // maxSize in MB
-    return file.size <= maxSize * 1024 * 1024;
-}
-
-function validateFileType(file, allowedTypes = ['pdf', 'jpg', 'jpeg', 'png']) {
-    const extension = file.name.split('.').pop().toLowerCase();
-    return allowedTypes.includes(extension);
-}
-
-// AJAX Helpers
-function sendRequest(url, method = 'GET', data = null, options = {}) {
-    const defaultOptions = {
-        method: method,
-        headers: {
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-            ...options.headers
-        }
-    };
-
-    if (data) {
-        if (data instanceof FormData) {
-            defaultOptions.body = data;
-        } else {
-            defaultOptions.headers['Content-Type'] = 'application/json';
-            defaultOptions.body = JSON.stringify(data);
-        }
-    }
-
-    return fetch(url, { ...defaultOptions, ...options })
-        .then(response => {
-            if (!response.ok) {
-                return response.json().then(json => Promise.reject(json));
-            }
-            return response.json();
-        });
-}
-
-// Attendance Status Handling
-const STATUS_COLORS = {
-    'Present': 'success',
-    'Absent': 'danger',
-    'Late': 'warning',
-    'Leave': 'info',
-    'Holiday': 'primary'
-};
-
-function getStatusBadge(status) {
-    const color = STATUS_COLORS[status] || 'secondary';
-    return `<span class="badge bg-${color}">${status}</span>`;
-}
-
-// Calendar Event Helpers
-function getEventColor(type, status) {
-    if (type === 'holiday') return '#0d6efd';  // primary
-    if (type === 'leave') return '#0dcaf0';    // info
-    
-    switch (status) {
-        case 'Present': return '#198754';  // success
-        case 'Absent': return '#dc3545';   // danger
-        case 'Late': return '#ffc107';     // warning
-        default: return '#6c757d';         // secondary
+    const alertContainer = document.getElementById('alert-container');
+    if (alertContainer) {
+        alertContainer.appendChild(alertDiv);
+        setTimeout(() => alertDiv.remove(), 5000);
     }
 }
 
-// Form Handling
-function initializeLeaveForm() {
-    const leaveType = document.getElementById('leave_type');
-    const startDate = document.getElementById('start_date');
-    const endDate = document.getElementById('end_date');
-    const startHalf = document.getElementById('start_half');
-    const endHalf = document.getElementById('end_half');
-    const submitBtn = document.querySelector('button[type="submit"]');
-
-    function updateDuration() {
-        if (startDate.value && endDate.value) {
-            const duration = calculateDuration(
-                startDate.value,
-                endDate.value,
-                startHalf.checked,
-                endHalf.checked
-            );
-            document.getElementById('duration-info').textContent = 
-                `Duration: ${duration} day${duration !== 1 ? 's' : ''}`;
-        }
-    }
-
-    [startDate, endDate, startHalf, endHalf].forEach(el => 
-        el.addEventListener('change', updateDuration)
-    );
-
-    leaveType.addEventListener('change', function() {
-        const requiresDoc = this.options[this.selectedIndex].dataset.requiresDocument === 'true';
-        const docSection = document.getElementById('document-section');
-        if (docSection) {
-            docSection.style.display = requiresDoc ? 'block' : 'none';
-            const docInput = docSection.querySelector('input[type="file"]');
-            docInput.required = requiresDoc;
-        }
-    });
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]').value;
 }
 
-// Document Preview
-function initializeDocumentPreview() {
-    const input = document.querySelector('input[type="file"]');
-    const preview = document.getElementById('document-preview');
-    
-    if (input && preview) {
-        input.addEventListener('change', function() {
-            preview.innerHTML = '';
-            
-            [...this.files].forEach(file => {
-                if (!validateFileType(file) || !validateFileSize(file)) {
-                    showToast('Invalid file type or size', 'danger');
-                    return;
-                }
-                
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const div = document.createElement('div');
-                    div.className = 'mb-2';
-                    
-                    if (file.type.startsWith('image/')) {
-                        div.innerHTML = `
-                            <img src="${e.target.result}" class="img-thumbnail" style="max-height: 200px">
-                            <div class="small text-muted mt-1">${file.name}</div>
-                        `;
-                    } else {
-                        div.innerHTML = `
-                            <div class="p-2 border rounded">
-                                <i class="fas fa-file-pdf"></i> ${file.name}
-                            </div>
-                        `;
-                    }
-                    preview.appendChild(div);
-                };
-                reader.readAsDataURL(file);
-            });
+// Handle Back Button
+window.addEventListener('popstate', function(e) {
+    if (e.state && e.state.modal) {
+        // Close any open modals when using browser back button
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            const modalInstance = bootstrap.Modal.getInstance(modal);
+            if (modalInstance) modalInstance.hide();
         });
     }
-}
-
-// Initialize on DOM load
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize any forms
-    if (document.querySelector('form.needs-validation')) {
-        initializeLeaveForm();
-    }
-    
-    // Initialize document preview
-    if (document.querySelector('input[type="file"]')) {
-        initializeDocumentPreview();
-    }
-    
-    // Initialize all tooltips
-    var tooltips = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltips.map(function (tooltip) {
-        return new bootstrap.Tooltip(tooltip);
-    });
 });

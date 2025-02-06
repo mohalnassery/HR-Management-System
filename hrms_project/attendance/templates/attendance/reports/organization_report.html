@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    {% load static %}
+    <link href="{% static 'attendance/css/reports.css' %}" rel="stylesheet">
+</head>
+<body>
+    <div class="header">
+        <h1>Organization Attendance Report</h1>
+        <p>{{ period.start_date|date:"F j, Y" }} - {{ period.end_date|date:"F j, Y" }}</p>
+    </div>
+
+    <div class="org-overview">
+        <div class="overview-card">
+            <div class="overview-value">{{ organization.total_departments }}</div>
+            <div class="overview-label">Departments</div>
+        </div>
+        <div class="overview-card">
+            <div class="overview-value">{{ organization.total_employees }}</div>
+            <div class="overview-label">Active Employees</div>
+        </div>
+        <div class="overview-card">
+            <div class="overview-value">{{ organization.stats.total_present }}</div>
+            <div class="overview-label">Total Present Days</div>
+        </div>
+        <div class="overview-card">
+            <div class="overview-value">{{ organization.stats.total_absent }}</div>
+            <div class="overview-label">Total Absent Days</div>
+        </div>
+    </div>
+
+    <div class="department-section">
+        <h2>Department Analysis</h2>
+        <div class="department-grid">
+            {% for dept in department_stats %}
+            <div class="department-card">
+                <div class="department-header">
+                    <div class="department-name">{{ dept.department.name }}</div>
+                    <small>{{ dept.stats.total_employees }} Employees</small>
+                </div>
+                <div class="department-stats">
+                    <div class="stat-item">
+                        <div class="overview-value">{{ dept.stats.present_rate|floatformat:1 }}%</div>
+                        <div class="overview-label">Present Rate</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill fill-present" style="width: {{ dept.stats.present_rate }}%"></div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="overview-value">{{ dept.stats.late_rate|floatformat:1 }}%</div>
+                        <div class="overview-label">Late Rate</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill fill-late" style="width: {{ dept.stats.late_rate }}%"></div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="overview-value">{{ dept.stats.absent_rate|floatformat:1 }}%</div>
+                        <div class="overview-label">Absent Rate</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill fill-absent" style="width: {{ dept.stats.absent_rate }}%"></div>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="overview-value">{{ dept.stats.leave_days }}</div>
+                        <div class="overview-label">Leave Days</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="leave-summary">
+        <h2>Leave Statistics</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Leave Type</th>
+                        <th>Total Days</th>
+                        <th>Total Employees</th>
+                        <th>Average Days/Employee</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in leave_stats %}
+                    <tr>
+                        <td>{{ stat.leave_type__name }}</td>
+                        <td>{{ stat.total_days }}</td>
+                        <td>{{ stat.total_employees }}</td>
+                        <td>{{ stat.total_days|divisibleby:stat.total_employees }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Report generated on {{ generated_at|date:"l, F j, Y" }} at {{ generated_at|time:"h:i A" }}</p>
+        <p>For detailed department-wise reports, please use the generate_report command with --department option.</p>
+        <p>This is a system-generated report. Please contact HR for any discrepancies.</p>
+    </div>
+</body>
+</html>

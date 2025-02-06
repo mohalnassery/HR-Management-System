@@ -205,6 +205,49 @@ class LeaveBalance(models.Model):
         unique_together = ['employee', 'leave_type']
         ordering = ['employee', 'leave_type']
 
+class LeaveRule(models.Model):
+    """Defines rules and configurations for different leave types"""
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=50, unique=True)
+    description = models.TextField(blank=True)
+    days_allowed = models.DecimalField(max_digits=5, decimal_places=2)
+    is_paid = models.BooleanField(default=True)
+    requires_approval = models.BooleanField(default=True)
+    requires_documentation = models.BooleanField(default=False)
+    documentation_info = models.TextField(blank=True, help_text="What documents are required")
+    reset_frequency = models.CharField(
+        max_length=20,
+        choices=[
+            ('never', 'Never'),
+            ('annually', 'Annually'),
+            ('monthly', 'Monthly'),
+            ('per_event', 'Per Event'),
+        ],
+        default='annually'
+    )
+    gender_specific = models.CharField(
+        max_length=1,
+        choices=[('M', 'Male Only'), ('F', 'Female Only'), ('A', 'All')],
+        default='A'
+    )
+    min_service_months = models.PositiveIntegerField(default=0)
+    max_days_per_request = models.PositiveIntegerField(null=True, blank=True)
+    min_days_per_request = models.DecimalField(
+        max_digits=4, 
+        decimal_places=2,
+        default=0.5
+    )
+    notice_days_required = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
 class Leave(models.Model):
     """Track leave requests and their status"""
     LEAVE_STATUS = [

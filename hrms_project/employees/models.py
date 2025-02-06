@@ -165,6 +165,13 @@ class Employee(models.Model):
     ]
 
     # General Information
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='employee',
+        null=True,
+        blank=True
+    )
     employee_number = models.CharField(max_length=20, unique=True, default='EMP0001')
     profile_picture = models.ImageField(upload_to='employee_pictures/', blank=True, null=True)
     first_name = models.CharField(max_length=50, default='First')

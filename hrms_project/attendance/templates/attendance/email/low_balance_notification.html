@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 3px solid #ffc107;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .alert-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .balance-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .info-table th,
+        .info-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .info-table th {
+            background-color: #f1f3f5;
+            font-weight: bold;
+            width: 40%;
+        }
+        .accrual-info {
+            background-color: #e8f4ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .upcoming-leaves {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #ffc107;
+            transition: width 0.3s ease;
+        }
+        .recommendation-box {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Low Leave Balance Alert</h2>
+    </div>
+
+    <div class="content">
+        <p>Dear {{ employee.get_full_name }},</p>
+
+        <div class="alert-box">
+            <h3>⚠️ Low Leave Balance Notice</h3>
+            <p>This is to inform you that your leave balance is running low.</p>
+        </div>
+
+        <div class="balance-info">
+            <h4>Current Leave Balance</h4>
+            <table class="info-table">
+                <tr>
+                    <th>Leave Type</th>
+                    <td>{{ leave_type }}</td>
+                </tr>
+                <tr>
+                    <th>Current Balance</th>
+                    <td>{{ current_balance }} days</td>
+                </tr>
+                <tr>
+                    <th>Threshold Level</th>
+                    <td>{{ threshold }} days</td>
+                </tr>
+            </table>
+
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ balance_percentage }}%"></div>
+            </div>
+        </div>
+
+        <div class="accrual-info">
+            <h4>Next Accrual Information</h4>
+            <table class="info-table">
+                <tr>
+                    <th>Next Accrual Date</th>
+                    <td>{{ next_accrual_date|date:"F j, Y" }}</td>
+                </tr>
+                <tr>
+                    <th>Expected Days to be Added</th>
+                    <td>{{ expected_accrual }} days</td>
+                </tr>
+            </table>
+        </div>
+
+        {% if upcoming_leaves %}
+        <div class="upcoming-leaves">
+            <h4>Upcoming Approved Leaves</h4>
+            <table class="info-table">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for leave in upcoming_leaves %}
+                    <tr>
+                        <td>{{ leave.start_date|date:"M j" }} - {{ leave.end_date|date:"M j, Y" }}</td>
+                        <td>{{ leave.duration }} day{{ leave.duration|pluralize }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <div class="recommendation-box">
+            <h4>Recommendations</h4>
+            <ul>
+                <li>Plan your upcoming leaves carefully considering your current balance</li>
+                <li>Consider spreading out your leave requests over time</li>
+                <li>Discuss with your supervisor if you need to take emergency leave</li>
+                {% if has_unused_leaves %}
+                <li>You have unused leaves from other categories that you might want to consider using</li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This is an automated notification from the HR Management System.</p>
+        <p>Generated on: {{ generated_at|date:"l, F j, Y" }}</p>
+        <p>For any questions about your leave balance or policy, please contact HR.</p>
+        {% if help_link %}
+        <p><a href="{{ help_link }}">View Leave Policy Documentation</a></p>
+        {% endif %}
+    </div>
+</body>
+</html>

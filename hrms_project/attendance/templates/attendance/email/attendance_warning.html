@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            padding: 20px;
+        }
+        .header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 3px solid #dc3545;
+            margin-bottom: 20px;
+        }
+        .content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .warning-box {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .incident-details {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .incident-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .incident-table th,
+        .incident-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .incident-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+        }
+        .policy-reminder {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .action-required {
+            background-color: #cce5ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .footer {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Attendance Warning Notice</h2>
+    </div>
+
+    <div class="content">
+        <p>Dear {{ employee.get_full_name }},</p>
+
+        <div class="warning-box">
+            <h3>⚠️ Warning: Attendance Policy Violation</h3>
+            <p>This notice is to inform you that your attendance record has fallen below company standards.</p>
+        </div>
+
+        <div class="incident-details">
+            <h4>Violation Details:</h4>
+            <table class="incident-table">
+                <tr>
+                    <th>Type:</th>
+                    <td>{{ violation_type }}</td>
+                </tr>
+                <tr>
+                    <th>Period:</th>
+                    <td>{{ period }}</td>
+                </tr>
+                <tr>
+                    <th>Incidents:</th>
+                    <td>{{ incident_count }}</td>
+                </tr>
+            </table>
+
+            {% if incidents %}
+            <h4>Recent Incidents:</h4>
+            <table class="incident-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for incident in incidents %}
+                    <tr>
+                        <td>{{ incident.date|date:"d/m/Y" }}</td>
+                        <td>{{ incident.type }}</td>
+                        <td>{{ incident.details }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+
+        <div class="policy-reminder">
+            <h4>Company Policy Reminder:</h4>
+            <ul>
+                <li>Regular working hours are from {{ work_hours }}</li>
+                <li>Maximum allowed late arrivals per month: {{ max_late_allowed }}</li>
+                <li>Maximum allowed unexcused absences per month: {{ max_absences_allowed }}</li>
+                <li>Three warnings may result in disciplinary action</li>
+            </ul>
+        </div>
+
+        <div class="action-required">
+            <h4>Required Actions:</h4>
+            <ol>
+                <li>Please provide an explanation for these incidents to your supervisor within 3 working days</li>
+                <li>Schedule a meeting with HR to discuss any underlying issues</li>
+                <li>Ensure future compliance with attendance policies</li>
+            </ol>
+        </div>
+
+        <p>If you are experiencing any issues that affect your attendance, please discuss them with your supervisor or HR. We are here to help and can work together to find appropriate solutions.</p>
+
+        <p>Best regards,<br>
+        HR Department</p>
+    </div>
+
+    <div class="footer">
+        <p>This is an official warning notice. Please acknowledge receipt by replying to this email.</p>
+        <p>If you need assistance, please contact HR at {{ hr_email|default:"hr@company.com" }}</p>
+        <p>Reference: {{ warning_reference }}<br>
+        Notice Date: {{ generated_at|date:"l, F j, Y" }}</p>
+        {% if warning_level %}
+        <p><strong>Warning Level:</strong> {{ warning_level }} of 3</p>
+        {% endif %}
+    </div>
+</body>
+</html>

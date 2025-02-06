@@ -17,12 +17,23 @@ urlpatterns = [
     # Template views
     path('', views.attendance_list, name='attendance_list'),
     path('calendar/', views.calendar_view, name='calendar'),
+    path('calendar/month/', views.calendar_month, name='calendar_month'),
+    path('calendar/week/', views.calendar_week, name='calendar_week'),
+    path('calendar/department/', views.calendar_department, name='calendar_department'),
     path('mark/', views.mark_attendance, name='mark_attendance'),
     path('upload/', views.upload_attendance, name='upload_attendance'),
+    path('report/', views.attendance_report, name='attendance_report'),
     path('detail/<int:log_id>/', views.attendance_detail_view, name='attendance_detail'),
     path('leaves/', views.leave_request_list, name='leave_request_list'),
     path('leaves/create/', views.leave_request_create, name='leave_request_create'),
     path('leaves/<int:pk>/', views.leave_request_detail, name='leave_request_detail'),
+    path('leaves/balance/', views.leave_balance, name='leave_balance'),
+    path('leaves/types/', views.leave_types, name='leave_types'),
+    
+    # Holiday management
+    path('holidays/', views.holiday_list, name='holiday_list'),
+    path('holidays/create/', views.holiday_create, name='holiday_create'),
+    path('holidays/recurring/', views.recurring_holidays, name='recurring_holidays'),
 
     # API endpoints
     path('api/', include(router.urls)),
@@ -33,4 +44,5 @@ urlpatterns = [
     path('api/employee/<int:employee_id>/attendance/', views.get_employee_attendance, name='employee-attendance'),
     path('api/records/<int:record_id>/', views.attendance_record_api, name='attendance-record-api'),
     path('api/records/', views.add_attendance_record, name='add-attendance-record'),
+    path('api/get-department-employees/', views.get_department_employees, name='get_department_employees'),
 ]

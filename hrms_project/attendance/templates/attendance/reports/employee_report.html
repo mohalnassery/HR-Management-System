@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    {% load static %}
+    <link href="{% static 'attendance/css/reports.css' %}" rel="stylesheet">
+</head>
+<body>
+    <div class="header">
+        <h1>Employee Attendance Report</h1>
+        <p>{{ period.start_date|date:"F j, Y" }} - {{ period.end_date|date:"F j, Y" }}</p>
+    </div>
+
+    <div class="employee-info">
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">Name</div>
+                <div class="info-value">{{ employee.get_full_name }}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Employee ID</div>
+                <div class="info-value">{{ employee.employee_number }}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Department</div>
+                <div class="info-value">{{ employee.department.name }}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Designation</div>
+                <div class="info-value">{{ employee.designation }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-container">
+        <div class="stat-card stat-present">
+            <div class="stat-value">{{ statistics.present_days }}</div>
+            <div class="stat-label">Present Days</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ statistics.present_rate }}%; background-color: #28a745"></div>
+            </div>
+            <div class="percent-indicator">{{ statistics.present_rate|floatformat:1 }}%</div>
+        </div>
+        <div class="stat-card stat-late">
+            <div class="stat-value">{{ statistics.late_days }}</div>
+            <div class="stat-label">Late Days</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ statistics.late_rate }}%; background-color: #ffc107"></div>
+            </div>
+            <div class="percent-indicator">{{ statistics.late_rate|floatformat:1 }}%</div>
+        </div>
+        <div class="stat-card stat-absent">
+            <div class="stat-value">{{ statistics.absent_days }}</div>
+            <div class="stat-label">Absent Days</div>
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ statistics.absent_rate }}%; background-color: #dc3545"></div>
+            </div>
+            <div class="percent-indicator">{{ statistics.absent_rate|floatformat:1 }}%</div>
+        </div>
+        <div class="stat-card stat-leave">
+            <div class="stat-value">{{ statistics.leave_days }}</div>
+            <div class="stat-label">Leave Days</div>
+        </div>
+    </div>
+
+    <div class="daily-attendance">
+        <h2>Daily Attendance Log</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Day</th>
+                        <th>First In</th>
+                        <th>Last Out</th>
+                        <th>Total Hours</th>
+                        <th>Status</th>
+                        <th>Remarks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in attendance_logs %}
+                    <tr>
+                        <td>{{ log.date|date:"M d, Y" }}</td>
+                        <td>{{ log.date|date:"l" }}</td>
+                        <td>{{ log.first_in_time|time:"h:i A"|default:"-" }}</td>
+                        <td>{{ log.last_out_time|time:"h:i A"|default:"-" }}</td>
+                        <td>{{ log.total_hours|floatformat:2 }}</td>
+                        <td>
+                            <span class="status-badge {{ log.status|lower }}">
+                                {{ log.status }}
+                            </span>
+                        </td>
+                        <td>{{ log.remarks|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="leave-section">
+        <h2>Leave Summary</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Leave Type</th>
+                        <th>Taken</th>
+                        <th>Balance</th>
+                        <th>Expiry</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for leave in leave_summary %}
+                    <tr>
+                        <td>{{ leave.type }}</td>
+                        <td>{{ leave.taken }}</td>
+                        <td>{{ leave.balance }}</td>
+                        <td>{{ leave.expiry_date|date:"M d, Y"|default:"N/A" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if leave_records %}
+    <div class="leave-details">
+        <h2>Leave Details</h2>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Leave Type</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Days</th>
+                        <th>Status</th>
+                        <th>Approved By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in leave_records %}
+                    <tr>
+                        <td>{{ record.leave_type }}</td>
+                        <td>{{ record.start_date|date:"M d, Y" }}</td>
+                        <td>{{ record.end_date|date:"M d, Y" }}</td>
+                        <td>{{ record.days }}</td>
+                        <td>
+                            <span class="status-badge {{ record.status|lower }}">
+                                {{ record.status }}
+                            </span>
+                        </td>
+                        <td>{{ record.approved_by|default:"-" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p>Report generated on {{ generated_at|date:"l, F j, Y" }} at {{ generated_at|time:"h:i A" }}</p>
+        <p>For any discrepancies in this report, please contact the HR department.</p>
+    </div>
+</body>
+</html>
