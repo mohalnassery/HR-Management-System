@@ -810,9 +810,39 @@ def calendar_events(request):
                 else:
                     time_info += ")"
             
+            # Get attendance details
+            attendance_info = {
+                'time_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else None,
+                'time_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else None,
+                'total_hours': f"{log.total_work_minutes / 60:.2f}" if log.total_work_minutes else None,
+                'late_by': f"{log.late_minutes} min" if log.late_minutes else None,
+                'early_by': f"{log.early_minutes} min" if log.early_minutes else None
+            }
+
+            # Determine event color based on status
+            status_colors = {
+                'present': 'success',
+                'absent': 'danger',
+                'late': 'warning',
+                'leave': 'info',
+                'holiday': 'primary'
+            }
+            color = status_colors.get(log.status, 'secondary')
+
+            # Build event title
+            title = f"{log.employee.employee_number} - {log.employee.get_full_name()}"
+            if attendance_info['time_in']:
+                title += f" ({attendance_info['time_in']}"
+                if attendance_info['time_out']:
+                    title += f" - {attendance_info['time_out']}"
+                title += ")"
+
+            if log.status == 'late' and attendance_info['late_by']:
+                title += f" [Late: {attendance_info['late_by']}]"
+
             events.append({
                 'id': log.id,
-                'title': f"{title} - {status}{time_info}",
+                'title': f"{title}",
                 'start': log.date.isoformat(),
                 'color': color,
                 'extendedProps': {
@@ -821,10 +851,12 @@ def calendar_events(request):
                     'employee': log.employee.get_full_name(),
                     'department': log.employee.department.name if log.employee.department else '',
                     'type': 'attendance',
-                    'status': status,
+                    'status': log.status,
                     'status_color': color,
-                    'time_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else None,
-                    'time_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else None,
+                    'attendance_info': attendance_info,
+                    'is_late': log.is_late,
+                    'early_departure': log.early_departure,
+                    'total_work_hours': attendance_info['total_hours']
                 }
             })
         

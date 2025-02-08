@@ -6,6 +6,7 @@ from .models import (
     AttendanceRecord, AttendanceLog, Leave, LeaveType, 
     LeaveBalance, Holiday, Employee
 )
+from .services import AttendanceStatusService
 from datetime import datetime, timedelta
 
 @receiver(post_save, sender=AttendanceRecord)
@@ -39,16 +40,16 @@ def process_attendance_record(sender, instance, created, **kwargs):
     ).order_by('timestamp')
 
     if records.exists():
-        # Update log times
+        # Update log times and shift
         log.first_in_time = records.first().timestamp.time()
         log.last_out_time = records.last().timestamp.time()
-
-        # Check if late based on shift
-        if instance.employee.shift:
-            shift_start = instance.employee.shift.start_time
-            log.is_late = log.first_in_time > shift_start
-
-    log.save()
+        log.shift = instance.employee.shift
+        
+        # Save initial changes
+        log.save()
+        
+        # Calculate and update status
+        AttendanceStatusService.update_attendance_status(log)
 
 @receiver(post_delete, sender=AttendanceRecord)
 def cleanup_attendance_record(sender, instance, **kwargs):

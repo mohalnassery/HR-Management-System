@@ -12,7 +12,7 @@ from .models import (
 )
 from .services import (
     FridayRuleService, LeaveBalanceService,
-    RecurringHolidayService
+    RecurringHolidayService, AttendanceStatusService
 )
 
 @shared_task
@@ -181,6 +181,34 @@ def notify_pending_leave_requests():
         return f"Error sending pending leave notifications: {str(e)}"
 
 @shared_task
+def process_attendance_records():
+    """
+    Process attendance records and update statuses.
+    Runs periodically to ensure all attendance records are properly processed.
+    """
+    try:
+        # Get records from the last 24 hours that haven't been processed
+        yesterday = timezone.now() - timedelta(days=1)
+        logs = AttendanceLog.objects.filter(
+            Q(date__gte=yesterday) &
+            Q(first_in_time__isnull=False) &
+            (Q(status='absent') | Q(status__isnull=True))
+        ).select_related('employee', 'shift')
+
+        processed = 0
+        for log in logs:
+            try:
+                AttendanceStatusService.update_attendance_status(log)
+                processed += 1
+            except Exception as e:
+                print(f"Error processing log {log.id}: {str(e)}")
+                continue
+
+        return f"Processed {processed} attendance logs"
+    except Exception as e:
+        return f"Error processing attendance records: {str(e)}"
+
+@shared_task
 def send_attendance_reminders():
     """
     Send attendance reminders to employees who haven't logged attendance.
@@ -197,11 +225,12 @@ def send_attendance_reminders():
         if Holiday.objects.filter(date=today, is_active=True).exists():
             return "Skipped: Holiday"
         
-        # Get employees without attendance logs for today
+        # Get employees without attendance logs for today or marked as absent
         employees_without_logs = Employee.objects.filter(
             is_active=True
-        ).exclude(
-            attendancelog__date=today
+        ).filter(
+            Q(attendancelog__date=today, attendancelog__status='absent') |
+            ~Q(attendancelog__date=today)
         )
         
         for employee in employees_without_logs:

@@ -46,20 +46,40 @@ class AttendanceRecord(models.Model):
 
 class AttendanceLog(models.Model):
     """Processed attendance data with first in/last out times"""
+    STATUS_CHOICES = [
+        ('present', 'Present'),
+        ('absent', 'Absent'),
+        ('late', 'Late'),
+        ('leave', 'Leave'),
+        ('holiday', 'Holiday')
+    ]
+
     employee = models.ForeignKey(
         Employee,
         on_delete=models.CASCADE,
         related_name='attendance_logs'
     )
     date = models.DateField()
-    first_in_time = models.TimeField()
-    last_out_time = models.TimeField()
+    first_in_time = models.TimeField(null=True, blank=True)
+    last_out_time = models.TimeField(null=True, blank=True)
     shift = models.ForeignKey(
         Shift,
         on_delete=models.SET_NULL,
         null=True,
         blank=True
     )
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='absent'
+    )
+    is_late = models.BooleanField(default=False)
+    late_minutes = models.PositiveIntegerField(default=0)
+    early_departure = models.BooleanField(default=False)
+    early_minutes = models.PositiveIntegerField(default=0)
+    total_work_minutes = models.PositiveIntegerField(default=0)
     source = models.CharField(
         max_length=20,
         choices=[('system', 'System'), ('manual', 'Manual')],

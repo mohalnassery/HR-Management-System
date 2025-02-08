@@ -33,6 +33,12 @@ app.conf.beat_schedule = {
         'task': 'attendance.tasks.process_recurring_holidays',
         'schedule': crontab(month_of_year='12', day_of_month='1', hour='0', minute='0'),
     },
+
+    # Process attendance records every 15 minutes
+    'process-attendance-records': {
+        'task': 'attendance.tasks.process_attendance_records',
+        'schedule': crontab(minute='*/15'),  # Run every 15 minutes
+    },
 }
 
 @app.task(bind=True)

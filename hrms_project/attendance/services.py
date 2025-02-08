@@ -8,6 +8,81 @@ from .models import (
     Leave, LeaveType, LeaveBalance, Holiday
 )
 
+class AttendanceStatusService:
+    """Service class for determining attendance status"""
+    
+    @staticmethod
+    def calculate_status(attendance_log: AttendanceLog) -> dict:
+        """
+        Calculate attendance status, late minutes, early departure etc.
+        Returns dict with status details
+        """
+        if not attendance_log.shift:
+            return {
+                'status': 'absent',
+                'is_late': False,
+                'late_minutes': 0,
+                'early_departure': False,
+                'early_minutes': 0,
+                'total_work_minutes': 0
+            }
+        
+        # Get shift times
+        shift_start = attendance_log.shift.start_time
+        shift_end = attendance_log.shift.end_time
+        
+        # Initialize result
+        result = {
+            'status': 'absent',
+            'is_late': False,
+            'late_minutes': 0,
+            'early_departure': False,
+            'early_minutes': 0,
+            'total_work_minutes': 0
+        }
+        
+        # If no check-in/out, mark as absent
+        if not attendance_log.first_in_time or not attendance_log.last_out_time:
+            return result
+            
+        # Calculate late minutes
+        if attendance_log.first_in_time > shift_start:
+            late_delta = datetime.combine(date.today(), attendance_log.first_in_time) - \
+                        datetime.combine(date.today(), shift_start)
+            result['is_late'] = True
+            result['late_minutes'] = late_delta.seconds // 60
+            
+        # Calculate early departure
+        if attendance_log.last_out_time < shift_end:
+            early_delta = datetime.combine(date.today(), shift_end) - \
+                         datetime.combine(date.today(), attendance_log.last_out_time)
+            result['early_departure'] = True
+            result['early_minutes'] = early_delta.seconds // 60
+            
+        # Calculate total work minutes
+        work_delta = datetime.combine(date.today(), attendance_log.last_out_time) - \
+                    datetime.combine(date.today(), attendance_log.first_in_time)
+        result['total_work_minutes'] = work_delta.seconds // 60
+        
+        # Determine status
+        if result['is_late']:
+            result['status'] = 'late'
+        else:
+            result['status'] = 'present'
+            
+        return result
+    
+    @staticmethod
+    def update_attendance_status(attendance_log: AttendanceLog):
+        """Update attendance log with calculated status"""
+        status_details = AttendanceStatusService.calculate_status(attendance_log)
+        
+        for key, value in status_details.items():
+            setattr(attendance_log, key, value)
+            
+        attendance_log.save()
+
+
 class FridayRuleService:
     """Service class for handling Friday attendance rules"""
 
