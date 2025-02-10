@@ -5,11 +5,37 @@ from typing import Optional, List, Dict, Any
 
 from .models import (
     Employee, AttendanceLog, AttendanceRecord,
-    Leave, LeaveType, LeaveBalance, Holiday
+    Leave, LeaveType, LeaveBalance, Holiday,
+    ShiftAssignment, RamadanPeriod
 )
 
 class AttendanceStatusService:
     """Service class for determining attendance status"""
+
+    @staticmethod
+    def is_ramadan(date: datetime.date, employee: Employee) -> bool:
+        """Check if the given date falls within Ramadan period for Muslim employees"""
+        if employee.religion != "Muslim":
+            return False
+
+        return RamadanPeriod.objects.filter(
+            year=date.year,
+            start_date__lte=date,
+            end_date__gte=date,
+            is_active=True
+        ).exists()
+
+    @staticmethod
+    def get_employee_shift(employee: Employee, date: datetime.date) -> Optional[ShiftAssignment]:
+        """Get the active shift assignment for an employee on a given date"""
+        return ShiftAssignment.objects.filter(
+            employee=employee,
+            start_date__lte=date,
+            is_active=True
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=date)
+        ).first()
+
     
     @staticmethod
     def calculate_status(attendance_log: AttendanceLog) -> dict:
@@ -17,19 +43,36 @@ class AttendanceStatusService:
         Calculate attendance status, late minutes, early departure etc.
         Returns dict with status details
         """
-        if not attendance_log.shift:
-            return {
-                'status': 'absent',
-                'is_late': False,
-                'late_minutes': 0,
-                'early_departure': False,
-                'early_minutes': 0,
-                'total_work_minutes': 0
-            }
+        # Get the shift assignment
+        shift_assignment = AttendanceStatusService.get_employee_shift(
+            attendance_log.employee, attendance_log.date
+        )
+
+        # If no shift assigned, use default shift
+        if not shift_assignment:
+            shift = attendance_log.shift  # Fallback to the one set in attendance_log
+            if not shift:
+                return {
+                    'status': 'absent',
+                    'is_late': False,
+                    'late_minutes': 0,
+                    'early_departure': False,
+                    'early_minutes': 0,
+                    'total_work_minutes': 0
+                }
+        else:
+            shift = shift_assignment.shift
+            attendance_log.shift = shift  # Update the log with the correct shift
+
         
+        # Check if it's Ramadan for Muslim employees
+        is_ramadan_day = AttendanceStatusService.is_ramadan(attendance_log.date, attendance_log.employee)
+
         # Get shift times
-        shift_start = attendance_log.shift.start_time
-        shift_end = attendance_log.shift.end_time
+        shift_start = shift.start_time
+        shift_end = shift.end_time if not is_ramadan_day else (
+            datetime.combine(attendance_log.date, shift_start) + timedelta(hours=6)
+        ).time()
         
         # Initialize result
         result = {
@@ -44,25 +87,40 @@ class AttendanceStatusService:
         # If no check-in/out, mark as absent
         if not attendance_log.first_in_time or not attendance_log.last_out_time:
             return result
-            
-        # Calculate late minutes
-        if attendance_log.first_in_time > shift_start:
-            late_delta = datetime.combine(date.today(), attendance_log.first_in_time) - \
-                        datetime.combine(date.today(), shift_start)
+
+        # Apply grace period for lateness
+        actual_start = (
+            datetime.combine(attendance_log.date, shift_start) + 
+            timedelta(minutes=shift.grace_period)
+        ).time()
+
+        # Calculate late minutes only if beyond grace period
+        if attendance_log.first_in_time > actual_start:
+            late_delta = datetime.combine(attendance_log.date, attendance_log.first_in_time) - \
+                        datetime.combine(attendance_log.date, shift_start)
             result['is_late'] = True
             result['late_minutes'] = late_delta.seconds // 60
             
         # Calculate early departure
         if attendance_log.last_out_time < shift_end:
-            early_delta = datetime.combine(date.today(), shift_end) - \
-                         datetime.combine(date.today(), attendance_log.last_out_time)
+            early_delta = datetime.combine(attendance_log.date, shift_end) - \
+                         datetime.combine(attendance_log.date, attendance_log.last_out_time)
             result['early_departure'] = True
             result['early_minutes'] = early_delta.seconds // 60
             
         # Calculate total work minutes
-        work_delta = datetime.combine(date.today(), attendance_log.last_out_time) - \
-                    datetime.combine(date.today(), attendance_log.first_in_time)
-        result['total_work_minutes'] = work_delta.seconds // 60
+        work_delta = datetime.combine(attendance_log.date, attendance_log.last_out_time) - \
+                    datetime.combine(attendance_log.date, attendance_log.first_in_time)
+
+        total_minutes = work_delta.seconds // 60
+
+        # Handle break deduction
+        if is_ramadan_day:
+            # No break deduction during Ramadan
+            result['total_work_minutes'] = total_minutes
+        else:
+            # Always deduct break duration unless it's a custom shift with different break duration
+            result['total_work_minutes'] = total_minutes - shift.break_duration
         
         # Determine status
         if result['is_late']:

@@ -1,37 +1,29 @@
+from datetime import datetime, date, timedelta, time
+from typing import List, Dict, Any
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser
-from django.http import JsonResponse, Http404
 from django.db.models import Q
-from datetime import datetime, date, timedelta, time
-from employees.models import Employee, Department
-from time import time as time_func
-from django.utils.dateparse import parse_datetime
-from django.contrib import messages
+from django.http import JsonResponse, Http404
 from django.utils import timezone
-from django.db import models
+from django.contrib import messages
+from rest_framework import status
+from rest_framework import viewsets
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser
 
+from employees.models import Employee, Department
 from .models import (
-    Shift, AttendanceRecord, AttendanceLog,
-    AttendanceEdit, Leave, Holiday, LeaveType
+    AttendanceRecord, AttendanceLog, Leave, Holiday, LeaveType,
+    RamadanPeriod
 )
-from .serializers import (
-    ShiftSerializer, AttendanceRecordSerializer,
-    AttendanceLogSerializer, AttendanceEditSerializer,
-    LeaveSerializer, HolidaySerializer
-)
-from .utils import (
-    process_attendance_excel, generate_attendance_log,
-    process_daily_attendance, validate_attendance_edit,
-    get_attendance_summary
-)
+from .services import ShiftService, RamadanService
+from .serializers import ShiftSerializer, AttendanceRecordSerializer, AttendanceLogSerializer, LeaveSerializer, HolidaySerializer
 
-# Template Views
+
 @login_required
 def attendance_list(request):
     """Display attendance list page"""
@@ -751,39 +743,29 @@ def search_employees(request):
 def calendar_events(request):
     """Get attendance events for calendar"""
     try:
+        # Get date parameters
         start_str = request.GET.get('start', '')
         end_str = request.GET.get('end', '')
         department = request.GET.get('department')
         employee = request.GET.get('employee')
         
-        # Parse dates from ISO format, handling timezone if present
+        # Parse dates from ISO format
         try:
-            # Remove timezone part if present
-            start_str = start_str.split('+')[0]
-            end_str = end_str.split('+')[0]
-            
-            # Parse dates
-            if 'T' in start_str:
-                start_date = datetime.strptime(start_str.split('T')[0], '%Y-%m-%d').date()
-            else:
-                start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
-                
-            if 'T' in end_str:
-                end_date = datetime.strptime(end_str.split('T')[0], '%Y-%m-%d').date()
-            else:
-                end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
-        
+            start_date = datetime.strptime(start_str.split('T')[0], '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_str.split('T')[0], '%Y-%m-%d').date()
         except (ValueError, IndexError):
-            return Response({'error': 'Invalid date format. Expected YYYY-MM-DD.'}, status=400)
+            return Response({
+                'error': 'Invalid date format. Expected YYYY-MM-DD.'
+            }, status=400)
         
-        # Build query for attendance logs
+        # Build query
         logs_query = Q(date__range=[start_date, end_date])
         if employee:
             logs_query &= Q(employee_id=employee)
         elif department:
             logs_query &= Q(employee__department_id=department)
             
-        # Get attendance logs
+        # Get logs with related data
         logs = AttendanceLog.objects.filter(
             logs_query
         ).select_related('employee', 'employee__department')
@@ -791,24 +773,8 @@ def calendar_events(request):
         # Convert logs to calendar events
         events = []
         for log in logs:
-            if log.first_in_time is None and log.last_out_time is None:
-                status = 'Absent'
-                color = 'danger'
-            elif log.is_late:
-                status = 'Late'
-                color = 'warning'
-            else:
-                status = 'Present'
-                color = 'success'
-            
-            title = f"{log.employee.employee_number} - {log.employee.get_full_name()}"
-            time_info = ''
-            if log.first_in_time:
-                time_info += f" (In: {log.first_in_time.strftime('%I:%M %p')}"
-                if log.last_out_time:
-                    time_info += f", Out: {log.last_out_time.strftime('%I:%M %p')})"
-                else:
-                    time_info += ")"
+            # Get current shift for the employee on this date
+            shift = ShiftService.get_employee_current_shift(log.employee)
             
             # Get attendance details
             attendance_info = {
@@ -816,54 +782,146 @@ def calendar_events(request):
                 'time_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else None,
                 'total_hours': f"{log.total_work_minutes / 60:.2f}" if log.total_work_minutes else None,
                 'late_by': f"{log.late_minutes} min" if log.late_minutes else None,
-                'early_by': f"{log.early_minutes} min" if log.early_minutes else None
+                'early_by': f"{log.early_minutes} min" if log.early_minutes else None,
+                'shift': shift.name if shift else 'No Shift'
             }
 
-            # Determine event color based on status
+            # Determine event color and status
             status_colors = {
-                'present': 'success',
-                'absent': 'danger',
-                'late': 'warning',
-                'leave': 'info',
-                'holiday': 'primary'
+                'present': '#28a745',  # green
+                'absent': '#dc3545',   # red
+                'late': '#ffc107',     # yellow
+                'leave': '#17a2b8',    # info
+                'holiday': '#6f42c1'   # purple
             }
-            color = status_colors.get(log.status, 'secondary')
 
-            # Build event title
-            title = f"{log.employee.employee_number} - {log.employee.get_full_name()}"
-            if attendance_info['time_in']:
-                title += f" ({attendance_info['time_in']}"
-                if attendance_info['time_out']:
-                    title += f" - {attendance_info['time_out']}"
-                title += ")"
+            if log.is_leave:
+                status = 'leave'
+            elif log.is_holiday:
+                status = 'holiday'
+            elif not log.first_in_time:
+                status = 'absent'
+            elif log.is_late:
+                status = 'late'
+            else:
+                status = 'present'
 
-            if log.status == 'late' and attendance_info['late_by']:
-                title += f" [Late: {attendance_info['late_by']}]"
-
-            events.append({
+            # Build event data
+            event = {
                 'id': log.id,
-                'title': f"{title}",
+                'title': f"{log.employee.employee_number} - {log.employee.get_full_name()}",
                 'start': log.date.isoformat(),
-                'color': color,
+                'color': status_colors.get(status, '#6c757d'),  # default to gray
                 'extendedProps': {
                     'employee_id': log.employee.id,
                     'employee_number': log.employee.employee_number,
-                    'employee': log.employee.get_full_name(),
+                    'employee_name': log.employee.get_full_name(),
                     'department': log.employee.department.name if log.employee.department else '',
                     'type': 'attendance',
-                    'status': log.status,
-                    'status_color': color,
-                    'attendance_info': attendance_info,
-                    'is_late': log.is_late,
-                    'early_departure': log.early_departure,
-                    'total_work_hours': attendance_info['total_hours']
+                    'status': status,
+                    'attendance_info': attendance_info
                 }
-            })
+            }
+
+            # Add timing info to title if available
+            if attendance_info['time_in']:
+                event['title'] += f" ({attendance_info['time_in']}"
+                if attendance_info['time_out']:
+                    event['title'] += f" - {attendance_info['time_out']}"
+                event['title'] += ")"
+
+            if status == 'late' and attendance_info['late_by']:
+                event['title'] += f" [Late: {attendance_info['late_by']}]"
+
+            events.append(event)
         
         return Response(events)
         
     except Exception as e:
         return Response({'error': str(e)}, status=400)
+
+@login_required
+def ramadan_periods(request):
+    """View for managing Ramadan periods"""
+    try:
+        periods = RamadanService.get_all_periods()
+        context = {'periods': periods}
+        return render(request, 'attendance/shifts/ramadan_periods.html', context)
+    except Exception as e:
+        messages.error(request, f"Error loading Ramadan periods: {str(e)}")
+        return redirect('attendance:attendance_list')
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ramadan_period_add(request):
+    """API endpoint for adding a new Ramadan period"""
+    try:
+        year = int(request.data.get('year'))
+        start_date = datetime.strptime(request.data.get('start_date'), '%Y-%m-%d').date()
+        end_date = datetime.strptime(request.data.get('end_date'), '%Y-%m-%d').date()
+        
+        # Validate period dates
+        RamadanService.validate_period_dates(start_date, end_date, year)
+        
+        # Create period
+        period = RamadanService.create_period(year, start_date, end_date)
+        
+        return Response({
+            'message': 'Ramadan period added successfully',
+            'id': period.id
+        }, status=status.HTTP_201_CREATED)
+        
+    except ValueError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def ramadan_period_detail(request, pk):
+    """API endpoint for managing a specific Ramadan period"""
+    try:
+        period = RamadanPeriod.objects.get(pk=pk)
+    except RamadanPeriod.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'year': period.year,
+            'start_date': period.start_date.isoformat(),
+            'end_date': period.end_date.isoformat(),
+            'is_active': period.is_active
+        })
+
+    elif request.method == 'PUT':
+        try:
+            year = int(request.data.get('year'))
+            start_date = datetime.strptime(request.data.get('start_date'), '%Y-%m-%d').date()
+            end_date = datetime.strptime(request.data.get('end_date'), '%Y-%m-%d').date()
+            is_active = request.data.get('is_active', True)
+            
+            # Update period
+            period = RamadanService.update_period(
+                period.id, year, start_date, end_date, is_active
+            )
+            
+            return Response({'message': 'Ramadan period updated successfully'})
+            
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    elif request.method == 'DELETE':
+        try:
+            period.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response(
+                {'error': f"Unable to delete period: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 @api_view(['GET'])
 def attendance_details(request):

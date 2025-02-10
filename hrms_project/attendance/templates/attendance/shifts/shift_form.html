@@ -1,0 +1,163 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">{% if shift %}Edit{% else %}Create{% endif %} Shift</h5>
+    </div>
+    <div class="card-body">
+        <form method="post" id="shift-form">
+            {% csrf_token %}
+            
+            <div class="row">
+                <!-- Basic Information -->
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Name*</label>
+                        <input type="text" class="form-control" name="name" 
+                               value="{{ shift.name|default:'' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Shift Type*</label>
+                        <select class="form-select" name="shift_type" required>
+                            <option value="">Select Shift Type</option>
+                            {% for type, label in shift_types %}
+                                <option value="{{ type }}" {% if shift.shift_type == type %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Timing Information -->
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Start Time*</label>
+                        <input type="time" class="form-control" name="start_time" 
+                               value="{{ shift.start_time|time:'H:i'|default:'' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">End Time*</label>
+                        <input type="time" class="form-control" name="end_time" 
+                               value="{{ shift.end_time|time:'H:i'|default:'' }}" required>
+                    </div>
+                </div>
+
+                <!-- Additional Settings -->
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label class="form-label">Grace Period (minutes)</label>
+                        <input type="number" class="form-control" name="grace_period" 
+                               value="{{ shift.grace_period|default:'15' }}" min="0" max="60">
+                        <small class="text-muted">
+                            Allowed late arrival time before marking attendance as late
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Break Duration (minutes)</label>
+                        <input type="number" class="form-control" name="break_duration" 
+                               value="{{ shift.break_duration|default:'60' }}" min="0" max="180">
+                        <small class="text-muted">
+                            Official break time during the shift
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input type="checkbox" class="form-check-input" name="is_night_shift" id="is_night_shift"
+                                   {% if shift.is_night_shift %}checked{% endif %}>
+                            <label class="form-check-label" for="is_night_shift">Night Shift</label>
+                        </div>
+                        <small class="text-muted">
+                            Enable for shifts that span across midnight
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input type="checkbox" class="form-check-input" name="is_active" id="is_active"
+                                   {% if shift.is_active or shift is None %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">Active</label>
+                        </div>
+                        <small class="text-muted">
+                            Inactive shifts cannot be assigned to employees
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">
+                    {% if shift %}Save Changes{% else %}Create Shift{% endif %}
+                </button>
+                <a href="{% url 'attendance:shift_list' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('shift-form');
+    const startTimeInput = form.querySelector('[name="start_time"]');
+    const endTimeInput = form.querySelector('[name="end_time"]');
+    const isNightShiftCheckbox = document.getElementById('is_night_shift');
+
+    // Function to check if end time is before start time (indicating night shift)
+    function checkNightShift() {
+        const startTime = startTimeInput.value;
+        const endTime = endTimeInput.value;
+        
+        if (startTime && endTime) {
+            const start = new Date(`2000-01-01T${startTime}`);
+            const end = new Date(`2000-01-01T${endTime}`);
+            
+            if (end < start) {
+                isNightShiftCheckbox.checked = true;
+            }
+        }
+    }
+
+    // Add event listeners
+    [startTimeInput, endTimeInput].forEach(input => {
+        input.addEventListener('change', checkNightShift);
+    });
+
+    // Form validation
+    form.addEventListener('submit', function(e) {
+        const startTime = startTimeInput.value;
+        const endTime = endTimeInput.value;
+        
+        if (startTime === endTime) {
+            e.preventDefault();
+            alert('Start time and end time cannot be the same');
+            return;
+        }
+        
+        const start = new Date(`2000-01-01T${startTime}`);
+        const end = new Date(`2000-01-01T${endTime}`);
+        
+        // If end time is before start time and not marked as night shift
+        if (end < start && !isNightShiftCheckbox.checked) {
+            e.preventDefault();
+            if (confirm('This appears to be a night shift. Would you like to mark it as such?')) {
+                isNightShiftCheckbox.checked = true;
+                form.submit();
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

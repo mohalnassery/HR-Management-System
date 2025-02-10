@@ -1,0 +1,273 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Shift Assignments</h5>
+            <a href="{% url 'attendance:shift_assignment_create' %}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> New Assignment
+            </a>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Filters -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <label class="form-label">Department</label>
+                <select class="form-select" id="department-filter">
+                    <option value="">All Departments</option>
+                    {% for dept in departments %}
+                        <option value="{{ dept.id }}">{{ dept.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Shift</label>
+                <select class="form-select" id="shift-filter">
+                    <option value="">All Shifts</option>
+                    {% for shift in shifts %}
+                        <option value="{{ shift.id }}">{{ shift.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Status</label>
+                <select class="form-select" id="status-filter">
+                    <option value="">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Assignment Type</label>
+                <select class="form-select" id="type-filter">
+                    <option value="">All Types</option>
+                    <option value="permanent">Permanent</option>
+                    <option value="temporary">Temporary</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="search-input" 
+                           placeholder="Search by employee name or number...">
+                    <button class="btn btn-outline-secondary" type="button" id="search-btn">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assignments Table -->
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Shift</th>
+                        <th>Period</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="assignments-tbody">
+                    {% for assignment in page_obj %}
+                    <tr>
+                        <td>
+                            <div>{{ assignment.employee.get_full_name }}</div>
+                            <small class="text-muted">{{ assignment.employee.employee_number }}</small>
+                        </td>
+                        <td>{{ assignment.employee.department.name|default:'-' }}</td>
+                        <td>
+                            <div>{{ assignment.shift.name }}</div>
+                            <small class="text-muted">
+                                {{ assignment.shift.start_time|time:"g:i A" }} - {{ assignment.shift.end_time|time:"g:i A" }}
+                            </small>
+                        </td>
+                        <td>
+                            <div>{{ assignment.start_date|date:"M d, Y" }}</div>
+                            {% if assignment.end_date %}
+                                <small class="text-muted">Until {{ assignment.end_date|date:"M d, Y" }}</small>
+                            {% else %}
+                                <small class="text-success">Permanent</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if assignment.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if assignment.is_active %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <div>{{ assignment.created_by.get_full_name }}</div>
+                            <small class="text-muted">{{ assignment.created_at|date:"M d, Y" }}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <a href="{% url 'attendance:shift_assignment_edit' assignment.id %}" 
+                                   class="btn btn-sm btn-outline-primary" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" 
+                                        onclick="confirmDelete('{{ assignment.id }}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <div class="text-muted">
+                                <i class="fas fa-info-circle me-2"></i>No shift assignments found
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <nav aria-label="Shift assignments pagination" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1" aria-label="First">
+                        <span aria-hidden="true">&laquo;&laquo;</span>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    {% if num == page_obj.number %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last">
+                        <span aria-hidden="true">&raquo;&raquo;</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this shift assignment? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+// Filter functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const filters = {
+        department: document.getElementById('department-filter'),
+        shift: document.getElementById('shift-filter'),
+        status: document.getElementById('status-filter'),
+        type: document.getElementById('type-filter'),
+        search: document.getElementById('search-input')
+    };
+
+    function applyFilters() {
+        const params = new URLSearchParams(window.location.search);
+        
+        // Update params based on filter values
+        Object.keys(filters).forEach(key => {
+            const value = filters[key].value;
+            if (value) {
+                params.set(key, value);
+            } else {
+                params.delete(key);
+            }
+        });
+
+        // Reset to first page when filtering
+        params.set('page', '1');
+        
+        // Update URL and reload
+        window.location.search = params.toString();
+    }
+
+    // Add change event listeners to all filters
+    Object.values(filters).forEach(filter => {
+        filter.addEventListener('change', applyFilters);
+    });
+
+    // Add search button click handler
+    document.getElementById('search-btn').addEventListener('click', applyFilters);
+
+    // Add enter key handler for search input
+    filters.search.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            applyFilters();
+        }
+    });
+
+    // Set initial filter values from URL params
+    const params = new URLSearchParams(window.location.search);
+    Object.keys(filters).forEach(key => {
+        const value = params.get(key);
+        if (value) {
+            filters[key].value = value;
+        }
+    });
+});
+
+function confirmDelete(assignmentId) {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    const form = document.getElementById('deleteForm');
+    form.action = `/attendance/shifts/assignments/${assignmentId}/delete/`;
+    modal.show();
+}
+</script>
+{% endblock %}

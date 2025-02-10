@@ -1,0 +1,88 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Assign Shift</h5>
+        </div>
+    </div>
+    <div class="card-body">
+        <form id="shift-assignment-form" method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label">Employee</label>
+                <select class="form-select" id="employee" name="employee" required>
+                    <option value="">Select Employee</option>
+                    {% for employee in employees %}
+                        <option value="{{ employee.id }}" {% if employee.id == form.employee.value %}selected{% endif %}>
+                            {{ employee.get_full_name }} ({{ employee.employee_number }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Shift</label>
+                <select class="form-select" id="shift" name="shift" required>
+                    <option value="">Select Shift</option>
+                    {% for shift in shifts %}
+                        <option value="{{ shift.id }}" {% if shift.id == form.shift.value %}selected{% endif %}>
+                            {{ shift.name }} ({{ shift.start_time|time:"g:i A" }} - {{ shift.end_time|time:"g:i A" }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Start Date</label>
+                <input type="date" class="form-control" id="start_date" name="start_date" 
+                       value="{{ form.start_date.value|date:'Y-m-d' }}" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">End Date (Optional)</label>
+                <input type="date" class="form-control" id="end_date" name="end_date"
+                       value="{{ form.end_date.value|date:'Y-m-d' }}">
+                <small class="text-muted">Leave blank for permanent assignment</small>
+            </div>
+
+            <div class="form-check mb-3">
+                <input type="checkbox" class="form-check-input" id="is_active" name="is_active"
+                       {% if form.is_active.value %}checked{% endif %}>
+                <label class="form-check-label" for="is_active">Active</label>
+            </div>
+
+            <div class="mb-3">
+                <button type="submit" class="btn btn-primary">Save Assignment</button>
+                <a href="{% url 'attendance:shift_list' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+
+    // Set minimum date for start date as today
+    startDateInput.min = new Date().toISOString().split('T')[0];
+
+    // Update end date minimum when start date changes
+    startDateInput.addEventListener('change', function() {
+        endDateInput.min = this.value;
+        
+        // If end date is before new start date, clear it
+        if (endDateInput.value && endDateInput.value < this.value) {
+            endDateInput.value = '';
+        }
+    });
+});
+</script>
+{% endblock %}

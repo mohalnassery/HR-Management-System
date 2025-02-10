@@ -15,7 +15,7 @@ class AttendanceConfig(AppConfig):
         from . import signals
 
         # Attendance Record Signals
-        post_save.connect(signals.process_attendance_record, sender='attendance.AttendanceRecord')
+        # post_save.connect(signals.process_attendance_record, sender='attendance.AttendanceRecord')
         post_delete.connect(signals.cleanup_attendance_record, sender='attendance.AttendanceRecord')
 
         # Leave Request Signals

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 20px auto; padding: 20px; }
+        .header { background-color: #f8f9fa; padding: 15px; border-radius: 5px; }
+        .content { padding: 20px 0; }
+        .timing-details { background-color: #f1f3f5; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .ramadan-note { color: #856404; background-color: #fff3cd; padding: 10px; border-radius: 5px; }
+        .footer { color: #6c757d; font-size: 0.9em; margin-top: 20px; }
+        .blessing { font-style: italic; color: #28a745; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>{% if is_end %}Regular Working Hours Resume{% else %}Ramadan Working Hours{% endif %}</h2>
+        </div>
+        
+        <div class="content">
+            <p>Dear {{ employee.get_full_name }},</p>
+            
+            {% if is_end %}
+                <p>This is to inform you that regular working hours will resume after Ramadan ends on 
+                   <strong>{{ ramadan_period.end_date|date:"l, F d, Y" }}</strong>.</p>
+                
+                <div class="timing-details">
+                    <h3>Regular Shift Details:</h3>
+                    <p><strong>Shift:</strong> {{ shift.name }}</p>
+                    <p><strong>Timing:</strong> {{ shift.start_time|time:"g:i A" }} - {{ shift.end_time|time:"g:i A" }}</p>
+                    {% if shift.break_duration %}
+                        <p><strong>Break Duration:</strong> {{ shift.break_duration }} minutes</p>
+                    {% endif %}
+                </div>
+                
+                <p class="blessing">Thank you for your dedication during the blessed month of Ramadan.</p>
+            {% else %}
+                <p>In observance of the holy month of Ramadan, your working hours will be adjusted from 
+                   <strong>{{ ramadan_period.start_date|date:"l, F d, Y" }}</strong>.</p>
+                
+                <div class="timing-details">
+                    <h3>Adjusted Ramadan Timing:</h3>
+                    <p><strong>Shift:</strong> {{ shift.name }}</p>
+                    <p><strong>Timing:</strong> {{ adjusted_timing.start_time|time:"g:i A" }} - {{ adjusted_timing.end_time|time:"g:i A" }}</p>
+                    {% if shift.break_duration %}
+                        <p><strong>Break Duration:</strong> {{ shift.break_duration }} minutes</p>
+                    {% endif %}
+                </div>
+                
+                <div class="ramadan-note">
+                    <p><strong>Note:</strong> These adjusted hours will be in effect throughout Ramadan 
+                       ({{ ramadan_period.start_date|date:"M d" }} - {{ ramadan_period.end_date|date:"M d, Y" }}).</p>
+                </div>
+                
+                <p class="blessing">Ramadan Kareem! رمضان كريم</p>
+            {% endif %}
+            
+            <p>If you have any questions about your working hours, please contact HR.</p>
+        </div>
+        
+        <div class="footer">
+            <p>This is an automated message. Please do not reply to this email.</p>
+            <p>Human Resources Department</p>
+        </div>
+    </div>
+</body>
+</html>

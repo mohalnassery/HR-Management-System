@@ -1,0 +1,229 @@
+/* Shift Management Styles */
+
+/* Shift List */
+.shift-list {
+    margin-bottom: 2rem;
+}
+
+.shift-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    transition: box-shadow 0.3s ease;
+}
+
+.shift-card:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.shift-header {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 0.5rem 0.5rem 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.shift-body {
+    padding: 1rem;
+}
+
+.shift-footer {
+    padding: 0.75rem 1rem;
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+    border-radius: 0 0 0.5rem 0.5rem;
+}
+
+/* Shift Types */
+.shift-type {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.shift-type-regular {
+    background-color: #e3f2fd;
+    color: #0d47a1;
+}
+
+.shift-type-night {
+    background-color: #ede7f6;
+    color: #4527a0;
+}
+
+.shift-type-flexible {
+    background-color: #e8f5e9;
+    color: #1b5e20;
+}
+
+.shift-type-split {
+    background-color: #fff3e0;
+    color: #e65100;
+}
+
+.shift-type-ramadan {
+    background-color: #fce4ec;
+    color: #880e4f;
+}
+
+/* Shift Timing */
+.shift-timing {
+    display: flex;
+    align-items: center;
+    margin: 0.5rem 0;
+    color: #495057;
+}
+
+.shift-timing i {
+    margin-right: 0.5rem;
+    color: #6c757d;
+}
+
+/* Break Duration */
+.break-duration {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* Grace Period */
+.grace-period {
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    display: inline-block;
+    margin-top: 0.5rem;
+}
+
+/* Assignment Section */
+.assignment-list {
+    margin-top: 1rem;
+}
+
+.assignment-item {
+    padding: 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Active/Inactive Status */
+.status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-active {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-inactive {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Ramadan Period */
+.ramadan-period {
+    background-color: #fff8e1;
+    border: 1px solid #ffecb3;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.ramadan-dates {
+    color: #b71c1c;
+    font-weight: 500;
+    margin: 0.5rem 0;
+}
+
+.ramadan-badge {
+    background-color: #ffebee;
+    color: #c62828;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    display: inline-block;
+}
+
+/* Assignment Forms */
+.assignment-form {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 1.5rem;
+    background-color: #fff;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.date-range-inputs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.employee-select {
+    margin-bottom: 1.5rem;
+}
+
+/* Shift Statistics */
+.shift-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.stat-card {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #0d6efd;
+}
+
+.stat-label {
+    color: #6c757d;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .shift-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .shift-header .btn-group {
+        margin-top: 0.5rem;
+    }
+    
+    .shift-stats {
+        grid-template-columns: 1fr;
+    }
+    
+    .date-range-inputs {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}

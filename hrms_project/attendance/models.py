@@ -5,11 +5,56 @@ from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
 
+class RamadanPeriod(models.Model):
+    """Defines Ramadan periods for different years"""
+    year = models.IntegerField()
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-year']
+        verbose_name = 'Ramadan Period'
+        verbose_name_plural = 'Ramadan Periods'
+
+    def __str__(self):
+        return f"Ramadan {self.year} ({self.start_date} to {self.end_date})"
+
+    def clean(self):
+        if self.start_date and self.end_date:
+            if self.start_date > self.end_date:
+                raise ValidationError("End date cannot be before start date")
+            if self.start_date.year != self.year or self.end_date.year != self.year:
+                raise ValidationError("Dates must be within the specified year")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
 class Shift(models.Model):
+    """Define different types of shifts"""
+    SHIFT_TYPES = [
+        ('DEFAULT', 'Default Shift (7AM-4PM)'),
+        ('CLEANER', 'Cleaner Shift (6AM-3PM)'),
+        ('NIGHT', 'Night Shift'),
+        ('OPEN', 'Open Shift'),
+    ]
+
     name = models.CharField(max_length=100)
+    shift_type = models.CharField(max_length=20, choices=SHIFT_TYPES, default='DEFAULT')
     start_time = models.TimeField()
     end_time = models.TimeField()
     is_night_shift = models.BooleanField(default=False)
+    grace_period = models.PositiveIntegerField(
+        default=15,
+        help_text="Grace period in minutes"
+    )
+    break_duration = models.PositiveIntegerField(
+        default=60,
+        help_text="Break duration in minutes"
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -19,6 +64,69 @@ class Shift(models.Model):
 
     class Meta:
         ordering = ['start_time']
+
+class ShiftAssignment(models.Model):
+    """Track shift assignments for employees"""
+    employee = models.ForeignKey(
+        'employees.Employee',
+        on_delete=models.CASCADE,
+        related_name='shift_assignments'
+    )
+    shift = models.ForeignKey(
+        Shift,
+        on_delete=models.CASCADE,
+        related_name='assignments'
+    )
+    start_date = models.DateField(help_text="Start date of shift assignment")
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="End date of shift assignment (null = permanent)"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_shift_assignments'
+    )
+
+    class Meta:
+        ordering = ['-start_date']
+        verbose_name = 'Shift Assignment'
+        verbose_name_plural = 'Shift Assignments'
+
+    def __str__(self):
+        end = f" to {self.end_date}" if self.end_date else " (Permanent)"
+        return f"{self.employee} - {self.shift.name} from {self.start_date}{end}"
+
+    def clean(self):
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValidationError("End date cannot be before start date")
+
+        # Check for overlapping assignments
+        overlapping = ShiftAssignment.objects.filter(
+            employee=self.employee,
+            is_active=True,
+            start_date__lte=self.end_date or timezone.now().date(),
+        ).exclude(pk=self.pk)
+
+        if self.end_date:
+            overlapping = overlapping.filter(
+                models.Q(end_date__isnull=True) |
+                models.Q(end_date__gte=self.start_date)
+            )
+        
+        if overlapping.exists():
+            raise ValidationError(
+                "This assignment overlaps with an existing shift assignment"
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 class AttendanceRecord(models.Model):
     """Raw attendance data from machine"""

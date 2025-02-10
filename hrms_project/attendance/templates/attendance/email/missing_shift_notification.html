@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 20px auto; padding: 20px; }
+        .header { background-color: #f8f9fa; padding: 15px; border-radius: 5px; }
+        .content { padding: 20px 0; }
+        .alert { color: #721c24; background-color: #f8d7da; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .employee-list { background-color: #f1f3f5; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .employee-item { padding: 8px; border-bottom: 1px solid #dee2e6; }
+        .employee-item:last-child { border-bottom: none; }
+        .department { color: #6c757d; font-size: 0.9em; }
+        .summary { font-weight: bold; color: #dc3545; margin: 15px 0; }
+        .footer { color: #6c757d; font-size: 0.9em; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th { background-color: #f8f9fa; text-align: left; padding: 10px; }
+        td { padding: 8px; border-top: 1px solid #dee2e6; }
+        .action-needed { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Missing Shift Assignments Alert</h2>
+        </div>
+        
+        <div class="content">
+            <div class="alert">
+                <strong>Action Required:</strong> {{ count }} employee(s) currently have no active shift assignment.
+            </div>
+            
+            <p>The following employees require shift assignments:</p>
+            
+            <div class="employee-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Department</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for employee in employees %}
+                        <tr class="employee-item">
+                            <td>
+                                <strong>{{ employee.get_full_name }}</strong><br>
+                                <small>{{ employee.employee_number }}</small>
+                            </td>
+                            <td class="department">
+                                {{ employee.department.name|default:'No Department' }}
+                            </td>
+                            <td>
+                                <span class="action-needed">No Shift Assigned</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="summary">
+                <p>Please assign appropriate shifts to these employees to ensure proper attendance tracking.</p>
+            </div>
+            
+            <p>Quick actions:</p>
+            <ul>
+                <li>Review each employee's work schedule requirements</li>
+                <li>Assign appropriate shifts based on department needs</li>
+                <li>Ensure shift assignments are properly documented</li>
+                <li>Update HR records accordingly</li>
+            </ul>
+            
+            <p>To assign shifts, please visit the <a href="{{ site_url }}{% url 'attendance:shift_assignment_create' %}">Shift Assignment</a> page.</p>
+        </div>
+        
+        <div class="footer">
+            <p>This is an automated system notification.</p>
+            <p>Generated on {{ today|date:"l, F d, Y" }} at {{ today|time:"g:i A" }}</p>
+            <hr>
+            <p>Human Resources Management System<br>
+            Attendance Management Module</p>
+        </div>
+    </div>
+</body>
+</html>

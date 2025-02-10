@@ -1,6 +1,12 @@
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import pre_save, post_save, pre_delete, post_delete
 from django.dispatch import receiver
+from django.core.cache import cache
 from django.utils import timezone
+from django.db import transaction
+
+from .models import Shift, ShiftAssignment, RamadanPeriod, AttendanceLog
+from .services import ShiftService, RamadanService
+
 from django.core.exceptions import ObjectDoesNotExist
 from .models import (
     AttendanceRecord, AttendanceLog, Leave, LeaveType, 
@@ -8,6 +14,153 @@ from .models import (
 )
 from .services import AttendanceStatusService
 from datetime import datetime, timedelta
+
+@receiver(pre_save, sender=ShiftAssignment)
+def handle_shift_assignment_update(sender, instance, **kwargs):
+    """Handle shift assignment changes"""
+    if instance.pk:  # Existing assignment
+        old_instance = ShiftAssignment.objects.get(pk=instance.pk)
+        
+        # If making active and wasn't active before
+        if instance.is_active and not old_instance.is_active:
+            # Deactivate other active assignments for this employee
+            ShiftAssignment.objects.filter(
+                employee=instance.employee,
+                is_active=True
+            ).exclude(pk=instance.pk).update(is_active=False)
+            
+        # Clear employee shift cache
+        cache_key = f'employee_shift_{instance.employee_id}'
+        cache.delete(cache_key)
+
+@receiver(post_save, sender=ShiftAssignment)
+def handle_shift_assignment_create(sender, instance, created, **kwargs):
+    """Handle new shift assignments"""
+    if created and instance.is_active:
+        # Deactivate other active assignments for this employee
+        with transaction.atomic():
+            ShiftAssignment.objects.filter(
+                employee=instance.employee,
+                is_active=True
+            ).exclude(pk=instance.pk).update(is_active=False)
+    
+    # Clear employee shift cache
+    cache_key = f'employee_shift_{instance.employee_id}'
+    cache.delete(cache_key)
+
+@receiver(pre_delete, sender=ShiftAssignment)
+def handle_shift_assignment_delete(sender, instance, **kwargs):
+    """Handle shift assignment deletion"""
+    # Clear employee shift cache
+    cache_key = f'employee_shift_{instance.employee_id}'
+    cache.delete(cache_key)
+
+@receiver(pre_save, sender=RamadanPeriod)
+def validate_ramadan_period(sender, instance, **kwargs):
+    """Validate Ramadan period before saving"""
+    if instance.pk:
+        # Update case
+        RamadanService.validate_period_dates(
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            year=instance.year,
+            exclude_id=instance.pk
+        )
+    else:
+        # Create case
+        RamadanService.validate_period_dates(
+            start_date=instance.start_date,
+            end_date=instance.end_date,
+            year=instance.year
+        )
+
+@receiver(post_save, sender=RamadanPeriod)
+def handle_ramadan_period_change(sender, instance, created, **kwargs):
+    """Handle Ramadan period changes"""
+    # Clear any cached Ramadan period information
+    cache.delete_pattern('ramadan_period_*')
+    
+    if instance.is_active:
+        # Deactivate other active periods in the same year
+        RamadanPeriod.objects.filter(
+            year=instance.year,
+            is_active=True
+        ).exclude(pk=instance.pk).update(is_active=False)
+
+@receiver(pre_save, sender=Shift)
+def validate_shift_timing(sender, instance, **kwargs):
+    """Validate shift timing before saving"""
+    if instance.start_time == instance.end_time:
+        raise ValueError("Start time and end time cannot be the same")
+        
+    if instance.break_duration < 0 or instance.break_duration > 180:
+        raise ValueError("Break duration must be between 0 and 180 minutes")
+        
+    if instance.grace_period < 0 or instance.grace_period > 60:
+        raise ValueError("Grace period must be between 0 and 60 minutes")
+
+@receiver(post_save, sender=Shift)
+def handle_shift_changes(sender, instance, created, **kwargs):
+    """Handle shift changes"""
+    # Clear shift-related caches
+    cache.delete_pattern('shift_*')
+    
+    # If shift is deactivated, deactivate its assignments
+    if not instance.is_active:
+        ShiftAssignment.objects.filter(
+            shift=instance,
+            is_active=True
+        ).update(is_active=False)
+
+@receiver(pre_save, sender=AttendanceLog)
+def calculate_attendance_status(sender, instance, **kwargs):
+    """Calculate attendance status based on shift"""
+    if not hasattr(instance, 'employee'):
+        return
+        
+    # Get employee's shift for the date
+    shift = ShiftService.get_employee_current_shift(instance.employee)
+    if not shift:
+        return
+        
+    # Get Ramadan adjusted timing if applicable
+    ramadan_timing = RamadanService.get_ramadan_shift_timing(shift, instance.date)
+    
+    if ramadan_timing:
+        shift_start = ramadan_timing['start_time']
+        shift_end = ramadan_timing['end_time']
+    else:
+        shift_start = shift.start_time
+        shift_end = shift.end_time
+    
+    # Calculate late status
+    if instance.first_in_time:
+        grace_minutes = shift.grace_period
+        shift_start_dt = datetime.combine(instance.date, shift_start)
+        actual_in_dt = datetime.combine(instance.date, instance.first_in_time)
+        
+        instance.is_late = actual_in_dt > (shift_start_dt + timedelta(minutes=grace_minutes))
+        if instance.is_late:
+            instance.late_minutes = int((actual_in_dt - shift_start_dt).total_seconds() / 60)
+    
+    # Calculate early departure
+    if instance.last_out_time:
+        shift_end_dt = datetime.combine(instance.date, shift_end)
+        actual_out_dt = datetime.combine(instance.date, instance.last_out_time)
+        
+        instance.early_departure = actual_out_dt < shift_end_dt
+        if instance.early_departure:
+            instance.early_minutes = int((shift_end_dt - actual_out_dt).total_seconds() / 60)
+    
+    # Calculate work duration
+    if instance.first_in_time and instance.last_out_time:
+        total_minutes = int(
+            (instance.last_out_time.hour * 60 + instance.last_out_time.minute) -
+            (instance.first_in_time.hour * 60 + instance.first_in_time.minute)
+        )
+        # Subtract break duration
+        instance.total_work_minutes = max(0, total_minutes - shift.break_duration)
+
 
 @receiver(post_save, sender=AttendanceRecord)
 def process_attendance_record(sender, instance, created, **kwargs):
@@ -43,7 +196,10 @@ def process_attendance_record(sender, instance, created, **kwargs):
         # Update log times and shift
         log.first_in_time = records.first().timestamp.time()
         log.last_out_time = records.last().timestamp.time()
-        log.shift = instance.employee.shift
+        # Get the shift assignment
+        shift_assignment = ShiftService.get_employee_current_shift(instance.employee)
+        if shift_assignment:
+            log.shift = shift_assignment
         
         # Save initial changes
         log.save()

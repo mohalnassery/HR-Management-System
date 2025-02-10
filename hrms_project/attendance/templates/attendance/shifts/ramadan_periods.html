@@ -1,0 +1,183 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+
+{% block extra_css %}
+{{ block.super }}
+<style>
+.validation-message {
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+}
+</style>
+{% endblock %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Ramadan Periods</h5>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPeriodModal">
+                <i class="fas fa-plus"></i> Add New Period
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Year</th>
+                        <th>Start Date</th>
+                        <th>End Date</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for period in periods %}
+                    <tr>
+                        <td>{{ period.year }}</td>
+                        <td>{{ period.start_date|date:"M d, Y" }}</td>
+                        <td>{{ period.end_date|date:"M d, Y" }}</td>
+                        <td>{{ period.duration }} days</td>
+                        <td>
+                            <span class="badge {% if period.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if period.is_active %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-primary" 
+                                        onclick="ramadanManager.editPeriod({{ period.id }})"
+                                        title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" 
+                                        onclick="ramadanManager.confirmDelete({{ period.id }})"
+                                        title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4">
+                            <div class="text-muted">
+                                <i class="fas fa-calendar-times me-2"></i>No Ramadan periods defined
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Period Modal -->
+<div class="modal fade" id="addPeriodModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Ramadan Period</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addPeriodForm">
+                    <div class="mb-3">
+                        <label class="form-label">Year*</label>
+                        <input type="number" class="form-control" name="year" id="year" required
+                               min="2020" max="2050">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Start Date*</label>
+                        <input type="date" class="form-control" name="start_date" id="start_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">End Date*</label>
+                        <input type="date" class="form-control" name="end_date" id="end_date" required>
+                    </div>
+                    <div id="periodValidation" class="alert alert-info d-none validation-message">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <span id="validationMessage"></span>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="ramadanManager.savePeriod()">Save Period</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Period Modal -->
+<div class="modal fade" id="editPeriodModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Ramadan Period</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editPeriodForm">
+                    <input type="hidden" id="edit_period_id">
+                    <div class="mb-3">
+                        <label class="form-label">Year*</label>
+                        <input type="number" class="form-control" name="year" id="edit_year" required
+                               min="2020" max="2050">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Start Date*</label>
+                        <input type="date" class="form-control" name="start_date" id="edit_start_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">End Date*</label>
+                        <input type="date" class="form-control" name="end_date" id="edit_end_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input type="checkbox" class="form-check-input" name="is_active" id="edit_is_active">
+                            <label class="form-check-label">Active</label>
+                        </div>
+                    </div>
+                    <div id="editValidation" class="alert alert-info d-none validation-message">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <span id="editValidationMessage"></span>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="ramadanManager.updatePeriod()">Update Period</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this Ramadan period? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="ramadanManager.deletePeriod()">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ block.super }}
+<script src="{% static 'attendance/js/ramadan.js' %}"></script>
+{% endblock %}
