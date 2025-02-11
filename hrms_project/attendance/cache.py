@@ -113,8 +113,16 @@ class RamadanCache:
 
     @staticmethod
     def clear_all_periods() -> None:
-        """Clear all Ramadan period caches"""
-        cache.delete_pattern('ramadan_period_*')
+        """Clear all Ramadan period caches for the current year"""
+        current_date = date.today()
+        year_start = date(current_date.year, 1, 1)
+        year_end = date(current_date.year, 12, 31)
+        
+        # Clear cache for entire year
+        current = year_start
+        while current <= year_end:
+            RamadanCache.clear_active_period(current)
+            current += timedelta(days=1)
 
 class AttendanceMetricsCache:
     """Cache manager for attendance metrics"""

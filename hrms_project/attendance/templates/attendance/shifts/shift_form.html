@@ -21,11 +21,11 @@
 
                     <div class="mb-3">
                         <label class="form-label">Shift Type*</label>
-                        <select class="form-select" name="shift_type" required>
+                        <select class="form-select" name="shift_type" required="">
                             <option value="">Select Shift Type</option>
-                            {% for type, label in shift_types %}
-                                <option value="{{ type }}" {% if shift.shift_type == type %}selected{% endif %}>
-                                    {{ label }}
+                            {% for type_code, type_label in shift_types %}  {# Iterate through shift_types #}
+                                <option value="{{ type_code }}" {% if shift.shift_type == type_code %}selected{% endif %}>
+                                    {{ type_label }}
                                 </option>
                             {% endfor %}
                         </select>

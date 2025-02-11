@@ -37,7 +37,6 @@ class Shift(models.Model):
     """Define different types of shifts"""
     SHIFT_TYPES = [
         ('DEFAULT', 'Default Shift (7AM-4PM)'),
-        ('CLEANER', 'Cleaner Shift (6AM-3PM)'),
         ('NIGHT', 'Night Shift'),
         ('OPEN', 'Open Shift'),
     ]

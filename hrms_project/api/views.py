@@ -1,5 +1,8 @@
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db.models import Q
 from django.contrib.auth import get_user_model
 from .serializers import (
     DepartmentSerializer, DivisionSerializer, LocationSerializer,
@@ -82,3 +85,43 @@ class LifeEventViewSet(viewsets.ModelViewSet):
     queryset = LifeEvent.objects.all()
     serializer_class = LifeEventSerializer
     permission_classes = [IsAuthenticated]
+
+class ShiftViewSet(viewsets.ModelViewSet):
+    queryset = Shift.objects.all()
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['GET'])
+    def check_overlap(self, request):
+        """Check for overlapping shift assignments"""
+        employee_id = request.query_params.get('employee')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date') or start_date
+        exclude_id = request.query_params.get('exclude')
+
+        if not all([employee_id, start_date]):
+            return Response(
+                {"error": "employee and start_date parameters are required"},
+                status=400
+            )
+
+        # Build query for overlapping assignments
+        query = ShiftAssignment.objects.filter(
+            employee_id=employee_id,
+            is_active=True,
+            start_date__lte=end_date
+        ).exclude(
+            Q(end_date__isnull=False) & Q(end_date__lt=start_date)
+        )
+
+        if exclude_id:
+            query = query.exclude(id=exclude_id)
+
+        overlapping = query.exists()
+        if overlapping:
+            serializer = ShiftOverlapSerializer(query, many=True)
+            return Response({
+                "overlapping": True,
+                "assignments": serializer.data
+            })
+        
+        return Response({"overlapping": False})

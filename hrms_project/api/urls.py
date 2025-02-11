@@ -15,6 +15,7 @@ router.register(r'assets', views.EmployeeAssetViewSet)
 router.register(r'education', views.EmployeeEducationViewSet)
 router.register(r'offences', views.EmployeeOffenceViewSet)
 router.register(r'life-events', views.LifeEventViewSet)
+router.register(r'shifts', views.ShiftViewSet)
 
 app_name = 'api'
 

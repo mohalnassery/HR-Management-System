@@ -1,10 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from employees.models import (
-    Employee, Department, Division, Location, Bank,
+    Department, Division, Location, Bank, Employee,
     EmployeeDependent, EmergencyContact, EmployeeDocument,
     EmployeeAsset, EmployeeEducation, EmployeeOffence, LifeEvent
 )
+from attendance.models import ShiftAssignment, Shift
 
 User = get_user_model()
 
@@ -86,3 +87,13 @@ class LifeEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = LifeEvent
         fields = '__all__'
+
+class ShiftOverlapSerializer(serializers.ModelSerializer):
+    shift_name = serializers.CharField(source='shift.name')
+    start_time = serializers.TimeField(source='shift.start_time')
+    end_time = serializers.TimeField(source='shift.end_time')
+    is_night_shift = serializers.BooleanField(source='shift.is_night_shift')
+
+    class Meta:
+        model = ShiftAssignment
+        fields = ('id', 'shift_name', 'start_date', 'end_date', 'start_time', 'end_time', 'is_night_shift')

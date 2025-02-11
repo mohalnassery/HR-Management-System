@@ -227,3 +227,51 @@
         gap: 0.5rem;
     }
 }
+
+
+
+/* Night shift badge styling */
+#night-shift-badge {
+    font-size: 0.85rem;
+    vertical-align: middle;
+}
+
+#night-shift-badge i {
+    margin-right: 4px;
+}
+
+/* Overlap warning styling */
+#overlap-warning {
+    border-left: 4px solid #ffc107;
+}
+
+#overlap-warning i {
+    margin-right: 8px;
+    color: #856404;
+}
+
+#overlap-warning ul {
+    margin-top: 8px;
+    margin-bottom: 0;
+    padding-left: 28px;
+}
+
+#overlap-warning li {
+    margin-bottom: 4px;
+}
+
+#overlap-warning li:last-child {
+    margin-bottom: 0;
+}
+
+/* Shift form enhancements */
+.shift-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.time-range {
+    color: #6c757d;
+    font-size: 0.9rem;
+}

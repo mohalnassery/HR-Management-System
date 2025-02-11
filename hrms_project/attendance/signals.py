@@ -77,8 +77,13 @@ def validate_ramadan_period(sender, instance, **kwargs):
 @receiver(post_save, sender=RamadanPeriod)
 def handle_ramadan_period_change(sender, instance, created, **kwargs):
     """Handle Ramadan period changes"""
-    # Clear any cached Ramadan period information
-    cache.delete_pattern('ramadan_period_*')
+    from .cache import RamadanCache
+    
+    # Clear cache for the period's date range
+    current_date = instance.start_date
+    while current_date <= instance.end_date:
+        RamadanCache.clear_active_period(current_date)
+        current_date += timedelta(days=1)
     
     if instance.is_active:
         # Deactivate other active periods in the same year
@@ -102,15 +107,38 @@ def validate_shift_timing(sender, instance, **kwargs):
 @receiver(post_save, sender=Shift)
 def handle_shift_changes(sender, instance, created, **kwargs):
     """Handle shift changes"""
-    # Clear shift-related caches
-    cache.delete_pattern('shift_*')
+    # Clear shift statistics cache
+    cache_key = f'shift_statistics_{instance.id}'
+    cache.delete(cache_key)
     
     # If shift is deactivated, deactivate its assignments
     if not instance.is_active:
-        ShiftAssignment.objects.filter(
+        assignments = ShiftAssignment.objects.filter(
             shift=instance,
             is_active=True
-        ).update(is_active=False)
+        )
+        
+        # Collect affected employee IDs before deactivating
+        affected_employees = list(assignments.values_list('employee_id', flat=True))
+        
+        # Deactivate assignments
+        assignments.update(is_active=False)
+        
+        # Clear cache for each affected employee
+        from .cache import invalidate_employee_caches
+        for employee_id in affected_employees:
+            invalidate_employee_caches(employee_id)
+    # Even if shift isn't deactivated, we need to invalidate caches for affected employees
+    else:
+        # Get all employees assigned to this shift and clear their caches
+        affected_employees = ShiftAssignment.objects.filter(
+            shift=instance,
+            is_active=True
+        ).values_list('employee_id', flat=True)
+        
+        from .cache import invalidate_employee_caches
+        for employee_id in affected_employees:
+            invalidate_employee_caches(employee_id)
 
 @receiver(pre_save, sender=AttendanceLog)
 def calculate_attendance_status(sender, instance, **kwargs):
@@ -160,7 +188,6 @@ def calculate_attendance_status(sender, instance, **kwargs):
         )
         # Subtract break duration
         instance.total_work_minutes = max(0, total_minutes - shift.break_duration)
-
 
 @receiver(post_save, sender=AttendanceRecord)
 def process_attendance_record(sender, instance, created, **kwargs):

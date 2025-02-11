@@ -37,6 +37,21 @@
                 </a>
             </div>
 
+            <!-- Shift Management Section -->
+            <div class="list-group mb-4">
+                <div class="list-group-item bg-light fw-bold">
+                    <i class="fas fa-business-time"></i> Shift Management
+                </div>
+                <a href="{% url 'attendance:shift_list' %}"
+                   class="list-group-item list-group-item-action {% if 'shift' in request.resolver_match.url_name and 'assignment' not in request.resolver_match.url_name %}active{% endif %}">
+                    <i class="fas fa-list"></i> View Shifts
+                </a>
+                <a href="{% url 'attendance:shift_assignment_list' %}"
+                   class="list-group-item list-group-item-action {% if 'assignment' in request.resolver_match.url_name %}active{% endif %}">
+                    <i class="fas fa-users"></i> Shift Assignments
+                </a>
+            </div>
+
             <!-- Holiday Management Section -->
             <div class="list-group mb-4">
                 <div class="list-group-item bg-light fw-bold">

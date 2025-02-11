@@ -26,6 +26,10 @@
                    class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'mark_attendance' %}active{% endif %}">
                     <i class="fas fa-edit"></i> Mark Attendance
                 </a>
+                <a href="{% url 'attendance:shift_list' %}"
+                   class="list-group-item list-group-item-action {% if 'shift' in request.resolver_match.url_name %}active{% endif %}">
+                    <i class="fas fa-business-time"></i> Shift Management
+                </a>
                 <a href="{% url 'attendance:leave_request_list' %}"
                    class="list-group-item list-group-item-action {% if 'leave' in request.resolver_match.view_name %}active{% endif %}">
                     <i class="fas fa-calendar-minus"></i> Leave Management

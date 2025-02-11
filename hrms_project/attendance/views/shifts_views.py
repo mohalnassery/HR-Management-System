@@ -5,9 +5,21 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.urls import reverse
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from ..serializers import ShiftSerializer
 
-from attendance.models import Shift, ShiftAssignment, RamadanPeriod
+from attendance.models import Shift, ShiftAssignment # ADD THESE TWO LINES
+# from attendance.serializers import ShiftOverlapSerializer # Uncomment if you will use ShiftOverlapSerializer
 from employees.models import Employee
+
+
+class ShiftViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing shifts through the API"""
+    queryset = Shift.objects.all()
+    serializer_class = ShiftSerializer
+    permission_classes = [IsAuthenticated]
+
 
 @login_required
 def shift_list(request):
@@ -39,7 +51,10 @@ def shift_create(request):
         messages.success(request, 'Shift created successfully.')
         return redirect('attendance:shift_list')
 
-    return render(request, 'attendance/shifts/shift_form.html')
+    context = {
+        'shift_types': Shift.SHIFT_TYPES # Pass SHIFT_TYPES to context
+    }
+    return render(request, 'attendance/shifts/shift_form.html', context) # Pass context here
 
 @login_required
 def shift_edit(request, pk):
@@ -59,7 +74,11 @@ def shift_edit(request, pk):
         messages.success(request, 'Shift updated successfully.')
         return redirect('attendance:shift_list')
 
-    return render(request, 'attendance/shifts/shift_form.html', {'shift': shift})
+    context = {
+        'shift': shift,
+        'shift_types': Shift.SHIFT_TYPES # Pass SHIFT_TYPES to context
+    }
+    return render(request, 'attendance/shifts/shift_form.html', context) # Pass context here
 
 @login_required
 def shift_assignment_list(request):

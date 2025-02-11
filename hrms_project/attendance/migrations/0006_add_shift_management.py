@@ -7,6 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('employees', '0010_employee_user'),
+        ('core', '0001_initial'),  
         ('attendance', '0004_attendancelog_early_departure_and_more'),
     ]
 
@@ -67,7 +68,7 @@ class Migration(migrations.Migration):
                 ('is_active', models.BooleanField(default=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_shift_assignments', to='auth.user')),
+                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_shift_assignments', to='core.user')),
                 ('employee', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='shift_assignments', to='employees.employee')),
                 ('shift', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='assignments', to='attendance.shift')),
             ],

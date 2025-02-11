@@ -1,51 +1,73 @@
-from django.urls import path
+from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
+from . import views  
+
+from .views import shifts_views
+from .views import attendance_views
+from .views import calendar_views
+from .views import leave_views
+from .views import holiday_views
+from .views import ramadan_views
 
 app_name = 'attendance'
 
-# Create a router and register the ShiftViewSet
+# Create a router and register the ViewSets - keep these in views.py
 router = DefaultRouter()
-router.register(r'api/shifts', views.ShiftViewSet, basename='shift')
+router.register(r'api/shifts', shifts_views.ShiftViewSet, basename='shift')
+router.register(r'api/attendance_records', attendance_views.AttendanceRecordViewSet, basename='attendancerecord')
+router.register(r'api/attendance_logs', attendance_views.AttendanceLogListViewSet, basename='attendancelog')
+router.register(r'api/leaves', leave_views.LeaveViewSet, basename='leave') # Register LeaveViewSet
+router.register(r'api/holidays', holiday_views.HolidayViewSet, basename='holiday') # Register HolidayViewSet
+
 
 urlpatterns = [
-    # Existing URLs
-    path('attendance_list/', views.attendance_list, name='attendance_list'),
-    path('calendar/', views.calendar_view, name='calendar'),
-    path('calendar/month/', views.calendar_month, name='calendar_month'),
-    path('calendar/week/', views.calendar_week, name='calendar_week'),
-    path('calendar/department/', views.calendar_department, name='calendar_department'),
-    path('mark_attendance/', views.mark_attendance, name='mark_attendance'),
-    path('leave_request_list/', views.leave_request_list, name='leave_request_list'),
-    path('detail/', views.attendance_detail_view, name='attendance_detail'),
-
-    path('leave_request_create/', views.leave_request_create, name='leave_request_create'),
-    path('leave_request_detail/<int:pk>/', views.leave_request_detail, name='leave_request_detail'),
-    path('upload_attendance/', views.upload_attendance, name='upload_attendance'),
-    path('attendance_report/', views.attendance_report, name='attendance_report'),
-    path('holiday_list/', views.holiday_list, name='holiday_list'),
-    path('holiday_create/', views.holiday_create, name='holiday_create'),
-    path('recurring_holidays/', views.recurring_holidays, name='recurring_holidays'),
-    path('leave_balance/', views.leave_balance, name='leave_balance'),
-    path('leave_types/', views.leave_types, name='leave_types'),
-    path('get_department_employees/', views.get_department_employees, name='get_department_employees'),
+    # Include router URLs
+    path('', include(router.urls)),
     
-    # API endpoints
+    # Existing URLs
+    path('attendance_list/', attendance_views.attendance_list, name='attendance_list'),
+    path('calendar/', calendar_views.calendar_view, name='calendar'),
+    path('calendar/month/', calendar_views.calendar_month, name='calendar_month'),
+    path('calendar/week/', calendar_views.calendar_week, name='calendar_week'),
+    path('calendar/department/', calendar_views.calendar_department, name='calendar_department'),
+    path('mark_attendance/', attendance_views.mark_attendance, name='mark_attendance'),
+    path('leave_request_list/', leave_views.leave_request_list, name='leave_request_list'),
+    path('leave_request_detail/<int:pk>/', leave_views.leave_request_detail, name='leave_request_detail'),
+    path('leave_request_create/', leave_views.leave_request_create, name='leave_request_create'), # Corrected line
+    path('upload_attendance/', attendance_views.upload_attendance, name='upload_attendance'),
+    path('attendance_report/', attendance_views.attendance_report, name='attendance_report'),
+    path('holiday_list/', holiday_views.holiday_list, name='holiday_list'),
+    path('holiday_create/', holiday_views.holiday_create, name='holiday_create'),
+    path('recurring_holidays/', holiday_views.recurring_holidays, name='recurring_holidays'),
+    path('leave_balance/', leave_views.leave_balance, name='leave_balance'),
+    path('leave_types/', leave_views.leave_types, name='leave_types'),
+    path('get_department_employees/', views.get_department_employees, name='get_department_employees'),
+
+    # API endpoints - these are still in views.py
     path('api/get_calendar_events/', views.get_calendar_events, name='get_calendar_events'),
-    path('api/get_employee_attendance/<int:employee_id>/', views.get_employee_attendance, name='get_employee_attendance'),
-    path('api/attendance_detail/', views.attendance_detail_api, name='attendance_detail_api'),
+    path('api/get_employee_attendance/<int:employee_id>/', views.get_employee_attendance, name='get_employee_attendance'), # Corrected line
+    path('attendance_detail/', attendance_views.attendance_detail_view, name='attendance_detail'),
     path('api/attendance_record/<int:record_id>/', views.attendance_record_api, name='attendance_record_api'),
     path('api/add_attendance_record/', views.add_attendance_record, name='add_attendance_record'),
     path('api/search_employees/', views.search_employees, name='search_employees'),
-    path('api/calendar_events/', views.calendar_events, name='calendar_events'),
-    path('api/attendance_details/', views.attendance_details, name='attendance_details'),
-    path('api/logs/', views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance-logs-api'),
-    
-    # Ramadan Period URLs
-    path('ramadan_periods/', views.ramadan_periods, name='ramadan_periods'),
-    path('ramadan_period_add/', views.ramadan_period_add, name='ramadan_period_add'),
-    path('ramadan_period_detail/<int:pk>/', views.ramadan_period_detail, name='ramadan_period_detail'),
-]
+    path('api/calendar_events/', calendar_views.calendar_events, name='calendar_events'), # Corrected line to calendar_views
+    path('api/attendance_details/', views.attendance_details, name='attendance_details'), # Corrected line
+    path('api/records/upload_excel/', attendance_views.AttendanceRecordViewSet.as_view({'post': 'upload_excel'}), name='upload_excel'),
+    path('api/logs/', attendance_views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance_log_list'),
+    path('api/logs/', attendance_views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance-logs-api'), # Corrected line to attendance_views
 
-# Add the router URLs to the urlpatterns
-urlpatterns += router.urls
+    # Ramadan Period URLs - these are in ramadan_views.py
+    path('ramadan_periods/', ramadan_views.ramadan_periods, name='ramadan_periods'), # Corrected line to ramadan_views
+    path('ramadan_period_add/', ramadan_views.ramadan_period_add, name='ramadan_period_add'), # Corrected line to ramadan_views
+    path('ramadan_period_detail/<int:pk>/', ramadan_views.ramadan_period_detail, name='ramadan_period_detail'), # Corrected line to ramadan_views
+
+    # Shift Management URLs - these are in shifts_views.py
+    path('shifts/', shifts_views.shift_list, name='shift_list'), # Corrected line to shifts_views
+    path('shifts/create/', shifts_views.shift_create, name='shift_create'), # Corrected line to shifts_views
+    path('shifts/<int:pk>/edit/', shifts_views.shift_edit, name='shift_edit'), # Corrected line to shifts_views
+    path('shift-assignments/', shifts_views.shift_assignment_list, name='shift_assignment_list'), # Corrected line to shifts_views
+    path('shift-assignments/create/', shifts_views.shift_assignment_create, name='shift_assignment_create'), # Corrected line to shifts_views
+    path('shift-assignments/<int:pk>/edit/', shifts_views.shift_assignment_edit, name='shift_assignment_edit'), # Corrected line to shifts_views
+    path('shift-assignments/<int:pk>/delete/', shifts_views.shift_assignment_delete, name='shift_assignment_delete'), # Corrected line to shifts_views
+    path('api/employee/<int:employee_id>/shifts/', shifts_views.get_employee_shifts, name='get_employee_shifts'), # Corrected line to shifts_views
+ ]

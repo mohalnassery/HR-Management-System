@@ -1,6 +1,11 @@
 {% extends 'attendance/base.html' %}
 {% load static %}
 
+{% block extra_css %}
+{{ block.super }}
+<link href="{% static 'attendance/css/shifts.css' %}" rel="stylesheet">
+{% endblock %}
+
 {% block attendance_content %}
 <div class="card">
     <div class="card-header">
@@ -28,7 +33,9 @@
                 <select class="form-select" id="shift" name="shift" required>
                     <option value="">Select Shift</option>
                     {% for shift in shifts %}
-                        <option value="{{ shift.id }}" {% if shift.id == form.shift.value %}selected{% endif %}>
+                        <option value="{{ shift.id }}" 
+                                data-is-night-shift="{{ shift.is_night_shift|lower }}"
+                                {% if shift.id == form.shift.value %}selected{% endif %}>
                             {{ shift.name }} ({{ shift.start_time|time:"g:i A" }} - {{ shift.end_time|time:"g:i A" }})
                         </option>
                     {% endfor %}
@@ -66,6 +73,7 @@
 
 {% block extra_js %}
 {{ block.super }}
+<script src="{% static 'attendance/js/shifts.js' %}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const startDateInput = document.getElementById('start_date');
