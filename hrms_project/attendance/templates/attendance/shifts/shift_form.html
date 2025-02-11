@@ -66,6 +66,24 @@
                             Official break time during the shift
                         </small>
                     </div>
+
+                    <div class="mb-3" id="nightShiftTimingFields" style="display: none;">
+                        <label class="form-label">Default Night Shift Start Time</label>
+                        <input type="time" class="form-control" name="default_night_start_time"
+                               value="{{ shift.default_night_start_time|time:'H:i'|default:'' }}">
+                        <small class="text-muted">
+                            Default start time for night shift schedule
+                        </small>
+                    </div>
+
+                    <div class="mb-3" id="nightShiftTimingFields_end" style="display: none;">
+                        <label class="form-label">Default Night Shift End Time</label>
+                        <input type="time" class="form-control" name="default_night_end_time"
+                               value="{{ shift.default_night_end_time|time:'H:i'|default:'' }}">
+                        <small class="text-muted">
+                            Default end time for night shift schedule
+                        </small>
+                    </div>
                 </div>
 
                 <!-- Status -->
@@ -114,6 +132,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const startTimeInput = form.querySelector('[name="start_time"]');
     const endTimeInput = form.querySelector('[name="end_time"]');
     const isNightShiftCheckbox = document.getElementById('is_night_shift');
+    const nightShiftTimingFields = document.getElementById('nightShiftTimingFields');
+    const nightShiftTimingFields_end = document.getElementById('nightShiftTimingFields_end');
+
+    // Function to toggle night shift timing fields
+    function toggleNightShiftFields() {
+        if (isNightShiftCheckbox.checked) {
+            nightShiftTimingFields.style.display = 'block';
+            nightShiftTimingFields_end.style.display = 'block';
+        } else {
+            nightShiftTimingFields.style.display = 'none';
+            nightShiftTimingFields_end.style.display = 'none';
+        }
+    }
+
+    // Check initial state
+    toggleNightShiftFields();
+
+    // Add toggle listener
+    isNightShiftCheckbox.addEventListener('change', toggleNightShiftFields);
 
     // Function to check if end time is before start time (indicating night shift)
     function checkNightShift() {

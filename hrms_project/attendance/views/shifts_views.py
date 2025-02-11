@@ -39,6 +39,10 @@ def shift_create(request):
         grace_period = int(request.POST.get('grace_period', 15))
         break_duration = int(request.POST.get('break_duration', 60))
 
+        # Handle night shift timing fields
+        default_night_start_time = request.POST.get('default_night_start_time')
+        default_night_end_time = request.POST.get('default_night_end_time')
+
         shift = Shift.objects.create(
             name=name,
             shift_type=shift_type,
@@ -46,7 +50,9 @@ def shift_create(request):
             end_time=end_time,
             is_night_shift=is_night_shift,
             grace_period=grace_period,
-            break_duration=break_duration
+            break_duration=break_duration,
+            default_night_start_time=default_night_start_time if default_night_start_time else None,
+            default_night_end_time=default_night_end_time if default_night_end_time else None
         )
         messages.success(request, 'Shift created successfully.')
         return redirect('attendance:shift_list')
@@ -62,6 +68,7 @@ def shift_edit(request, pk):
     shift = get_object_or_404(Shift, pk=pk)
 
     if request.method == 'POST':
+        # Update basic fields
         shift.name = request.POST.get('name')
         shift.shift_type = request.POST.get('shift_type')
         shift.start_time = request.POST.get('start_time')
@@ -69,6 +76,12 @@ def shift_edit(request, pk):
         shift.is_night_shift = request.POST.get('is_night_shift') == 'on'
         shift.grace_period = int(request.POST.get('grace_period', 15))
         shift.break_duration = int(request.POST.get('break_duration', 60))
+
+        # Update night shift timing fields
+        default_night_start_time = request.POST.get('default_night_start_time')
+        default_night_end_time = request.POST.get('default_night_end_time')
+        shift.default_night_start_time = default_night_start_time if default_night_start_time else None
+        shift.default_night_end_time = default_night_end_time if default_night_end_time else None
         shift.save()
 
         messages.success(request, 'Shift updated successfully.')
@@ -99,7 +112,11 @@ def shift_assignment_list(request):
 def shift_assignment_create(request):
     """View for creating a new shift assignment"""
     if request.method == 'POST':
-        employee_id = request.POST.get('employee')
+        # Get comma-separated employee IDs and split them
+        employee_ids = request.POST.get('employee[]', '').split(',')
+        if not employee_ids or not employee_ids[0]:  # Check if the list is empty or contains only empty string
+            messages.error(request, 'Please select at least one employee.')
+            return redirect('attendance:shift_assignment_create')
         shift_id = request.POST.get('shift')
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date') or None
@@ -107,33 +124,40 @@ def shift_assignment_create(request):
 
         try:
             with transaction.atomic():
-                # Deactivate any existing active assignments
-                ShiftAssignment.objects.filter(
-                    employee_id=employee_id,
-                    is_active=True
-                ).update(is_active=False)
+                created_count = 0
+                for employee_id in employee_ids:
+                    # Deactivate any existing active assignments for this employee
+                    ShiftAssignment.objects.filter(
+                        employee_id=employee_id,
+                        is_active=True
+                    ).update(is_active=False)
 
-                # Create new assignment
-                ShiftAssignment.objects.create(
-                    employee_id=employee_id,
-                    shift_id=shift_id,
-                    start_date=start_date,
-                    end_date=end_date,
-                    is_active=is_active,
-                    created_by=request.user
-                )
-                messages.success(request, 'Shift assigned successfully.')
+                    # Create new assignment
+                    ShiftAssignment.objects.create(
+                        employee_id=employee_id,
+                        shift_id=shift_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        is_active=is_active,
+                        created_by=request.user
+                    )
+                    created_count += 1
+
+                messages.success(request, f'{created_count} Shift assignments created successfully.')
                 return redirect('attendance:shift_assignment_list')
 
         except Exception as e:
             messages.error(request, f'Error assigning shift: {str(e)}')
 
-    employees = Employee.objects.filter(is_active=True)
+    employees = Employee.objects.filter(is_active=True).select_related('department')
     shifts = Shift.objects.filter(is_active=True)
+    # Get unique departments from the employees
+    departments = list({emp.department for emp in employees if emp.department})
 
     return render(request, 'attendance/shifts/assignment_form.html', {
         'employees': employees,
-        'shifts': shifts
+        'shifts': shifts,
+        'departments': departments
     })
 
 @login_required
@@ -163,13 +187,16 @@ def shift_assignment_edit(request, pk):
         except Exception as e:
             messages.error(request, f'Error updating shift assignment: {str(e)}')
 
-    employees = Employee.objects.filter(is_active=True)
+    employees = Employee.objects.filter(is_active=True).select_related('department')
     shifts = Shift.objects.filter(is_active=True)
+    # Get unique departments from the employees
+    departments = list({emp.department for emp in employees if emp.department})
 
     return render(request, 'attendance/shifts/assignment_form.html', {
         'form': assignment,
         'employees': employees,
-        'shifts': shifts
+        'shifts': shifts,
+        'departments': departments
     })
 
 @login_required

@@ -46,6 +46,16 @@ class Shift(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     is_night_shift = models.BooleanField(default=False)
+    default_night_start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Default start time for night shift"
+    )
+    default_night_end_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Default end time for night shift"
+    )
     grace_period = models.PositiveIntegerField(
         default=15,
         help_text="Grace period in minutes"

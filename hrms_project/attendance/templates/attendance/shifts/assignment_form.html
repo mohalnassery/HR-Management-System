@@ -4,6 +4,79 @@
 {% block extra_css %}
 {{ block.super }}
 <link href="{% static 'attendance/css/shifts.css' %}" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+<style>
+    .selected-employee {
+        background-color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 4px;
+    }
+    .employee-item {
+        position: relative;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        transition: background-color 0.2s;
+    }
+    .employee-item:hover {
+        background-color: #f8f9fa;
+    }
+    .employee-item .form-check-input {
+        margin-right: 10px;
+        width: 18px;
+        height: 18px;
+        margin-left: auto;
+    }
+    .employee-item .form-check-label {
+        width: 100%;
+        cursor: pointer;
+    }
+    .employee-item.checked {
+        background-color: #e7f3ff;
+    }
+    .form-check {
+        display: flex;
+        align-items: center;
+        margin: 0;
+        width: 100%;
+    }
+    .employee-list {
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 8px;
+    }
+    .input-group .form-control:focus {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.25rem rgb(13 110 253 / 25%);
+    }
+    #departmentFilter {
+        border-radius: 4px;
+        padding: 0.5rem;
+        background-color: #fff;
+    }
+    #departmentFilter:focus {
+        border-color: #86b7fe;
+        box-shadow: 0 0 0 0.25rem rgb(13 110 253 / 25%);
+    }
+    .select-buttons {
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+    }
+    .select-buttons .btn {
+        min-width: 100px;
+    }
+    .employee-item .text-muted {
+        font-size: 0.875em;
+    }
+    /* Make the modal scrollable on small screens */
+    @media (max-height: 600px) {
+        .modal-body {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+    }
+</style>
 {% endblock %}
 
 {% block attendance_content %}
@@ -17,15 +90,75 @@
         <form id="shift-assignment-form" method="post">
             {% csrf_token %}
             <div class="mb-3">
-                <label class="form-label">Employee</label>
-                <select class="form-select" id="employee" name="employee" required>
-                    <option value="">Select Employee</option>
-                    {% for employee in employees %}
-                        <option value="{{ employee.id }}" {% if employee.id == form.employee.value %}selected{% endif %}>
-                            {{ employee.get_full_name }} ({{ employee.employee_number }})
-                        </option>
-                    {% endfor %}
-                </select>
+                <label class="form-label">Selected Employees</label>
+                <div class="d-flex align-items-center mb-2">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#employeeModal">
+                        Select Employees
+                    </button>
+                    <span class="ms-2" id="selectedCount">(0 selected)</span>
+                </div>
+                <div id="selectedEmployees" class="border rounded p-2" style="min-height: 100px;">
+                    <!-- Selected employees will be listed here -->
+                </div>
+                <!-- Hidden input to store selected employee IDs -->
+                <input type="hidden" name="employee[]" id="selectedEmployeeIds" required>
+            </div>
+
+            <!-- Employee Selection Modal -->
+            <div class="modal fade" id="employeeModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Select Employees</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row mb-3">
+                                <div class="col-md-8">
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        <input type="text" class="form-control" id="employeeSearch" 
+                                               placeholder="Search by name or employee number...">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" id="departmentFilter">
+                                        <option value="">All Departments</option>
+                                        {% for dept in departments %}
+                                            <option value="{{ dept.name }}">{{ dept.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="select-buttons text-end mb-3">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="selectAll">
+                                    <i class="bi bi-check-all"></i> Select All
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="deselectAll">
+                                    <i class="bi bi-x-lg"></i> Deselect All
+                                </button>
+                            </div>
+                            <div class="employee-list" style="max-height: 400px; overflow-y: auto;">
+                                {% for employee in employees %}
+                                <div class="form-check employee-item mb-2 p-2 border-bottom" data-department="{{ employee.department.name }}">
+                                    <input type="checkbox" class="form-check-input employee-checkbox" 
+                                           id="emp_{{ employee.id }}" value="{{ employee.id }}"
+                                           data-name="{{ employee.get_full_name }}"
+                                           data-number="{{ employee.employee_number }}">
+                                    <label class="form-check-label" for="emp_{{ employee.id }}">
+                                        {{ employee.get_full_name }} ({{ employee.employee_number }})
+                                        <small class="text-muted">- {{ employee.department.name }}</small>
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="mb-3">
@@ -78,6 +211,105 @@
 document.addEventListener('DOMContentLoaded', function() {
     const startDateInput = document.getElementById('start_date');
     const endDateInput = document.getElementById('end_date');
+    const searchInput = document.getElementById('employeeSearch');
+    const departmentFilter = document.getElementById('departmentFilter');
+    const employeeList = document.querySelector('.employee-list');
+    const selectedEmployeesDiv = document.getElementById('selectedEmployees');
+    const selectedEmployeeIds = document.getElementById('selectedEmployeeIds');
+    const selectedCountSpan = document.getElementById('selectedCount');
+    const checkboxes = document.querySelectorAll('.employee-checkbox');
+    const selectAllBtn = document.getElementById('selectAll');
+    const deselectAllBtn = document.getElementById('deselectAll');
+    
+    // Initialize selected employees array
+    let selectedEmployees = [];
+
+    // Handle select/deselect all
+    selectAllBtn.addEventListener('click', function() {
+        const visibleCheckboxes = Array.from(checkboxes).filter(checkbox => 
+            checkbox.closest('.employee-item').style.display !== 'none'
+        );
+        visibleCheckboxes.forEach(checkbox => checkbox.checked = true);
+        updateSelectedEmployees();
+    });
+
+    deselectAllBtn.addEventListener('click', function() {
+        checkboxes.forEach(checkbox => checkbox.checked = false);
+        updateSelectedEmployees();
+    });
+
+    // Handle checkbox changes
+    employeeList.addEventListener('change', function(e) {
+        if (e.target.classList.contains('employee-checkbox')) {
+            const item = e.target.closest('.employee-item');
+            if (e.target.checked) {
+                item.classList.add('checked');
+            } else {
+                item.classList.remove('checked');
+            }
+            updateSelectedEmployees();
+        }
+    });
+
+    // Handle employee filtering
+    function filterEmployees() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const department = departmentFilter.value;
+
+        document.querySelectorAll('.employee-item').forEach(item => {
+            const checkbox = item.querySelector('.employee-checkbox');
+            const name = checkbox.dataset.name.toLowerCase();
+            const number = checkbox.dataset.number.toLowerCase();
+            const empDepartment = item.dataset.department;
+            
+            const matchesSearch = name.includes(searchTerm) || number.includes(searchTerm);
+            const matchesDepartment = !department || empDepartment === department;
+            
+            item.style.display = matchesSearch && matchesDepartment ? '' : 'none';
+        });
+    }
+
+    searchInput.addEventListener('input', filterEmployees);
+    departmentFilter.addEventListener('change', filterEmployees);
+
+    // Function to remove an employee from selection
+    window.removeEmployee = function(employeeId) {
+        const checkbox = document.getElementById('emp_' + employeeId);
+        if (checkbox) {
+            checkbox.checked = false;
+            updateSelectedEmployees();
+        }
+    };
+
+    // Update selected employees display
+    function updateSelectedEmployees() {
+        selectedEmployees = [];
+        let html = '';
+        
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedEmployees.push({
+                    id: checkbox.value,
+                    name: checkbox.dataset.name,
+                    number: checkbox.dataset.number
+                });
+            }
+        });
+
+        selectedEmployees.forEach(emp => {
+            html += `<div class="selected-employee mb-1 d-flex justify-content-between align-items-center">
+                        <span>${emp.name} (${emp.number})</span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                onclick="removeEmployee('${emp.id}')">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>`;
+        });
+
+        selectedEmployeesDiv.innerHTML = html || '<div class="text-muted">No employees selected</div>';
+        selectedEmployeeIds.value = selectedEmployees.map(emp => emp.id).join(',');
+        selectedCountSpan.textContent = `(${selectedEmployees.length} selected)`;
+    }
 
     // Set minimum date for start date as today
     startDateInput.min = new Date().toISOString().split('T')[0];
