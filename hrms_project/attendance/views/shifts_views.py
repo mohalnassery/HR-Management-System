@@ -225,7 +225,11 @@ def shift_assignment_create(request):
 @login_required
 def shift_assignment_edit(request, pk):
     """View for editing a shift assignment"""
-    assignment = get_object_or_404(ShiftAssignment, pk=pk)
+    assignment = get_object_or_404(ShiftAssignment.objects.select_related(
+        'employee', 
+        'employee__department', 
+        'shift'
+    ), pk=pk)
 
     if request.method == 'POST':
         try:
@@ -251,15 +255,17 @@ def shift_assignment_edit(request, pk):
 
     employees = Employee.objects.filter(is_active=True).select_related('department')
     shifts = Shift.objects.filter(is_active=True)
-    # Get unique departments from the employees
-    departments = list({emp.department for emp in employees if emp.department})
+    departments = Department.objects.all()
 
-    return render(request, 'attendance/shifts/assignment_form.html', {
-        'form': assignment,
+    context = {
+        'form': assignment,  # Pass the assignment as form for template
         'employees': employees,
         'shifts': shifts,
-        'departments': departments
-    })
+        'departments': departments,
+        'title': 'Edit Shift Assignment'  # Add a title for the page
+    }
+
+    return render(request, 'attendance/shifts/assignment_form.html', context)
 
 @login_required
 def shift_assignment_delete(request, pk):
@@ -300,6 +306,7 @@ def shift_assignment_calendar_events(request):
     department_filter = request.query_params.get('department')
     shift_type_filter = request.query_params.get('shift_type')
     employee_id_filter = request.query_params.get('employee_id')
+    view_type = request.query_params.get('view', 'dayGridMonth')
 
     try:
         # Parse ISO format dates with timezone
@@ -323,37 +330,72 @@ def shift_assignment_calendar_events(request):
 
     events = []
     for assignment in assignments:
-        # Get shift timing for this specific date
-        shift_timing = ShiftService.get_shift_timing(assignment.shift, assignment.start_date)
-        event_title = f"{assignment.employee.get_full_name()} - {assignment.shift.name}"
-        timing_str = f"{shift_timing['start_time'].strftime('%I:%M%p')} - {shift_timing['end_time'].strftime('%I:%M%p')}"
-
-        # Create event for each day in the assignment's range
         current_date = max(assignment.start_date, start_date)
         end_date_assignment = assignment.end_date if assignment.end_date else end_date
 
         while current_date <= min(end_date_assignment, end_date):
             # Get shift timing for this specific date
             daily_timing = ShiftService.get_shift_timing(assignment.shift, current_date)
-            events.append({
-                'id': assignment.id,
-                'title': event_title,
-                'start': current_date.isoformat(),
-                'end': (current_date + timedelta(days=1)).isoformat(),
+            
+            # Check for night shift override
+            night_shift_override = None
+            if assignment.shift.is_night_shift:
+                night_shift_override = DateSpecificShiftOverride.objects.filter(
+                    date=current_date,
+                    shift_type='NIGHT'
+                ).first()
+
+            # Set event start and end times based on view type
+            if view_type in ['timeGridWeek', 'timeGridDay']:
+                if assignment.shift.is_night_shift:
+                    # For night shifts in week/day view, create event spanning to next day
+                    if night_shift_override:
+                        start_time = night_shift_override.override_start_time
+                        end_time = night_shift_override.override_end_time
+                    else:
+                        start_time = daily_timing['start_time']
+                        end_time = daily_timing['end_time']
+                    
+                    # Create event spanning to next day
+                    next_day = current_date + timedelta(days=1)
+                    event_start = datetime.combine(current_date, start_time)
+                    event_end = datetime.combine(next_day, end_time)
+                else:
+                    # For regular shifts, keep within same day
+                    event_start = datetime.combine(current_date, daily_timing['start_time'])
+                    event_end = datetime.combine(current_date, daily_timing['end_time'])
+            else:
+                # For month view, use all-day events
+                event_start = current_date
+                event_end = current_date + timedelta(days=1)
+
+            # Format the timing string for display
+            if night_shift_override:
+                timing_str = f"{night_shift_override.override_start_time.strftime('%I:%M %p')} - {night_shift_override.override_end_time.strftime('%I:%M %p')}"
+            else:
+                timing_str = f"{daily_timing['start_time'].strftime('%I:%M %p')} - {daily_timing['end_time'].strftime('%I:%M %p')}"
+
+            # Set event properties
+            event = {
+                'id': f"{assignment.id}_{current_date.isoformat()}",
+                'title': f"{assignment.employee.get_full_name()} - {assignment.shift.name}",
+                'start': event_start.isoformat() if isinstance(event_start, datetime) else event_start.isoformat(),
+                'end': event_end.isoformat() if isinstance(event_end, datetime) else event_end.isoformat(),
                 'shift_timing': timing_str,
                 'employee_id': assignment.employee.id,
                 'shift_id': assignment.shift.id,
                 'department': assignment.employee.department.name if assignment.employee.department else None,
                 'shift_type': assignment.shift.shift_type,
-                'is_date_specific': daily_timing.get('is_date_specific', False),
+                'is_date_specific': daily_timing.get('is_date_specific', False) or bool(night_shift_override),
                 'is_ramadan': daily_timing.get('is_ramadan', False),
-                'allDay': True,
+                'allDay': view_type == 'dayGridMonth',
                 'className': [
-                    assignment.shift.shift_type.lower(),
-                    'date-specific' if daily_timing.get('is_date_specific') else '',
-                    'ramadan' if daily_timing.get('is_ramadan') else ''
+                    f'shift-type-{assignment.shift.shift_type.lower()}',
+                    'date-specific' if daily_timing.get('is_date_specific') or bool(night_shift_override) else '',
+                    'ramadan' if daily_timing.get('is_ramadan', False) else ''
                 ]
-            })
+            }
+            events.append(event)
             current_date += timedelta(days=1)
 
     return Response(events)

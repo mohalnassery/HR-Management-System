@@ -86,7 +86,8 @@ function initializeCalendar() {
         height: '800px',
         slotDuration: '01:00:00',
         dayMaxEvents: true,
-        displayEventTime: true, // Show event time in all views
+        displayEventTime: true,
+        nextDayThreshold: '00:00:00',
         eventTimeFormat: {
             hour: '2-digit',
             minute: '2-digit',
@@ -95,18 +96,15 @@ function initializeCalendar() {
         views: {
             timeGridDay: {
                 type: 'timeGrid',
-                duration: { days: 1 },
-                buttonText: 'Day'
+                duration: { days: 1 }
             },
             timeGridWeek: {
                 type: 'timeGrid',
-                duration: { weeks: 1 },
-                buttonText: 'Week'
+                duration: { weeks: 1 }
             },
             dayGridMonth: {
                 type: 'dayGrid',
-                duration: { months: 1 },
-                buttonText: 'Month'
+                duration: { months: 1 }
             }
         },
         events: function(info, successCallback, failureCallback) {
@@ -139,30 +137,17 @@ function initializeCalendar() {
                         return response.json();
                     })
                     .then(data => {
-                        if (data.length === 0 && selectedEmployeeId) {
-                            // Add default shift if no assignments and employee selected
-                            const defaultShift = {
-                                id: 'default',
-                                title: 'Default Shift',
-                                start: `${info.startStr.split('T')[0]}T07:00:00`,
-                                end: `${info.startStr.split('T')[0]}T16:00:00`,
-                                allDay: false,
-                                className: 'default-shift',
-                                extendedProps: {
-                                    shift_timing: '7:00 AM - 4:00 PM',
-                                    shift_type: 'DEFAULT'
-                                }
-                            };
-                            successCallback([defaultShift]);
-                        } else {
-                            // Format events to show proper timing
-                            const formattedEvents = data.map(event => ({
-                                ...event,
-                                allDay: false,
-                                className: `shift-type-${(event.extendedProps?.shift_type || 'DEFAULT').toLowerCase()}`
-                            }));
-                            successCallback(formattedEvents);
-                        }
+                        const formattedEvents = data.map(event => ({
+                            ...event,
+                            allDay: false,
+                            display: 'block',
+                            className: [
+                                ...(event.className || []),
+                                'shift-event',
+                                `shift-type-${event.shift_type.toLowerCase()}`
+                            ]
+                        }));
+                        successCallback(formattedEvents);
                     })
                     .catch(error => {
                         console.error('Error fetching events:', error);
@@ -181,15 +166,28 @@ function initializeCalendar() {
                     `${arg.event.start?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - 
                      ${arg.event.end?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
                 
-                return {
-                    html: `
-                        <div class="fc-event-main-wrapper ${className}">
-                            <div class="fc-event-title">${arg.event.title || ''}</div>
-                            <div class="fc-event-time">${timeText}</div>
-                            <div class="fc-event-type">${shiftType}</div>
-                        </div>
-                    `
-                };
+                // Different display for month view vs week/day view
+                if (arg.view.type === 'dayGridMonth') {
+                    return {
+                        html: `
+                            <div class="fc-event-main-wrapper ${className}">
+                                <div class="fc-event-title">${arg.event.title || ''}</div>
+                                <div class="fc-event-time">${timeText}</div>
+                                <div class="fc-event-type">${shiftType}</div>
+                            </div>
+                        `
+                    };
+                } else {
+                    // For week/day view, show a more compact version
+                    return {
+                        html: `
+                            <div class="fc-event-main-wrapper ${className}">
+                                <div class="fc-event-title">${arg.event.title || ''}</div>
+                                <div class="fc-event-type">${shiftType}</div>
+                            </div>
+                        `
+                    };
+                }
             } catch (error) {
                 console.error('Error in eventContent:', error);
                 return {
@@ -452,22 +450,32 @@ const styles = `
     .shift-type-default {
         background-color: #0d6efd !important;
         border-color: #0a58ca !important;
+        color: white !important;
     }
     .shift-type-night {
         background-color: #0dcaf0 !important;
         border-color: #0a9ec0 !important;
+        color: black !important;
     }
     .shift-type-open {
         background-color: #6c757d !important;
         border-color: #565e64 !important;
+        color: white !important;
+    }
+    .shift-event {
+        margin: 1px 0;
+        padding: 2px;
+        border-radius: 3px;
     }
     .fc-event-main-wrapper {
         padding: 2px 4px;
-        border-radius: 3px;
     }
     .fc-event-title {
         font-weight: bold;
         margin-bottom: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .fc-event-time {
         font-size: 0.9em;
@@ -478,22 +486,17 @@ const styles = `
         opacity: 0.8;
         font-style: italic;
     }
-    #shift-legend {
-        margin-top: 10px;
-        padding: 10px;
-        background: #f8f9fa;
-        border-radius: 4px;
+    .fc-timegrid-event {
+        min-height: 2em !important;
     }
-    .legend-item {
-        display: inline-flex;
-        align-items: center;
-        margin-right: 15px;
+    .fc-timegrid-event .fc-event-main {
+        padding: 2px 4px !important;
     }
-    .legend-color {
-        width: 15px;
-        height: 15px;
-        margin-right: 5px;
-        border-radius: 3px;
+    .fc-timegrid-event .fc-event-title {
+        font-size: 0.9em;
+    }
+    .fc-timegrid-event .fc-event-type {
+        font-size: 0.8em;
     }
 `;
 
