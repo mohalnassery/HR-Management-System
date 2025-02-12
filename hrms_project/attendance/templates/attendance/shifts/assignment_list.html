@@ -134,171 +134,189 @@
             <!-- List View Tab -->
             <div class="tab-pane fade show active" id="list-view" role="tabpanel" aria-labelledby="list-tab">
                 <!-- Filters -->
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <label class="form-label">Department</label>
-                <select class="form-select" id="department-filter-list">
-                    <option value="">All Departments</option>
-                    {% for dept in departments %}
-                        <option value="{{ dept.id }}">{{ dept.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Shift</label>
-                <select class="form-select" id="shift-filter-list">
-                    <option value="">All Shifts</option>
-                    {% for shift in shifts %}
-                        <option value="{{ shift.id }}">{{ shift.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Status</label>
-                <select class="form-select" id="status-filter-list">
-                    <option value="">All Status</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Assignment Type</label>
-                <select class="form-select" id="type-filter-list">
-                    <option value="">All Types</option>
-                    <option value="permanent">Permanent</option>
-                    <option value="temporary">Temporary</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Search Bar -->
-        <div class="row mb-4">
-            <div class="col">
-                <div class="input-group">
-                    <input type="text" class="form-control" id="search-input-list"
-                           placeholder="Search by employee name or number...">
-                    <button class="btn btn-outline-secondary" type="button" id="search-btn-list">
-                        <i class="fas fa-search"></i>
-                    </button>
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label">Department</label>
+                        <select class="form-select" id="department-filter-list" name="department">
+                            <option value="">All Departments</option>
+                            {% for dept in departments %}
+                                <option value="{{ dept.id }}" {% if selected_department == dept.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ dept.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Shift</label>
+                        <select class="form-select" id="shift-filter-list" name="shift">
+                            <option value="">All Shifts</option>
+                            {% for shift in shifts %}
+                                <option value="{{ shift.id }}" {% if selected_shift == shift.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ shift.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" id="status-filter-list" name="status">
+                            <option value="">All Status</option>
+                            <option value="active" {% if selected_status == 'active' %}selected{% endif %}>Active</option>
+                            <option value="inactive" {% if selected_status == 'inactive' %}selected{% endif %}>Inactive</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Assignment Type</label>
+                        <select class="form-select" id="type-filter-list" name="type">
+                            <option value="">All Types</option>
+                            <option value="permanent" {% if selected_type == 'permanent' %}selected{% endif %}>Permanent</option>
+                            <option value="temporary" {% if selected_type == 'temporary' %}selected{% endif %}>Temporary</option>
+                        </select>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Assignments Table -->
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Employee</th>
-                        <th>Department</th>
-                        <th>Shift</th>
-                        <th>Period</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="assignments-tbody">
-                    {% for assignment in page_obj %}
-                    <tr>
-                        <td>
-                            <div>{{ assignment.employee.get_full_name }}</div>
-                            <small class="text-muted">{{ assignment.employee.employee_number }}</small>
-                        </td>
-                        <td>{{ assignment.employee.department.name|default:'-' }}</td>
-                        <td>
-                            <div>{{ assignment.shift.name }}</div>
-                            <small class="text-muted">
-                                {{ assignment.shift.start_time|time:"g:i A" }} - {{ assignment.shift.end_time|time:"g:i A" }}
-                            </small>
-                        </td>
-                        <td>
-                            <div>{{ assignment.start_date|date:"M d, Y" }}</div>
-                            {% if assignment.end_date %}
-                                <small class="text-muted">Until {{ assignment.end_date|date:"M d, Y" }}</small>
-                            {% else %}
-                                <small class="text-success">Permanent</small>
+                <!-- Date Range Filters -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label">Start Date</label>
+                        <input type="date" class="form-control" id="start-date-filter" name="start_date" 
+                               value="{{ start_date|default:'' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">End Date</label>
+                        <input type="date" class="form-control" id="end-date-filter" name="end_date" 
+                               value="{{ end_date|default:'' }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Search</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="search-input-list" name="search"
+                                   placeholder="Search by employee name or number..." value="{{ search_query|default:'' }}">
+                            <button class="btn btn-outline-secondary" type="button" id="search-btn-list">
+                                <i class="fas fa-search"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary" type="button" id="clear-filters-btn">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Assignments Table -->
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Department</th>
+                                <th>Shift</th>
+                                <th>Period</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assignments-tbody">
+                            {% for assignment in page_obj %}
+                            <tr>
+                                <td>
+                                    <div>{{ assignment.employee.get_full_name }}</div>
+                                    <small class="text-muted">{{ assignment.employee.employee_number }}</small>
+                                </td>
+                                <td>{{ assignment.employee.department.name|default:'-' }}</td>
+                                <td>
+                                    <div>{{ assignment.shift.name }}</div>
+                                    <small class="text-muted">
+                                        {{ assignment.shift.start_time|time:"g:i A" }} - {{ assignment.shift.end_time|time:"g:i A" }}
+                                    </small>
+                                </td>
+                                <td>
+                                    <div>{{ assignment.start_date|date:"M d, Y" }}</div>
+                                    {% if assignment.end_date %}
+                                        <small class="text-muted">Until {{ assignment.end_date|date:"M d, Y" }}</small>
+                                    {% else %}
+                                        <small class="text-success">Permanent</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge {% if assignment.is_active %}bg-success{% else %}bg-danger{% endif %}">
+                                        {% if assignment.is_active %}Active{% else %}Inactive{% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div>{{ assignment.created_by.get_full_name }}</div>
+                                    <small class="text-muted">{{ assignment.created_at|date:"M d, Y" }}</small>
+                                </td>
+                                <td>
+                                    <div class="btn-group">
+                                        <a href="{% url 'attendance:shift_assignment_edit' assignment.id %}" 
+                                           class="btn btn-sm btn-outline-primary" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                onclick="confirmDelete('{{ assignment.id }}')" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4">
+                                    <div class="text-muted">
+                                        <i class="fas fa-info-circle me-2"></i>No shift assignments found
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                {% if page_obj.has_other_pages %}
+                <nav aria-label="Shift assignments pagination" class="mt-4">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1" aria-label="First">
+                                <span aria-hidden="true">&laquo;&laquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if num == page_obj.number %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                            </li>
                             {% endif %}
-                        </td>
-                        <td>
-                            <span class="badge {% if assignment.is_active %}bg-success{% else %}bg-danger{% endif %}">
-                                {% if assignment.is_active %}Active{% else %}Inactive{% endif %}
-                            </span>
-                        </td>
-                        <td>
-                            <div>{{ assignment.created_by.get_full_name }}</div>
-                            <small class="text-muted">{{ assignment.created_at|date:"M d, Y" }}</small>
-                        </td>
-                        <td>
-                            <div class="btn-group">
-                                <a href="{% url 'attendance:shift_assignment_edit' assignment.id %}" 
-                                   class="btn btn-sm btn-outline-primary" title="Edit">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <button type="button" class="btn btn-sm btn-outline-danger" 
-                                        onclick="confirmDelete('{{ assignment.id }}')" title="Delete">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center py-4">
-                            <div class="text-muted">
-                                <i class="fas fa-info-circle me-2"></i>No shift assignments found
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+                        {% endfor %}
 
-        <!-- Pagination -->
-        {% if page_obj.has_other_pages %}
-        <nav aria-label="Shift assignments pagination" class="mt-4">
-            <ul class="pagination justify-content-center">
-                {% if page_obj.has_previous %}
-                <li class="page-item">
-                    <a class="page-link" href="?page=1" aria-label="First">
-                        <span aria-hidden="true">&laquo;&laquo;</span>
-                    </a>
-                </li>
-                <li class="page-item">
-                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
-                        <span aria-hidden="true">&laquo;</span>
-                    </a>
-                </li>
+                        {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last">
+                                <span aria-hidden="true">&raquo;&raquo;</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
                 {% endif %}
-
-                {% for num in page_obj.paginator.page_range %}
-                    {% if num == page_obj.number %}
-                    <li class="page-item active">
-                        <span class="page-link">{{ num }}</span>
-                    </li>
-                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ num }}">{{ num }}</a>
-                    </li>
-                    {% endif %}
-                {% endfor %}
-
-                {% if page_obj.has_next %}
-                <li class="page-item">
-                    <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
-                        <span aria-hidden="true">&raquo;</span>
-                    </a>
-                </li>
-                <li class="page-item">
-                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last">
-                        <span aria-hidden="true">&raquo;&raquo;</span>
-                    </a>
-                </li>
-                {% endif %}
-            </ul>
-        </nav>
-        {% endif %}
             </div>
 
             <!-- Calendar View Tab -->
@@ -448,4 +466,74 @@
 {{ block.super }}
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 <script src="{% static 'attendance/js/shifts.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Function to apply filters
+    function applyFilters() {
+        const params = new URLSearchParams();
+        
+        // Get all filter values
+        const department = document.getElementById('department-filter-list').value;
+        const shift = document.getElementById('shift-filter-list').value;
+        const status = document.getElementById('status-filter-list').value;
+        const type = document.getElementById('type-filter-list').value;
+        const startDate = document.getElementById('start-date-filter').value;
+        const endDate = document.getElementById('end-date-filter').value;
+        const search = document.getElementById('search-input-list').value;
+
+        // Add non-empty values to params
+        if (department) params.append('department', department);
+        if (shift) params.append('shift', shift);
+        if (status) params.append('status', status);
+        if (type) params.append('type', type);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        if (search) params.append('search', search);
+
+        // Redirect with filters
+        window.location.href = `${window.location.pathname}?${params.toString()}`;
+    }
+
+    // Add event listeners to all filters
+    const filters = [
+        'department-filter-list',
+        'shift-filter-list',
+        'status-filter-list',
+        'type-filter-list',
+        'start-date-filter',
+        'end-date-filter'
+    ];
+
+    filters.forEach(filterId => {
+        document.getElementById(filterId).addEventListener('change', applyFilters);
+    });
+
+    // Search button click handler
+    document.getElementById('search-btn-list').addEventListener('click', applyFilters);
+
+    // Search input enter key handler
+    document.getElementById('search-input-list').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            applyFilters();
+        }
+    });
+
+    // Clear filters button handler
+    document.getElementById('clear-filters-btn').addEventListener('click', function() {
+        window.location.href = window.location.pathname;
+    });
+
+    // Date range validation
+    const startDateInput = document.getElementById('start-date-filter');
+    const endDateInput = document.getElementById('end-date-filter');
+
+    startDateInput.addEventListener('change', function() {
+        endDateInput.min = this.value;
+    });
+
+    endDateInput.addEventListener('change', function() {
+        startDateInput.max = this.value;
+    });
+});
+</script>
 {% endblock %}

@@ -102,11 +102,72 @@ def shift_edit(request, pk):
 @login_required
 def shift_assignment_list(request):
     """View for listing shift assignments"""
+    # Get filter parameters
+    department_id = request.GET.get('department')
+    shift_id = request.GET.get('shift')
+    status = request.GET.get('status')
+    assignment_type = request.GET.get('type')
+    search_query = request.GET.get('search')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    # Start with all assignments
+    assignments = ShiftAssignment.objects.select_related(
+        'employee', 
+        'employee__department', 
+        'shift', 
+        'created_by'
+    ).order_by('-created_at')
+
+    # Apply filters
+    if department_id:
+        assignments = assignments.filter(employee__department_id=department_id)
+    if shift_id:
+        assignments = assignments.filter(shift_id=shift_id)
+    if status:
+        if status == 'active':
+            assignments = assignments.filter(is_active=True)
+        elif status == 'inactive':
+            assignments = assignments.filter(is_active=False)
+    if assignment_type:
+        if assignment_type == 'permanent':
+            assignments = assignments.filter(end_date__isnull=True)
+        elif assignment_type == 'temporary':
+            assignments = assignments.filter(end_date__isnull=False)
+    if search_query:
+        assignments = assignments.filter(
+            Q(employee__first_name__icontains=search_query) |
+            Q(employee__last_name__icontains=search_query) |
+            Q(employee__employee_number__icontains=search_query)
+        )
+    if start_date:
+        assignments = assignments.filter(start_date__gte=start_date)
+    if end_date:
+        assignments = assignments.filter(
+            Q(end_date__lte=end_date) | 
+            Q(end_date__isnull=True, start_date__lte=end_date)
+        )
+
+    # Paginate results
+    paginator = Paginator(assignments, 10)  # Show 10 assignments per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
     context = {
+        'page_obj': page_obj,
         'shifts': Shift.objects.all(),
         'departments': Department.objects.all(),
         'employees': Employee.objects.select_related('department').all(),
+        # Add filter values to context for maintaining state
+        'selected_department': department_id,
+        'selected_shift': shift_id,
+        'selected_status': status,
+        'selected_type': assignment_type,
+        'search_query': search_query,
+        'start_date': start_date,
+        'end_date': end_date,
     }
+    
     return render(request, 'attendance/shifts/assignment_list.html', context)
 
 @login_required
