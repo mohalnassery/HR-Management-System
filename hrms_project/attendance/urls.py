@@ -56,6 +56,11 @@ urlpatterns = [
     path('api/logs/', attendance_views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance_log_list'),
     path('api/logs/', attendance_views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance-logs-api'), # Corrected line to attendance_views
 
+    # API endpoints for shift calendar functionality
+    path('api/shift_assignment_calendar_events/', views.shift_assignment_calendar_events, name='shift_assignment_calendar_events'),
+    path('api/shift-assignments/quick/', views.quick_shift_assignment, name='quick_shift_assignment'),
+    path('api/shift-assignments/<int:pk>/', views.shift_assignment_detail, name='shift_assignment_detail'),
+
     # Ramadan Period URLs - these are in ramadan_views.py
     path('ramadan_periods/', ramadan_views.RamadanPeriodListView.as_view(), name='ramadan_periods'),
     path('ramadan_period/add/', ramadan_views.RamadanPeriodAddView.as_view(), name='ramadan_period_add'),
@@ -70,4 +75,5 @@ urlpatterns = [
     path('shift-assignments/<int:pk>/edit/', shifts_views.shift_assignment_edit, name='shift_assignment_edit'), # Corrected line to shifts_views
     path('shift-assignments/<int:pk>/delete/', shifts_views.shift_assignment_delete, name='shift_assignment_delete'), # Corrected line to shifts_views
     path('api/employee/<int:employee_id>/shifts/', shifts_views.get_employee_shifts, name='get_employee_shifts'), # Corrected line to shifts_views
- ]
+    path('api/shift_assignment_calendar_events/', shifts_views.shift_assignment_calendar_events, name='shift_assignment_calendar_events'),
+]

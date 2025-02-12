@@ -55,6 +55,16 @@ class Shift(models.Model):
         blank=True,
         help_text="Default end time for this shift type"
     )
+    ramadan_start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Start time during Ramadan period"
+    )
+    ramadan_end_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="End time during Ramadan period"
+    )
     grace_period = models.PositiveIntegerField(
         default=15,
         help_text="Grace period in minutes"
@@ -72,6 +82,23 @@ class Shift(models.Model):
 
     class Meta:
         ordering = ['start_time']
+
+class DateSpecificShift(models.Model):
+    """Model to store date-specific shift timings"""
+    shift = models.ForeignKey(Shift, on_delete=models.CASCADE, related_name='date_specific_timings')
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['shift', 'date']
+        ordering = ['date', 'start_time']
+
+    def __str__(self):
+        return f"{self.shift.name} - {self.date} ({self.start_time}-{self.end_time})"
 
 class DateSpecificShiftOverride(models.Model):
     """Track date-specific shift time overrides"""
@@ -560,4 +587,4 @@ class Holiday(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.date} - {self.description}"
+        return f"{self.name} - {self.date}"

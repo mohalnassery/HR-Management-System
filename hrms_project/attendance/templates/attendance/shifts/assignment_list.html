@@ -1,6 +1,64 @@
 {% extends 'attendance/base.html' %}
 {% load static %}
 
+{% block extra_css %}
+{{ block.super }}
+<link href="{% static 'attendance/css/shifts.css' %}" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+<link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/main.min.css' rel='stylesheet' />
+<style>
+    #shift-assignment-calendar {
+        margin-top: 20px;
+        height: 800px;  /* Set a fixed height */
+        width: 100%;
+    }
+    .fc-event {
+        cursor: pointer;
+        border: none;
+        padding: 2px 4px;
+    }
+    .fc-event-title {
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .fc-event-time {
+        font-size: 0.9em;
+        opacity: 0.8;
+    }
+    /* Shift type styles */
+    .fc-event.default {
+        background-color: #0d6efd;  /* Bootstrap primary */
+        border-color: #0a58ca;
+    }
+    .fc-event.night {
+        background-color: #0dcaf0;  /* Bootstrap info */
+        border-color: #0a9ec0;
+    }
+    .fc-event.date-specific {
+        border-left: 4px solid #ffc107;  /* Bootstrap warning */
+    }
+    .fc-event.ramadan {
+        border-left: 4px solid #198754;  /* Bootstrap success */
+    }
+    /* Filter styles */
+    .calendar-filters {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .calendar-filters .form-label {
+        font-weight: 500;
+        color: #495057;
+    }
+    .calendar-filters .form-select {
+        border-radius: 6px;
+    }
+</style>
+{% endblock %}
+
 {% block attendance_content %}
 <div class="card">
     <div class="card-header">
@@ -12,11 +70,31 @@
         </div>
     </div>
     <div class="card-body">
-        <!-- Filters -->
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-3" id="assignmentTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="list-tab" data-bs-toggle="tab" data-bs-target="#list-view"
+                        type="button" role="tab" aria-controls="list-view" aria-selected="true">
+                    List View
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar-view"
+                        type="button" role="tab" aria-controls="calendar-view" aria-selected="false">
+                    Calendar View
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="assignmentTabsContent">
+            <!-- List View Tab -->
+            <div class="tab-pane fade show active" id="list-view" role="tabpanel" aria-labelledby="list-tab">
+                <!-- Filters -->
         <div class="row mb-4">
             <div class="col-md-3">
                 <label class="form-label">Department</label>
-                <select class="form-select" id="department-filter">
+                <select class="form-select" id="department-filter-list">
                     <option value="">All Departments</option>
                     {% for dept in departments %}
                         <option value="{{ dept.id }}">{{ dept.name }}</option>
@@ -25,7 +103,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">Shift</label>
-                <select class="form-select" id="shift-filter">
+                <select class="form-select" id="shift-filter-list">
                     <option value="">All Shifts</option>
                     {% for shift in shifts %}
                         <option value="{{ shift.id }}">{{ shift.name }}</option>
@@ -34,7 +112,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">Status</label>
-                <select class="form-select" id="status-filter">
+                <select class="form-select" id="status-filter-list">
                     <option value="">All Status</option>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
@@ -42,7 +120,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">Assignment Type</label>
-                <select class="form-select" id="type-filter">
+                <select class="form-select" id="type-filter-list">
                     <option value="">All Types</option>
                     <option value="permanent">Permanent</option>
                     <option value="temporary">Temporary</option>
@@ -54,9 +132,9 @@
         <div class="row mb-4">
             <div class="col">
                 <div class="input-group">
-                    <input type="text" class="form-control" id="search-input" 
+                    <input type="text" class="form-control" id="search-input-list"
                            placeholder="Search by employee name or number...">
-                    <button class="btn btn-outline-secondary" type="button" id="search-btn">
+                    <button class="btn btn-outline-secondary" type="button" id="search-btn-list">
                         <i class="fas fa-search"></i>
                     </button>
                 </div>
@@ -178,6 +256,111 @@
             </ul>
         </nav>
         {% endif %}
+            </div>
+
+            <!-- Calendar View Tab -->
+            <div class="tab-pane fade" id="calendar-view" role="tabpanel" aria-labelledby="calendar-tab">
+                <!-- Calendar Filters -->
+                <div class="calendar-filters">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label">Department</label>
+                            <select id="department-filter-calendar" class="form-select">
+                                <option value="">All Departments</option>
+                                {% for dept in departments %}
+                                <option value="{{ dept.id }}">{{ dept.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Employee</label>
+                            <select id="employee-filter-calendar" class="form-select">
+                                <option value="">All Employees</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Shift Type</label>
+                            <select id="shift-type-filter-calendar" class="form-select">
+                                <option value="">All Types</option>
+                                <option value="DEFAULT">Default Shift</option>
+                                <option value="NIGHT">Night Shift</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">View Mode</label>
+                            <select id="view-mode-calendar" class="form-select">
+                                <option value="dayGridMonth">Month</option>
+                                <option value="timeGridWeek">Week</option>
+                                <option value="timeGridDay">Day</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="d-flex gap-2">
+                                <span class="badge bg-primary">Default Shift</span>
+                                <span class="badge bg-info">Night Shift</span>
+                                <span class="badge bg-light text-dark border border-warning">Date-Specific</span>
+                                <span class="badge bg-light text-dark border border-success">Ramadan</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calendar Container -->
+                <div id="shift-assignment-calendar"></div>
+
+                <!-- Quick Assignment Modal -->
+                <div class="modal fade" id="quickAssignmentModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Quick Shift Assignment</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="quick-assignment-form">
+                                    {% csrf_token %}
+                                    <input type="hidden" id="selected-date" name="date">
+                                    <div class="mb-3">
+                                        <label class="form-label">Employee</label>
+                                        <select id="employee" name="employee" class="form-select" required>
+                                            <option value="">Select Employee</option>
+                                            {% for emp in employees %}
+                                            <option value="{{ emp.id }}">{{ emp.get_full_name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Shift</label>
+                                        <select id="shift" name="shift" class="form-select" required>
+                                            <option value="">Select Shift</option>
+                                            {% for shift in shifts %}
+                                            <option value="{{ shift.id }}" data-is-night-shift="{{ shift.is_night_shift }}">
+                                                {{ shift.name }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Custom Start Time (Optional)</label>
+                                        <input type="time" name="start_time" class="form-control">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Custom End Time (Optional)</label>
+                                        <input type="time" name="end_time" class="form-control">
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" form="quick-assignment-form" class="btn btn-primary">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -207,67 +390,6 @@
 
 {% block extra_js %}
 {{ block.super }}
-<script>
-// Filter functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const filters = {
-        department: document.getElementById('department-filter'),
-        shift: document.getElementById('shift-filter'),
-        status: document.getElementById('status-filter'),
-        type: document.getElementById('type-filter'),
-        search: document.getElementById('search-input')
-    };
-
-    function applyFilters() {
-        const params = new URLSearchParams(window.location.search);
-        
-        // Update params based on filter values
-        Object.keys(filters).forEach(key => {
-            const value = filters[key].value;
-            if (value) {
-                params.set(key, value);
-            } else {
-                params.delete(key);
-            }
-        });
-
-        // Reset to first page when filtering
-        params.set('page', '1');
-        
-        // Update URL and reload
-        window.location.search = params.toString();
-    }
-
-    // Add change event listeners to all filters
-    Object.values(filters).forEach(filter => {
-        filter.addEventListener('change', applyFilters);
-    });
-
-    // Add search button click handler
-    document.getElementById('search-btn').addEventListener('click', applyFilters);
-
-    // Add enter key handler for search input
-    filters.search.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            applyFilters();
-        }
-    });
-
-    // Set initial filter values from URL params
-    const params = new URLSearchParams(window.location.search);
-    Object.keys(filters).forEach(key => {
-        const value = params.get(key);
-        if (value) {
-            filters[key].value = value;
-        }
-    });
-});
-
-function confirmDelete(assignmentId) {
-    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
-    const form = document.getElementById('deleteForm');
-    form.action = `/attendance/shifts/assignments/${assignmentId}/delete/`;
-    modal.show();
-}
-</script>
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+<script src="{% static 'attendance/js/shifts.js' %}"></script>
 {% endblock %}

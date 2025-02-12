@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from typing import Optional, List, Dict, Any
 
 from django.db import transaction
@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth.models import User
 
-from ..models import Shift, ShiftAssignment, RamadanPeriod
+from ..models import Shift, ShiftAssignment, RamadanPeriod, DateSpecificShift
 from employees.models import Employee
 
 class ShiftService:
@@ -89,7 +89,7 @@ class ShiftService:
     def get_shift_timing(shift: Shift, date: date) -> Dict[str, Any]:
         """
         Get shift timing for a given date considering:
-        1. Date-specific overrides
+        1. Date-specific shifts
         2. Default shift timings
         3. Ramadan adjustments
         
@@ -100,46 +100,70 @@ class ShiftService:
         Returns:
             Dict with start_time and end_time
         """
-        # Check for date-specific override first
-        override = DateSpecificShiftOverride.objects.filter(
-            date=date,
-            shift_type=shift.shift_type
-        ).first()
-        
-        if override and override.override_start_time and override.override_end_time:
+        # Check for date-specific shift first
+        date_specific = DateSpecificShift.objects.filter(shift=shift, date=date).first()
+        if date_specific:
             return {
-                'start_time': override.override_start_time,
-                'end_time': override.override_end_time
+                'start_time': date_specific.start_time,
+                'end_time': date_specific.end_time,
+                'is_date_specific': True
             }
-        
-        # Use default timing if available
-        if shift.default_start_time and shift.default_end_time:
-            start_time = shift.default_start_time
-            end_time = shift.default_end_time
-        else:
-            start_time = shift.start_time
-            end_time = shift.end_time
-        
-        # Check for Ramadan adjustment for Muslim employees
+
+        # Check for Ramadan period
         ramadan_period = RamadanPeriod.objects.filter(
             start_date__lte=date,
             end_date__gte=date,
             is_active=True
         ).first()
-        
-        if ramadan_period:
-            # During Ramadan, adjust to 6-hour workday if not night shift
-            if shift.shift_type != 'NIGHT':
-                end_time = (
-                    datetime.combine(date, start_time) + timedelta(hours=6)
-                ).time()
-        
+
+        # Use ramadan timing if available and we're in ramadan period
+        if ramadan_period and hasattr(shift, 'ramadan_start_time') and hasattr(shift, 'ramadan_end_time'):
+            if shift.ramadan_start_time and shift.ramadan_end_time:
+                return {
+                    'start_time': shift.ramadan_start_time,
+                    'end_time': shift.ramadan_end_time,
+                    'is_ramadan': True
+                }
+
+        # Return default timing
         return {
-            'start_time': start_time,
-            'end_time': end_time,
-            'is_override': bool(override and override.override_start_time),
-            'is_ramadan': bool(ramadan_period)
+            'start_time': shift.start_time,
+            'end_time': shift.end_time,
+            'is_default': True
         }
+
+    @staticmethod
+    @transaction.atomic
+    def set_date_specific_shift(
+        shift: Shift,
+        date: date,
+        start_time: time,
+        end_time: time,
+        created_by: User
+    ) -> DateSpecificShift:
+        """
+        Set date-specific timing for a shift
+        
+        Args:
+            shift: The shift to set timing for
+            date: The specific date
+            start_time: New start time
+            end_time: New end time
+            created_by: User creating the override
+            
+        Returns:
+            Created DateSpecificShift instance
+        """
+        date_specific, created = DateSpecificShift.objects.update_or_create(
+            shift=shift,
+            date=date,
+            defaults={
+                'start_time': start_time,
+                'end_time': end_time,
+                'created_by': created_by
+            }
+        )
+        return date_specific
 
     @staticmethod
     def filter_assignments(

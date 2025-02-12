@@ -3,16 +3,18 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.core.paginator import Paginator
-from django.db import transaction
-from django.urls import reverse
+from django.db.models import Q
 from rest_framework import viewsets
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from datetime import datetime, timedelta
+from dateutil import parser
+
 from ..serializers import ShiftSerializer
-
-from attendance.models import Shift, ShiftAssignment # ADD THESE TWO LINES
-# from attendance.serializers import ShiftOverlapSerializer # Uncomment if you will use ShiftOverlapSerializer
+from ..models import Shift, ShiftAssignment
+from ..services.shift_service import ShiftService
 from employees.models import Employee
-
 
 class ShiftViewSet(viewsets.ModelViewSet):
     """ViewSet for managing shifts through the API"""
@@ -228,3 +230,184 @@ def get_employee_shifts(request, employee_id):
     } for a in assignments]
     
     return JsonResponse({'assignments': data})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def shift_assignment_calendar_events(request):
+    """API endpoint for providing shift assignment events for FullCalendar"""
+    start_date_str = request.query_params.get('start')
+    end_date_str = request.query_params.get('end')
+    department_filter = request.query_params.get('department')
+    shift_type_filter = request.query_params.get('shift_type')
+    employee_id_filter = request.query_params.get('employee_id')
+
+    try:
+        # Parse ISO format dates with timezone
+        start_date = parser.parse(start_date_str).date()
+        end_date = parser.parse(end_date_str).date()
+    except (ValueError, TypeError):
+        return Response({'error': 'Invalid date range'}, status=400)
+
+    assignments = ShiftAssignment.objects.filter(
+        Q(start_date__lte=end_date) & 
+        (Q(end_date__isnull=True) | Q(end_date__gte=start_date)),
+        is_active=True
+    ).select_related('employee', 'shift', 'employee__department')
+
+    if department_filter:
+        assignments = assignments.filter(employee__department_id=department_filter)
+    if shift_type_filter:
+        assignments = assignments.filter(shift__shift_type=shift_type_filter)
+    if employee_id_filter:
+        assignments = assignments.filter(employee_id=employee_id_filter)
+
+    events = []
+    for assignment in assignments:
+        # Get shift timing for this specific date
+        shift_timing = ShiftService.get_shift_timing(assignment.shift, assignment.start_date)
+        event_title = f"{assignment.employee.get_full_name()} - {assignment.shift.name}"
+        timing_str = f"{shift_timing['start_time'].strftime('%I:%M%p')} - {shift_timing['end_time'].strftime('%I:%M%p')}"
+
+        # Create event for each day in the assignment's range
+        current_date = max(assignment.start_date, start_date)
+        end_date_assignment = assignment.end_date if assignment.end_date else end_date
+
+        while current_date <= min(end_date_assignment, end_date):
+            # Get shift timing for this specific date
+            daily_timing = ShiftService.get_shift_timing(assignment.shift, current_date)
+            events.append({
+                'id': assignment.id,
+                'title': event_title,
+                'start': current_date.isoformat(),
+                'end': (current_date + timedelta(days=1)).isoformat(),
+                'shift_timing': timing_str,
+                'employee_id': assignment.employee.id,
+                'shift_id': assignment.shift.id,
+                'department': assignment.employee.department.name if assignment.employee.department else None,
+                'shift_type': assignment.shift.shift_type,
+                'is_date_specific': daily_timing.get('is_date_specific', False),
+                'is_ramadan': daily_timing.get('is_ramadan', False),
+                'allDay': True,
+                'className': [
+                    assignment.shift.shift_type.lower(),
+                    'date-specific' if daily_timing.get('is_date_specific') else '',
+                    'ramadan' if daily_timing.get('is_ramadan') else ''
+                ]
+            })
+            current_date += timedelta(days=1)
+
+    return Response(events)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def quick_shift_assignment(request):
+    """API endpoint for quick shift assignments from calendar"""
+    try:
+        employee_id = request.data.get('employee')
+        shift_id = request.data.get('shift')
+        date = request.data.get('date')
+        start_time = request.data.get('start_time')
+        end_time = request.data.get('end_time')
+
+        if not all([employee_id, shift_id, date]):
+            return Response({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        employee = get_object_or_404(Employee, id=employee_id)
+        shift = get_object_or_404(Shift, id=shift_id)
+
+        # Create or update date-specific shift if custom times provided
+        if start_time and end_time:
+            ShiftService.set_date_specific_shift(
+                shift=shift,
+                date=datetime.strptime(date, '%Y-%m-%d').date(),
+                start_time=datetime.strptime(start_time, '%H:%M').time(),
+                end_time=datetime.strptime(end_time, '%H:%M').time(),
+                created_by=request.user
+            )
+
+        # Create shift assignment
+        assignment = ShiftService.assign_shift(
+            employee=employee,
+            shift=shift,
+            start_date=datetime.strptime(date, '%Y-%m-%d').date(),
+            end_date=None,  # Quick assignments are for specific dates
+            created_by=request.user
+        )
+
+        return Response({
+            'success': True,
+            'assignment_id': assignment.id
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def shift_assignment_detail(request, pk):
+    """API endpoint for retrieving, updating, or deleting a shift assignment"""
+    assignment = get_object_or_404(ShiftAssignment, pk=pk)
+
+    if request.method == 'GET':
+        # Return assignment details
+        shift_timing = ShiftService.get_shift_timing(assignment.shift, assignment.start_date)
+        return Response({
+            'id': assignment.id,
+            'employee': {
+                'id': assignment.employee.id,
+                'name': str(assignment.employee)
+            },
+            'shift': {
+                'id': assignment.shift.id,
+                'name': assignment.shift.name,
+                'is_night_shift': assignment.shift.shift_type == 'NIGHT'
+            },
+            'start_date': assignment.start_date,
+            'end_date': assignment.end_date,
+            'start_time': shift_timing['start_time'],
+            'end_time': shift_timing['end_time'],
+            'is_date_specific': shift_timing.get('is_date_specific', False)
+        })
+    
+    elif request.method == 'PUT':
+        # Update assignment
+        try:
+            start_time = request.data.get('start_time')
+            end_time = request.data.get('end_time')
+            
+            if start_time and end_time:
+                # Update or create date-specific shift timing
+                ShiftService.set_date_specific_shift(
+                    shift=assignment.shift,
+                    date=assignment.start_date,
+                    start_time=datetime.strptime(start_time, '%H:%M').time(),
+                    end_time=datetime.strptime(end_time, '%H:%M').time(),
+                    created_by=request.user
+                )
+            
+            # Update other fields if needed
+            if 'end_date' in request.data:
+                assignment.end_date = request.data['end_date']
+                assignment.save()
+            
+            return Response({'success': True})
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=400)
+    
+    elif request.method == 'DELETE':
+        try:
+            assignment.delete()
+            return Response({'success': True})
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=400)
