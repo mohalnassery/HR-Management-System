@@ -5,19 +5,32 @@ from django.utils.safestring import mark_safe
 
 from .models import (
     Shift, ShiftAssignment, RamadanPeriod, AttendanceRecord, 
-    AttendanceLog, Leave, LeaveType, Holiday
+    AttendanceLog, Leave, LeaveType, Holiday, DateSpecificShiftOverride
 )
+
+@admin.register(DateSpecificShiftOverride)
+class DateSpecificShiftOverrideAdmin(admin.ModelAdmin):
+    list_display = ('date', 'shift_type', 'override_start_time', 'override_end_time')
+    list_filter = ('shift_type',)
+    date_hierarchy = 'date'
+    search_fields = ('date',)
 
 @admin.register(Shift)
 class ShiftAdmin(admin.ModelAdmin):
-    list_display = ('name', 'shift_type', 'timing_display', 'is_night_shift', 'grace_period', 'is_active')
-    list_filter = ('shift_type', 'is_night_shift', 'is_active')
+    list_display = ('name', 'shift_type', 'timing_display', 'default_timing_display', 'grace_period', 'is_active')
+    list_filter = ('shift_type', 'is_active')
     search_fields = ('name', 'description')
     ordering = ('name',)
     
     def timing_display(self, obj):
         return f"{obj.start_time.strftime('%I:%M %p')} - {obj.end_time.strftime('%I:%M %p')}"
-    timing_display.short_description = 'Timing'
+    timing_display.short_description = 'Current Timing'
+    
+    def default_timing_display(self, obj):
+        if obj.default_start_time and obj.default_end_time:
+            return f"{obj.default_start_time.strftime('%I:%M %p')} - {obj.default_end_time.strftime('%I:%M %p')}"
+        return "Not set"
+    default_timing_display.short_description = 'Default Timing'
 
 @admin.register(ShiftAssignment)
 class ShiftAssignmentAdmin(admin.ModelAdmin):

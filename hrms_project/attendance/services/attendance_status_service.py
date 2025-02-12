@@ -9,7 +9,11 @@ class AttendanceStatusService:
     @staticmethod
     def calculate_status(attendance_log):
         """
-        Calculate attendance status based on attendance log
+        Calculate attendance status based on attendance log, considering:
+        - Shift type-specific timings
+        - Ramadan adjustments for Muslim employees
+        - Night shift overrides
+        - Grace periods
         """
         if attendance_log.is_leave:
             return 'leave'
@@ -17,9 +21,74 @@ class AttendanceStatusService:
             return 'holiday'
         elif not attendance_log.first_in_time:
             return 'absent'
-        elif attendance_log.is_late:
-            return 'late'
-        return 'present'
+
+        shift = attendance_log.shift
+        if not shift:
+            return 'absent'  # No shift assigned
+
+        # Get base shift timings
+        shift_start_time = shift.default_start_time or shift.start_time
+        shift_end_time = shift.default_end_time or shift.end_time
+
+        # Check for Ramadan period and adjust timings for Muslim employees
+        is_ramadan_period = RamadanService.get_active_period(attendance_log.date) is not None
+        is_muslim_employee = attendance_log.employee.religion == "Muslim"
+
+        if is_ramadan_period and is_muslim_employee:
+            # During Ramadan, Muslim employees work 6 hours
+            shift_end_time = (
+                datetime.combine(attendance_log.date, shift_start_time) + 
+                timedelta(hours=6)
+            ).time()
+
+        # Check for night shift override
+        if shift.shift_type == 'NIGHT':
+            from attendance.models import DateSpecificShiftOverride
+            override = DateSpecificShiftOverride.objects.filter(
+                date=attendance_log.date,
+                shift_type='NIGHT'
+            ).first()
+            if override:
+                if override.override_start_time:
+                    shift_start_time = override.override_start_time
+                if override.override_end_time:
+                    shift_end_time = override.override_end_time
+
+        # Calculate lateness
+        grace_minutes = shift.grace_period or 0
+        shift_start_with_grace = (
+            datetime.combine(attendance_log.date, shift_start_time) + 
+            timedelta(minutes=grace_minutes)
+        ).time()
+
+        # Handle night shift that crosses midnight
+        is_late = False
+        late_minutes = 0
+        if shift.shift_type == 'NIGHT' and shift_end_time < shift_start_time:
+            # For night shifts, if check-in is after midnight, compare with previous day
+            if attendance_log.first_in_time < shift_start_time:
+                # Employee checked in after midnight but before shift end
+                is_late = attendance_log.first_in_time > shift_start_with_grace
+            else:
+                # Employee checked in before midnight
+                is_late = attendance_log.first_in_time > shift_start_with_grace
+        else:
+            # Regular shift timing comparison
+            is_late = attendance_log.first_in_time > shift_start_with_grace
+
+        if is_late:
+            late_minutes = int(
+                (datetime.combine(attendance_log.date, attendance_log.first_in_time) -
+                datetime.combine(attendance_log.date, shift_start_time))
+                .total_seconds() / 60
+            )
+
+        # Update attendance log with lateness info
+        attendance_log.is_late = is_late
+        attendance_log.late_minutes = late_minutes
+        attendance_log.save(update_fields=['is_late', 'late_minutes'])
+
+        return 'late' if is_late else 'present'
     
     @staticmethod
     def calculate_work_duration(attendance_log, employee) -> int:
@@ -44,8 +113,29 @@ class AttendanceStatusService:
         first_in = datetime.combine(date, attendance_log.first_in_time)
         last_out = datetime.combine(date, attendance_log.last_out_time)
 
+        shift = attendance_log.shift
+        if not shift:
+            return 0
+
+        # Get effective shift timings
+        shift_start_time = shift.default_start_time or shift.start_time
+        shift_end_time = shift.default_end_time or shift.end_time
+
+        # Check for night shift override
+        if shift.shift_type == 'NIGHT':
+            from attendance.models import DateSpecificShiftOverride
+            override = DateSpecificShiftOverride.objects.filter(
+                date=attendance_log.date,
+                shift_type='NIGHT'
+            ).first()
+            if override:
+                if override.override_start_time:
+                    shift_start_time = override.override_start_time
+                if override.override_end_time:
+                    shift_end_time = override.override_end_time
+
         # Handle night shift spanning midnight
-        if attendance_log.shift and attendance_log.shift.is_night_shift:
+        if shift.shift_type == 'NIGHT' and shift_end_time < shift_start_time:
             if last_out.time() < first_in.time():
                 # Add one day to last_out for correct duration calculation
                 last_out += timedelta(days=1)
@@ -54,13 +144,35 @@ class AttendanceStatusService:
         duration = int((last_out - first_in).total_seconds() / 60)  # Convert to minutes
 
         # Check if employee is Muslim and date falls in Ramadan
-        is_ramadan_exempt = (
-            employee.religion == "Muslim" and 
-            RamadanService.get_active_period(attendance_log.date) is not None
-        )
+        is_ramadan_period = RamadanService.get_active_period(attendance_log.date) is not None
+        is_muslim_employee = employee.religion == "Muslim"
 
         # For non-Ramadan or non-Muslim employees, deduct break duration
-        if not is_ramadan_exempt and attendance_log.shift:
-            duration -= attendance_log.shift.break_duration
+        # During Ramadan, Muslim employees work continuously without break
+        if not (is_ramadan_period and is_muslim_employee):
+            duration -= shift.break_duration
 
         return max(duration, 0)  # Ensure non-negative duration
+
+    @staticmethod
+    def update_attendance_status(attendance_log):
+        """
+        Update the attendance log with status, lateness, and work duration
+        """
+        # Calculate status (updates is_late and late_minutes)
+        status = AttendanceStatusService.calculate_status(attendance_log)
+        
+        # Calculate work duration
+        work_duration = AttendanceStatusService.calculate_work_duration(
+            attendance_log,
+            attendance_log.employee
+        )
+        
+        # Update log
+        attendance_log.status = status
+        attendance_log.total_work_minutes = work_duration
+        attendance_log.save(
+            update_fields=['status', 'total_work_minutes']
+        )
+        
+        return status

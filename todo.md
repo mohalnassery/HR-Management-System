@@ -1,336 +1,184 @@
-Okay, let's address your requests step-by-step to enhance the shift management, especially for night shifts, and improve shift assignments.
+**Objective of the To-Do List:**
 
-**1. Fix Shift Type Dropdown in Forms:**
+The primary objective of this to-do list is to **enhance the shift management functionality of the HRMS attendance system to be more flexible, accurate, and aligned with real-world shift scheduling needs.**  This includes:
 
-**Modify `hrms_project\attendance\views\shifts_views.py`:**
+*   **Supporting diverse shift types:**  Implementing distinct shift types (Default, Open, Night) beyond a single "regular" shift, each with potentially different default timings and rules.
+*   **Accurate Lateness Calculation:** Ensuring the system correctly identifies and logs lateness based on the defined shift type, timings, and grace periods, taking into account factors like night shifts and Ramadan.
+*   **Flexibility for Night Shifts:** Providing a mechanism to handle date-specific timing adjustments for night shifts, recognizing that night shift schedules can vary.
+*   **Ramadan Compliance:** Automatically adjusting shift durations and rules for Muslim employees during Ramadan, respecting religious observances.
+*   **Improved User Experience:** Enhancing the administrative interface for managing shifts and overrides, making it more intuitive and efficient.
 
-In both `shift_create` and `shift_edit` views, we need to pass the `SHIFT_TYPES` choices to the template context.
+**Current Implementation (As-Is):**
 
-```python
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.http import JsonResponse
-from django.core.paginator import Paginator
-from django.db import transaction
-from django.urls import reverse
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from ..serializers import ShiftSerializer
+Currently, the shift implementation is **partially complete and somewhat basic**.  Here's a summary of what exists:
 
-from attendance.models import Shift, ShiftAssignment
-from employees.models import Employee
+*   **Shift and Shift Assignment Models:** The database models for `Shift` and `ShiftAssignment` are in place, allowing for the definition of shifts with basic attributes (name, start/end time, break, grace) and assignment of these shifts to employees for specific periods.
+*   **Admin Interface for Shift Management:**  Admin interfaces (`ShiftAdmin`, `ShiftAssignmentAdmin`) exist for managing shifts and their assignments through the Django admin panel.
+*   **Basic Attendance Logging:**  The `AttendanceLog` model can record attendance status and times, and the admin interface can display this information, including a status that can be "late."
+*   **Initial Lateness Detection Framework (Partially Implemented):** There are signals and a service (`AttendanceStatusService`) designed to *calculate* attendance status and lateness, but the automatic triggering and complete logic for lateness calculation and logging are likely **not fully active or comprehensive.**
+*   **Missing Key Features:**  The system currently **lacks**:
+    *   Explicit handling of different shift *types* (Default, Open, Night) with distinct default timings.
+    *   Automated and accurate lateness detection based on shift type, grace periods, and specific times.
+    *   Proper handling of cross-day night shifts in calculations.
+    *   Built-in Ramadan-specific shift adjustments.
+    *   User-friendly calendar-based configuration for date-specific shift overrides.
+
+**Desired Achievement (To-Be):**
+
+After completing the to-do list, the HRMS attendance system will achieve the following:
+
+*   **Robust Shift Type Management:**  Administrators will be able to define and manage "Default," "Open," and "Night" shift types, each with configurable default timings and rules.
+*   **Automated and Accurate Lateness Logging:** The system will automatically and accurately determine and log employee lateness based on their assigned shift type, specified timings, and grace periods.  This will be reflected in the `AttendanceLog` and visible in reports and the admin interface.
+*   **Intelligent Night Shift Handling:** The system will correctly process attendance for night shifts that span across midnight, ensuring accurate duration and status calculations.
+*   **Ramadan-Aware Attendance:** For Muslim employees during Ramadan, the system will automatically adjust shift durations and calculations to reflect reduced working hours.
+*   **Flexible Night Shift Scheduling:** Administrators will have a calendar-based interface to define and manage date-specific timing overrides for night shifts, allowing for exceptions to the default night shift schedule.
+*   **Improved Administrative Workflow:** The admin interface for shift management will be more user-friendly and efficient for configuring and managing diverse shift schedules.
+*   **Comprehensive Testing and Validation:** The system will be thoroughly tested to ensure the accuracy and reliability of the enhanced shift management and lateness logging features.
+
+In essence, the to-do list aims to transform the current, somewhat basic shift handling into a **feature-rich, flexible, and accurate shift management system** that meets the specific needs outlined, including handling complex scenarios like night shifts and Ramadan, and providing clear logging of attendance status, including lateness.
 
 
-class ShiftViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing shifts through the API"""
-    queryset = Shift.objects.all()
-    serializer_class = ShiftSerializer
-    permission_classes = [IsAuthenticated]
 
 
-@login_required
-def shift_list(request):
-    """View for listing all shifts"""
-    shifts = Shift.objects.all().order_by('start_time')
-    return render(request, 'attendance/shifts/shift_list.html', {'shifts': shifts})
+**To-Do List: Implement Enhanced Shift Workflow**
 
-@login_required
-def shift_create(request):
-    """View for creating a new shift"""
-    if request.method == 'POST':
-        # ... (rest of your POST handling code remains the same)
-        pass
+**Phase 1: Database Model Changes (Foundation)**
 
-    context = {
-        'shift_types': Shift.SHIFT_TYPES # Pass SHIFT_TYPES to context
-    }
-    return render(request, 'attendance/shifts/shift_form.html', context) # Pass context here
-
-@login_required
-def shift_edit(request, pk):
-    """View for editing an existing shift"""
-    shift = get_object_or_404(Shift, pk=pk)
-
-    if request.method == 'POST':
-        # ... (rest of your POST handling code remains the same)
-        pass
-
-    context = {
-        'shift': shift,
-        'shift_types': Shift.SHIFT_TYPES # Pass SHIFT_TYPES to context
-    }
-    return render(request, 'attendance/shifts/shift_form.html', context) # Pass context here
-
-# ... (rest of your shifts_views.py code)
-```
-
-**Modify `hrms_project\attendance\templates\attendance\shifts\shift_form.html`:**
-
-Update the `<select>` element for `shift_type` to iterate through `shift_types` from the context.
-
-```html
-<div class="mb-3">
-    <label class="form-label">Shift Type*</label>
-    <select class="form-select" name="shift_type" required="">
-        <option value="">Select Shift Type</option>
-        {% for type_code, type_label in shift_types %}  {# Iterate through shift_types #}
-            <option value="{{ type_code }}" {% if shift.shift_type == type_code %}selected{% endif %}>
-                {{ type_label }}
-            </option>
-        {% endfor %}
-    </select>
-</div>
-```
-
-Now, when you access the shift creation or edit form, you should see the "Default Shift," "Night Shift," and "Open Shift" options in the "Shift Type" dropdown.
-
-**2. Flexible Night Shift Timing (Calendar and Form-based):**
-
-To implement flexible night shift timing, we'll start with a simpler form-based approach and later consider a calendar integration if needed.
-
-**Model Change (Optional - for day-specific overrides, if needed later):**
-
-For now, let's assume you want a more general approach to handle night shifts. We can use the existing `is_night_shift` field in the `Shift` model and potentially add a default night shift time range.  If you need day-specific timings in the future, we can add a new model like `NightShiftOverride`.
-
-**Enhancements to `hrms_project\attendance\models.py` (optional):**
-
-If you want a default night shift time:
-
-```python
-# hrms_project\attendance\models.py
-
-class Shift(models.Model):
-    # ... (existing fields)
-    default_night_start_time = models.TimeField(null=True, blank=True, help_text="Default start time for night shift")
-    default_night_end_time = models.TimeField(null=True, blank=True, help_text="Default end time for night shift")
-    # ... (rest of the model)
-```
-
-**Update `hrms_project\attendance\templates\attendance\shifts\shift_form.html`:**
-
-Add fields for default night shift start and end times:
-
-```html
-{# hrms_project\attendance\templates\attendance\shifts\shift_form.html #}
-
-{# ... (existing form fields) #}
-
-                <!-- Additional Settings -->
-                <div class="col-md-6">
-                    {# ... (existing grace_period and break_duration fields) #}
-
-                    <div class="mb-3" id="nightShiftTimingFields" style="display: none;">
-                        <label class="form-label">Default Night Shift Start Time</label>
-                        <input type="time" class="form-control" name="default_night_start_time"
-                               value="{{ shift.default_night_start_time|time:'H:i'|default:'' }}">
-                    </div>
-
-                    <div class="mb-3" id="nightShiftTimingFields_end" style="display: none;">
-                        <label class="form-label">Default Night Shift End Time</label>
-                        <input type="time" class="form-control" name="default_night_end_time"
-                               value="{{ shift.default_night_end_time|time:'H:i'|default:'' }}">
-                    </div>
-                </div>
-
-                {# ... (is_night_shift and is_active checkboxes and submit buttons) #}
-```
-
-**Update JavaScript in `hrms_project\attendance\templates\attendance\shifts\shift_form.html`:**
-
-To show/hide the night shift timing fields based on the `is_night_shift` checkbox:
-
-```javascript
-{# hrms_project\attendance\templates\attendance\shifts\shift_form.html #}
-
-{# ... (existing javascript) #}
-
-    isNightShiftCheckbox.addEventListener('change', function() {
-        const nightShiftTimingFields = document.getElementById('nightShiftTimingFields');
-        const nightShiftTimingFields_end = document.getElementById('nightShiftTimingFields_end');
-        if (this.checked) {
-            nightShiftTimingFields.style.display = 'block';
-            nightShiftTimingFields_end.style.display = 'block';
-        } else {
-            nightShiftTimingFields.style.display = 'none';
-            nightShiftTimingFields_end.style.display = 'none';
-        }
-    });
-
-    // Check initial state on page load
-    if (isNightShiftCheckbox.checked) {
-        document.getElementById('nightShiftTimingFields').style.display = 'block';
-        document.getElementById('nightShiftTimingFields_end').style.display = 'block';
-    }
-
-{# ... (rest of javascript) #}
-```
-
-**Modify `hrms_project\attendance\views\shifts_views.py` to handle new fields:**
-
-```python
-# hrms_project\attendance\views\shifts_views.py
-
-@login_required
-def shift_create(request):
-    """View for creating a new shift"""
-    if request.method == 'POST':
-        # ... (existing fields)
-        default_night_start_time = request.POST.get('default_night_start_time')
-        default_night_end_time = request.POST.get('default_night_end_time')
-
-        shift = Shift.objects.create(
-            # ... (existing fields)
-            default_night_start_time=default_night_start_time,
-            default_night_end_time=default_night_end_time,
+1.  **Modify `Shift` Model (`hrms_project/attendance/models.py`):**
+    *   **(a) Update `SHIFT_TYPES`:**
+        ```python
+        SHIFT_TYPES = [
+            ('DEFAULT', 'Default Shift'),
+            ('OPEN', 'Open Shift'),
+            ('NIGHT', 'Night Shift'),
+        ]
+        ```
+    *   **(b) Remove `is_night_shift` Field:** Delete the line `is_night_shift = models.BooleanField(default=False)` from the `Shift` model.
+    *   **(c) Add `default_start_time` and `default_end_time` Fields:** Add these new fields to the `Shift` model:
+        ```python
+        default_start_time = models.TimeField(
+            null=True, blank=True, help_text="Default start time for this shift type"
         )
-        # ... (rest of create view)
+        default_end_time = models.TimeField(
+            null=True, blank=True, help_text="Default end time for this shift type"
+        )
+        ```
+    *   **(d) Create `DateSpecificShiftOverride` Model (`hrms_project/attendance/models.py`):** Add this new model definition:
+        ```python
+        class DateSpecificShiftOverride(models.Model):
+            date = models.DateField(unique=True, help_text="Date for which shift is overridden")
+            shift_type = models.CharField(max_length=20, choices=Shift.SHIFT_TYPES, default='NIGHT', help_text="Shift type to override") # Add shift_type
+            override_start_time = models.TimeField(null=True, blank=True, help_text="Override start time") # Make nullable and blank for flexibility
+            override_end_time = models.TimeField(null=True, blank=True, help_text="Override end time") # Make nullable and blank
 
-    context = {
-        'shift_types': Shift.SHIFT_TYPES
-    }
-    return render(request, 'attendance/shifts/shift_form.html', context)
+            def __str__(self):
+                return f"{self.get_shift_type_display()} Override for {self.date}"
+        ```
 
-@login_required
-def shift_edit(request, pk):
-    """View for editing an existing shift"""
-    shift = get_object_or_404(Shift, pk=pk)
+2.  **Create and Apply Migrations:**
+    *   **(a) Generate Migrations:** Run the Django command to create migrations:
+        ```bash
+        python manage.py makemigrations attendance
+        ```
+    *   **(b) Apply Migrations:** Apply the migrations to your database:
+        ```bash
+        python manage.py migrate attendance
+        ```
 
-    if request.method == 'POST':
-        # ... (existing fields)
-        shift.default_night_start_time = request.POST.get('default_night_start_time')
-        shift.default_night_end_time = request.POST.get('default_night_end_time')
-        # ... (rest of edit view)
+**Phase 2: Data Initialization (Seed Data)**
 
-    context = {
-        'shift': shift,
-        'shift_types': Shift.SHIFT_TYPES
-    }
-    return render(request, 'attendance/shifts/shift_form.html', context)
-```
+3.  **Modify `init_shift_types` Command (`hrms_project/attendance/management/commands/init_shift_types.py`):**
+    *   **(a) Update `DEFAULT_SHIFTS`:** Modify the `DEFAULT_SHIFTS` list in the `Command` class to include `default_start_time` and `default_end_time` for each shift type, and adjust the `shift_type`:
+        ```python
+        DEFAULT_SHIFTS = [
+            {
+                'name': 'Default Shift',
+                'shift_type': 'DEFAULT',
+                'default_start_time': time(7, 0),
+                'default_end_time': time(16, 0),
+                'break_duration': 60,
+                'grace_period': 15,
+                'description': 'Standard 7 AM - 4 PM shift'
+            },
+            {
+                'name': 'Open Shift',
+                'shift_type': 'OPEN',
+                'default_start_time': time(8, 0),
+                'default_end_time': time(17, 0),
+                'break_duration': 60,
+                'grace_period': 30,
+                'description': 'Open shift, flexible start, 9 hours total'
+            },
+            {
+                'name': 'Night Shift Default',
+                'shift_type': 'NIGHT',
+                'default_start_time': time(19, 0),
+                'default_end_time': time(4, 0),
+                'break_duration': 60,
+                'grace_period': 20,
+                'description': 'Default Night Shift 7 PM - 4 AM'
+            },
+        ]
+        ```
+    *   **(b) Run the Command:** Execute the command to update your Shift data in the database (use `--force` if you want to re-run even if shifts exist):
+        ```bash
+        python manage.py init_shift_types --force
+        ```
 
-Now you can set default start and end times for Night Shifts in the Shift form. If you set `is_night_shift` to `True`, these new time fields will be displayed.
+**Phase 3: Backend Logic - `AttendanceStatusService` (Core Logic)**
 
-**3. Employee Multi-Select for Shift Assignment:**
+4.  **Modify `AttendanceStatusService.calculate_status` (`hrms_project/attendance/services/attendance_status_service.py`):**
+    *   **(a) Ramadan Check:** Add the Ramadan period check and adjust `shift_end_time` for Muslim employees during Ramadan:
+        ```python
+        # ... inside calculate_status method ...
+        shift = attendance_log.shift
 
-**Modify `hrms_project\attendance\templates\attendance\shifts\assignment_form.html`:**
+        shift_start_time = shift.default_start_time  # Use default start time
+        shift_end_time = shift.default_end_time    # Use default end time
 
-Change the employee selection to a multi-select using `<select multiple>` and update the label:
+        is_ramadan_period = RamadanService.get_active_period(attendance_log.date) is not None
+        is_muslim_employee = attendance_log.employee.religion == "Muslim"
 
-```html
-{# hrms_project\attendance\templates\attendance\shifts\assignment_form.html #}
+        if is_ramadan_period and is_muslim_employee:
+            shift_end_time = (datetime.combine(attendance_log.date, shift_start_time) + timedelta(hours=6)).time()
+        ```
+    *   **(b) Night Shift Override Check:**  Implement the logic to check for `DateSpecificShiftOverride` and use override timings if found for 'NIGHT' shifts:
+        ```python
+        # ... right after Ramadan check in calculate_status ...
+        if shift.shift_type == 'NIGHT':
+            override = DateSpecificShiftOverride.objects.filter(
+                date=attendance_log.date, shift_type='NIGHT').first() # Filter by shift_type too
+            if override:
+                if override.override_start_time and override.override_end_time: # Null checks
+                    shift_start_time = override.override_start_time
+                    shift_end_time = override.override_end_time
+        ```
+    *   **(c) Lateness and Status Calculation:** Ensure the rest of the `calculate_status` method uses `shift_start_time`, `shift_end_time`, and `shift.grace_period` for lateness, early departure, and status determination.  *(Review your existing `calculate_status` logic to confirm this part is correctly implemented based on the updated shift times)*.
 
-<div class="mb-3">
-    <label class="form-label">Employees</label> <small class="text-muted">(Select multiple employees)</small>
-    <select class="form-select" id="employee" name="employee" multiple required>  {# Add multiple attribute #}
-        {% for employee in employees %}
-            <option value="{{ employee.id }}" {% if employee.id in form.employee.value|list %}selected{% endif %}> {# Adjust selection logic for multiple values #}
-                {{ employee.get_full_name }} ({{ employee.employee_number }})
-            </option>
-        {% endfor %}
-    </select>
-</div>
-```
+**Phase 4: Signals (Verify and Activate)**
 
-**Modify `hrms_project\attendance\views\shifts_views.py` to handle multi-select and bulk assignment:**
+5.  **Activate `process_attendance_record` Signal (`hrms_project/attendance/apps.py`):**
+    *   **(a) Uncomment:** In `hrms_project/attendance/apps.py`, uncomment the line that connects the `process_attendance_record` signal in the `AttendanceConfig.ready` method:
+        ```python
+        post_save.connect(signals.process_attendance_record, sender='attendance.AttendanceRecord')
+        ```
 
-Update `shift_assignment_create` and `shift_assignment_edit` views to process the list of employee IDs.
+6.  **Review `calculate_attendance_status` Signal (`hrms_project/attendance/signals.py`):**
+    *   **(a) Verify Logic:** Review the `calculate_attendance_status` signal handler in `hrms_project/attendance/signals.py`. Ensure it is calling `AttendanceStatusService.update_attendance_status(instance)` as expected, or that it contains similar logic to calculate and update the status within the signal handler itself. *If you are using `AttendanceStatusService`, the signal should primarily call the service.*
 
-```python
-# hrms_project\attendance\views\shifts_views.py
+**Phase 5: Admin Interface Enhancements (User Experience)**
 
-@login_required
-def shift_assignment_create(request):
-    """View for creating a new shift assignment"""
-    if request.method == 'POST':
-        employee_ids = request.POST.getlist('employee') # Use getlist to get multiple values
-        shift_id = request.POST.get('shift')
-        start_date = request.POST.get('start_date')
-        end_date = request.POST.get('end_date') or None
-        is_active = request.POST.get('is_active') == 'on'
+7.  **Update `ShiftAdmin` (`hrms_project/attendance/admin.py`):**
+    *   **(a) Display Default Timings:** In `ShiftAdmin.list_display`, add `default_start_time` and `default_end_time` to the `list_display` to make these fields visible in the Shift list view in the admin.
+    *   **(b) Form Fields:** Ensure the `ShiftAdmin` form in `admin.py` includes `default_start_time` and `default_end_time` fields for editing.
 
-        try:
-            with transaction.atomic():
-                created_count = 0
-                for employee_id in employee_ids: # Iterate through employee IDs
-                    # Deactivate any existing active assignments for each employee
-                    ShiftAssignment.objects.filter(
-                        employee_id=employee_id,
-                        is_active=True
-                    ).update(is_active=False)
-
-                    # Create new assignment
-                    ShiftAssignment.objects.create(
-                        employee_id=employee_id,
-                        shift_id=shift_id,
-                        start_date=start_date,
-                        end_date=end_date,
-                        is_active=is_active,
-                        created_by=request.user
-                    )
-                    created_count += 1
-
-                messages.success(request, f'{created_count} Shift assignments created successfully.') # Update success message
-                return redirect('attendance:shift_assignment_list')
-
-        except Exception as e:
-            messages.error(request, f'Error assigning shift: {str(e)}')
-
-    employees = Employee.objects.filter(is_active=True)
-    shifts = Shift.objects.filter(is_active=True)
-
-    return render(request, 'attendance/shifts/assignment_form.html', {
-        'employees': employees,
-        'shifts': shifts
-    })
-
-@login_required
-def shift_assignment_edit(request, pk):
-    """View for editing a shift assignment"""
-    assignment = get_object_or_404(ShiftAssignment, pk=pk)
-
-    if request.method == 'POST':
-        try:
-            with transaction.atomic():
-                # If making this assignment active, deactivate other active assignments (this part might be less relevant in edit as you are editing a specific assignment)
-                # if request.POST.get('is_active') == 'on' and not assignment.is_active:
-                #     ShiftAssignment.objects.filter(
-                #         employee=assignment.employee,
-                #         is_active=True
-                #     ).exclude(pk=pk).update(is_active=False)
-
-                assignment.shift_id = request.POST.get('shift')
-                assignment.start_date = request.POST.get('start_date')
-                assignment.end_date = request.POST.get('end_date') or None
-                assignment.is_active = request.POST.get('is_active') == 'on'
-                assignment.save()
-
-                messages.success(request, 'Shift assignment updated successfully.')
-                return redirect('attendance:shift_assignment_list')
-
-        except Exception as e:
-            messages.error(request, f'Error updating shift assignment: {str(e)}')
-
-    employees = Employee.objects.filter(is_active=True)
-    shifts = Shift.objects.filter(is_active=True)
-
-    return render(request, 'attendance/shifts/assignment_form.html', {
-        'form': assignment,
-        'employees': employees,
-        'shifts': shifts
-    })
-```
-
-With these changes, you should now have:
-
-*   A populated "Shift Type" dropdown in the shift form.
-*   Basic form fields for setting default night shift timings (you can enhance this further).
-*   Multi-select functionality in the shift assignment form to assign shifts to multiple employees at once.
-
-Remember to apply migrations after model changes if you added `default_night_start_time` and `default_night_end_time` fields.
-
-Next steps would be:
-
-*   **Calendar-based Night Shift Scheduling:** Implement the calendar view for day-specific night shift timing overrides.
-*   **Verification of Shift Type Behavior:** Review and test the code to ensure the shift type behaviors (break deduction, Ramadan handling) are as described in your summary.
-*   **Unit Tests:** Write unit tests to cover the new night shift timing features and the bulk shift assignment functionality.
+8.  **Create `DateSpecificShiftOverrideAdmin` (`hrms_project/attendance/admin.py`):**
+    *   **(a) Register Admin:** Create a new `ModelAdmin` class for `DateSpecificShiftOverride` and register it in `admin.py`:
+        ```python
+        @admin.register(DateSpecificShiftOverride)
+        class DateSpecificShiftOverrideAdmin(admin.ModelAdmin):
+            list_display = ('date', 'shift_type', 'override_start_time', 'override_end_time')
+            list_filter = ('shift_type',)
+            date_hierarchy = 'date'
+            search_fields = ('date',)
+        ```

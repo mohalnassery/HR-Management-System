@@ -10,68 +10,34 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SHIFTS = [
     {
-        'name': 'Regular Day Shift',
-        'shift_type': 'REGULAR',
-        'start_time': time(8, 0),  # 8:00 AM
-        'end_time': time(17, 0),   # 5:00 PM
-        'break_duration': 60,      # 1 hour lunch break
-        'grace_period': 15,        # 15 minutes grace period
-        'description': 'Standard working hours from 8 AM to 5 PM'
-    },
-    {
-        'name': 'Night Shift',
-        'shift_type': 'NIGHT',
-        'start_time': time(20, 0),  # 8:00 PM
-        'end_time': time(5, 0),     # 5:00 AM next day
-        'break_duration': 45,       # 45 minutes break
-        'grace_period': 15,
-        'is_night_shift': True,
-        'description': 'Night shift from 8 PM to 5 AM'
-    },
-    {
-        'name': 'Morning Shift',
-        'shift_type': 'REGULAR',
-        'start_time': time(6, 0),   # 6:00 AM
-        'end_time': time(14, 0),    # 2:00 PM
-        'break_duration': 30,       # 30 minutes break
-        'grace_period': 10,
-        'description': 'Early morning shift from 6 AM to 2 PM'
-    },
-    {
-        'name': 'Evening Shift',
-        'shift_type': 'REGULAR',
-        'start_time': time(14, 0),  # 2:00 PM
-        'end_time': time(22, 0),    # 10:00 PM
-        'break_duration': 45,       # 45 minutes break
-        'grace_period': 15,
-        'description': 'Evening shift from 2 PM to 10 PM'
-    },
-    {
-        'name': 'Flexible Hours',
-        'shift_type': 'FLEXIBLE',
-        'start_time': time(7, 0),   # 7:00 AM
-        'end_time': time(19, 0),    # 7:00 PM
+        'name': 'Default Shift',
+        'shift_type': 'DEFAULT',
+        'start_time': time(7, 0),        # Current timing
+        'end_time': time(16, 0),         # Current timing
+        'default_start_time': time(7, 0), # Default timing
+        'default_end_time': time(16, 0),  # Default timing
         'break_duration': 60,
-        'grace_period': 30,         # Longer grace period for flexible hours
-        'description': 'Flexible working hours between 7 AM and 7 PM'
+        'grace_period': 15
     },
     {
-        'name': 'Split Shift',
-        'shift_type': 'SPLIT',
-        'start_time': time(9, 0),   # 9:00 AM
-        'end_time': time(20, 0),    # 8:00 PM
-        'break_duration': 180,      # 3 hours break
-        'grace_period': 15,
-        'description': 'Split shift with extended break in between'
+        'name': 'Open Shift',
+        'shift_type': 'OPEN',
+        'start_time': time(8, 0),        # Current timing
+        'end_time': time(17, 0),         # Current timing
+        'default_start_time': time(8, 0), # Default timing
+        'default_end_time': time(17, 0),  # Default timing
+        'break_duration': 60,
+        'grace_period': 15
     },
     {
-        'name': 'Ramadan Shift',
-        'shift_type': 'RAMADAN',
-        'start_time': time(9, 0),   # 9:00 AM
-        'end_time': time(15, 0),    # 3:00 PM
-        'break_duration': 0,        # No break during Ramadan hours
-        'grace_period': 15,
-        'description': 'Reduced hours during Ramadan'
+        'name': 'Night Shift Default',
+        'shift_type': 'NIGHT',
+        'start_time': time(19, 0),        # Current timing
+        'end_time': time(4, 0),          # Current timing
+        'default_start_time': time(19, 0), # Default timing
+        'default_end_time': time(4, 0),    # Default timing
+        'break_duration': 60,
+        'grace_period': 15
     }
 ]
 

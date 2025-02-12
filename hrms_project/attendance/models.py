@@ -45,16 +45,15 @@ class Shift(models.Model):
     shift_type = models.CharField(max_length=20, choices=SHIFT_TYPES, default='DEFAULT')
     start_time = models.TimeField()
     end_time = models.TimeField()
-    is_night_shift = models.BooleanField(default=False)
-    default_night_start_time = models.TimeField(
+    default_start_time = models.TimeField(
         null=True,
         blank=True,
-        help_text="Default start time for night shift"
+        help_text="Default start time for this shift type"
     )
-    default_night_end_time = models.TimeField(
+    default_end_time = models.TimeField(
         null=True,
         blank=True,
-        help_text="Default end time for night shift"
+        help_text="Default end time for this shift type"
     )
     grace_period = models.PositiveIntegerField(
         default=15,
@@ -73,6 +72,21 @@ class Shift(models.Model):
 
     class Meta:
         ordering = ['start_time']
+
+class DateSpecificShiftOverride(models.Model):
+    """Track date-specific shift time overrides"""
+    date = models.DateField(unique=True, help_text="Date for which shift is overridden")
+    shift_type = models.CharField(max_length=20, choices=Shift.SHIFT_TYPES, default='NIGHT', help_text="Shift type to override")
+    override_start_time = models.TimeField(null=True, blank=True, help_text="Override start time")
+    override_end_time = models.TimeField(null=True, blank=True, help_text="Override end time")
+
+    def __str__(self):
+        return f"{self.get_shift_type_display()} Override for {self.date}"
+
+    class Meta:
+        ordering = ['-date']
+        verbose_name = 'Shift Override'
+        verbose_name_plural = 'Shift Overrides'
 
 class ShiftAssignment(models.Model):
     """Track shift assignments for employees"""
