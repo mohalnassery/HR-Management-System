@@ -10,11 +10,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from datetime import datetime, timedelta
 from dateutil import parser
+from django.views.decorators.http import require_http_methods
+from django.utils.dateparse import parse_date
+from calendar import monthrange
 
 from ..serializers import ShiftSerializer
-from ..models import Shift, ShiftAssignment
+from ..models import Shift, ShiftAssignment, DateSpecificShiftOverride
 from ..services.shift_service import ShiftService
-from employees.models import Employee
+from employees.models import Employee, Department
 
 class ShiftViewSet(viewsets.ModelViewSet):
     """ViewSet for managing shifts through the API"""
@@ -98,17 +101,12 @@ def shift_edit(request, pk):
 @login_required
 def shift_assignment_list(request):
     """View for listing shift assignments"""
-    assignments = ShiftAssignment.objects.select_related(
-        'employee', 'shift'
-    ).order_by('-start_date')
-    
-    paginator = Paginator(assignments, 25)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    
-    return render(request, 'attendance/shifts/assignment_list.html', {
-        'page_obj': page_obj
-    })
+    context = {
+        'shifts': Shift.objects.all(),
+        'departments': Department.objects.all(),
+        'employees': Employee.objects.select_related('department').all(),
+    }
+    return render(request, 'attendance/shifts/assignment_list.html', context)
 
 @login_required
 def shift_assignment_create(request):
@@ -411,3 +409,116 @@ def shift_assignment_detail(request, pk):
                 'success': False,
                 'error': str(e)
             }, status=400)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_shift_override(request):
+    """Create or update a night shift override for a specific date"""
+    try:
+        date = parse_date(request.POST.get('date'))
+        start_time = request.POST.get('start_time')
+        end_time = request.POST.get('end_time')
+
+        if not all([date, start_time, end_time]):
+            return Response({
+                'success': False,
+                'error': 'Missing required fields'
+            }, status=400)
+
+        # Convert time strings to time objects
+        start_time = datetime.strptime(start_time, '%H:%M').time()
+        end_time = datetime.strptime(end_time, '%H:%M').time()
+
+        # Create or update override
+        override, created = DateSpecificShiftOverride.objects.update_or_create(
+            date=date,
+            shift_type='NIGHT',
+            defaults={
+                'override_start_time': start_time,
+                'override_end_time': end_time
+            }
+        )
+
+        return Response({
+            'success': True,
+            'override_id': override.id,
+            'created': created
+        })
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_shift_override(request, date):
+    """Remove a night shift override for a specific date"""
+    try:
+        date = parse_date(date)
+        if not date:
+            return Response({
+                'success': False,
+                'error': 'Invalid date format'
+            }, status=400)
+
+        # Delete the override if it exists
+        override = DateSpecificShiftOverride.objects.filter(
+            date=date,
+            shift_type='NIGHT'
+        ).first()
+
+        if override:
+            override.delete()
+            return Response({'success': True})
+        else:
+            return Response({
+                'success': False,
+                'error': 'Override not found'
+            }, status=404)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_shift_overrides(request, year, month):
+    """Get all night shift overrides for a specific month"""
+    try:
+        # Validate year and month
+        year = int(year)
+        month = int(month)
+        if not (1 <= month <= 12):
+            raise ValueError('Invalid month')
+
+        # Get the first and last day of the month
+        _, last_day = monthrange(year, month)
+        start_date = datetime(year, month, 1).date()
+        end_date = datetime(year, month, last_day).date()
+
+        # Get all overrides for the month
+        overrides = DateSpecificShiftOverride.objects.filter(
+            date__range=(start_date, end_date),
+            shift_type='NIGHT'
+        )
+
+        # Format the response
+        override_dict = {
+            override.date.isoformat(): {
+                'start_time': override.override_start_time.strftime('%H:%M'),
+                'end_time': override.override_end_time.strftime('%H:%M')
+            }
+            for override in overrides
+        }
+
+        return Response(override_dict)
+
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=400)

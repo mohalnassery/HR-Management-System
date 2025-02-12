@@ -76,4 +76,9 @@ urlpatterns = [
     path('shift-assignments/<int:pk>/delete/', shifts_views.shift_assignment_delete, name='shift_assignment_delete'), # Corrected line to shifts_views
     path('api/employee/<int:employee_id>/shifts/', shifts_views.get_employee_shifts, name='get_employee_shifts'), # Corrected line to shifts_views
     path('api/shift_assignment_calendar_events/', shifts_views.shift_assignment_calendar_events, name='shift_assignment_calendar_events'),
+
+    # Add these URL patterns to your existing patterns
+    path('shift_override/', views.create_shift_override, name='shift_override_create'),
+    path('shift_override/<str:date>/', views.delete_shift_override, name='shift_override_delete'),
+    path('shift_overrides/<int:year>/<int:month>/', views.get_shift_overrides, name='shift_overrides_list'),
 ]

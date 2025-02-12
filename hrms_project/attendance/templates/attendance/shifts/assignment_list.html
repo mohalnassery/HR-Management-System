@@ -56,6 +56,49 @@
     .calendar-filters .form-select {
         border-radius: 6px;
     }
+    /* Add employee search styles */
+    .employee-search {
+        position: relative;
+        margin-bottom: 15px;
+    }
+    
+    .employee-search-results {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+    }
+    
+    .employee-search-results.show {
+        display: block;
+    }
+    
+    .employee-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .employee-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .selected-employee {
+        background-color: #e7f3ff;
+        padding: 8px;
+        margin: 4px 0;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
 </style>
 {% endblock %}
 
@@ -260,105 +303,44 @@
 
             <!-- Calendar View Tab -->
             <div class="tab-pane fade" id="calendar-view" role="tabpanel" aria-labelledby="calendar-tab">
-                <!-- Calendar Filters -->
-                <div class="calendar-filters">
+                <!-- Filters -->
+                <div class="calendar-filters mb-3">
                     <div class="row">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">Department</label>
-                            <select id="department-filter-calendar" class="form-select">
+                            <select class="form-select" id="departmentFilter">
                                 <option value="">All Departments</option>
                                 {% for dept in departments %}
                                 <option value="{{ dept.id }}">{{ dept.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Employee</label>
-                            <select id="employee-filter-calendar" class="form-select">
-                                <option value="">All Employees</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <label class="form-label">Shift Type</label>
-                            <select id="shift-type-filter-calendar" class="form-select">
+                            <select class="form-select" id="shiftTypeFilter">
                                 <option value="">All Types</option>
                                 <option value="DEFAULT">Default Shift</option>
                                 <option value="NIGHT">Night Shift</option>
+                                <option value="OPEN">Open Shift</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">View Mode</label>
-                            <select id="view-mode-calendar" class="form-select">
-                                <option value="dayGridMonth">Month</option>
-                                <option value="timeGridWeek">Week</option>
-                                <option value="timeGridDay">Day</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row mt-3">
-                        <div class="col-12">
-                            <div class="d-flex gap-2">
-                                <span class="badge bg-primary">Default Shift</span>
-                                <span class="badge bg-info">Night Shift</span>
-                                <span class="badge bg-light text-dark border border-warning">Date-Specific</span>
-                                <span class="badge bg-light text-dark border border-success">Ramadan</span>
+                        <div class="col-md-4">
+                            <label class="form-label">Employee</label>
+                            <div class="employee-search">
+                                <input type="text" class="form-control" id="employeeSearch" 
+                                       placeholder="Search employee...">
+                                <div class="employee-search-results" id="searchResults"></div>
                             </div>
+                            <div id="selectedEmployee" class="mt-2"></div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="clearEmployee">
+                                Clear Employee Filter
+                            </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Calendar Container -->
                 <div id="shift-assignment-calendar"></div>
-
-                <!-- Quick Assignment Modal -->
-                <div class="modal fade" id="quickAssignmentModal" tabindex="-1">
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">Quick Shift Assignment</h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <form id="quick-assignment-form">
-                                    {% csrf_token %}
-                                    <input type="hidden" id="selected-date" name="date">
-                                    <div class="mb-3">
-                                        <label class="form-label">Employee</label>
-                                        <select id="employee" name="employee" class="form-select" required>
-                                            <option value="">Select Employee</option>
-                                            {% for emp in employees %}
-                                            <option value="{{ emp.id }}">{{ emp.get_full_name }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Shift</label>
-                                        <select id="shift" name="shift" class="form-select" required>
-                                            <option value="">Select Shift</option>
-                                            {% for shift in shifts %}
-                                            <option value="{{ shift.id }}" data-is-night-shift="{{ shift.is_night_shift }}">
-                                                {{ shift.name }}
-                                            </option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Custom Start Time (Optional)</label>
-                                        <input type="time" name="start_time" class="form-control">
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Custom End Time (Optional)</label>
-                                        <input type="time" name="end_time" class="form-control">
-                                    </div>
-                                </form>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <button type="submit" form="quick-assignment-form" class="btn btn-primary">Save</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -381,6 +363,64 @@
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">Delete</button>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Employee Search Modal -->
+<div class="modal fade" id="employeeSearchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Employees for Shift Assignment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="selectedDate">
+                
+                <!-- Department Filter -->
+                <div class="mb-3">
+                    <label class="form-label">Department</label>
+                    <select class="form-select" id="modalDepartmentFilter">
+                        <option value="">All Departments</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept.id }}">{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Search Input -->
+                <div class="mb-3">
+                    <label class="form-label">Search Employee</label>
+                    <input type="text" class="form-control" id="modalEmployeeSearch" 
+                           placeholder="Search by name or employee number...">
+                </div>
+
+                <!-- Employee List -->
+                <div class="employee-list" style="max-height: 400px; overflow-y: auto;">
+                    <div id="modalEmployeeList">
+                        {% for employee in employees %}
+                        <div class="employee-item" data-department="{{ employee.department.id }}">
+                            <div class="form-check">
+                                <input class="form-check-input employee-checkbox" type="checkbox" 
+                                       value="{{ employee.id }}" id="emp_{{ employee.id }}"
+                                       data-fullname="{{ employee.get_full_name }}" 
+                                       data-number="{{ employee.employee_number }}"
+                                       data-department="{{ employee.department.name }}">
+                                <label class="form-check-label" for="emp_{{ employee.id }}">
+                                    {{ employee.get_full_name }} ({{ employee.employee_number }})
+                                    <small class="text-muted">- {{ employee.department.name }}</small>
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmEmployeeSelection">Assign Shift</button>
             </div>
         </div>
     </div>

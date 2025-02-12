@@ -64,6 +64,84 @@ function updateNightShiftIndicator() {
     nightShiftIndicator.style.display = isNightShift ? 'block' : 'none';
 }
 
+// Add these functions at the top of the file
+
+function initializeEmployeeSearch() {
+    const searchInput = document.getElementById('modalEmployeeSearch');
+    const modalEmployeeList = document.getElementById('modalEmployeeList');
+    const modalDepartmentFilter = document.getElementById('modalDepartmentFilter');
+    let searchTimeout;
+
+    if (!searchInput || !modalEmployeeList) return;
+
+    // Employee search functionality
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        
+        if (query.length < 2) {
+            modalEmployeeList.innerHTML = ''; // Clear results if query is too short
+            return;
+        }
+
+        searchTimeout = setTimeout(() => {
+            // Filter existing employees in the list
+            document.querySelectorAll('#modalEmployeeList .employee-item').forEach(item => {
+                const label = item.querySelector('.form-check-label');
+                const text = label.textContent.toLowerCase();
+                const department = modalDepartmentFilter.value;
+                const empDepartment = item.dataset.department;
+                
+                const matchesSearch = text.includes(query.toLowerCase());
+                const matchesDepartment = !department || empDepartment === department;
+                
+                item.style.display = matchesSearch && matchesDepartment ? '' : 'none';
+            });
+        }, 300);
+    });
+
+    // Department filter
+    if (modalDepartmentFilter) {
+        modalDepartmentFilter.addEventListener('change', function() {
+            const department = this.value;
+            document.querySelectorAll('#modalEmployeeList .employee-item').forEach(item => {
+                const empDepartment = item.dataset.department;
+                item.style.display = (!department || empDepartment === department) ? '' : 'none';
+            });
+        });
+    }
+
+    // Handle employee selection confirmation
+    const confirmButton = document.getElementById('confirmEmployeeSelection');
+    if (confirmButton) {
+        confirmButton.addEventListener('click', function() {
+            const selectedDate = document.getElementById('selectedDate').value;
+            const selectedEmployees = [];
+            
+            document.querySelectorAll('#modalEmployeeList .employee-checkbox:checked').forEach(checkbox => {
+                selectedEmployees.push({
+                    id: checkbox.value,
+                    fullname: checkbox.dataset.fullname,
+                    number: checkbox.dataset.number,
+                    department: checkbox.dataset.department
+                });
+            });
+
+            if (selectedEmployees.length > 0) {
+                // Here you can handle the selected employees and date
+                console.log('Selected Date:', selectedDate);
+                console.log('Selected Employees:', selectedEmployees);
+                
+                // Update calendar or handle the selection as needed
+                calendar.refetchEvents();
+            }
+
+            // Close the modal
+            bootstrap.Modal.getInstance(document.getElementById('employeeSearchModal')).hide();
+        });
+    }
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize calendar if element exists
@@ -78,19 +156,30 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             height: '800px',
             events: function(info, successCallback, failureCallback) {
-                // Get filter values
-                const departmentFilter = document.getElementById('department-filter-calendar')?.value || '';
-                const employeeFilter = document.getElementById('employee-filter-calendar')?.value || '';
-                const shiftTypeFilter = document.getElementById('shift-type-filter-calendar')?.value || '';
-
-                // Fetch events from API
-                fetch(`/attendance/api/shift_assignment_calendar_events/?start=${info.startStr}&end=${info.endStr}&department=${departmentFilter}&employee_id=${employeeFilter}&shift_type=${shiftTypeFilter}`)
+                // Build query parameters
+                const params = new URLSearchParams({
+                    start: info.startStr,
+                    end: info.endStr
+                });
+                
+                if (selectedEmployeeId) {
+                    params.append('employee_id', selectedEmployeeId);
+                }
+                if (departmentFilter.value) {
+                    params.append('department_id', departmentFilter.value);
+                }
+                if (shiftTypeFilter.value) {
+                    params.append('shift_type', shiftTypeFilter.value);
+                }
+                
+                // Fetch events
+                fetch(`/attendance/api/shift_assignment_calendar_events/?${params}`)
                     .then(response => response.json())
                     .then(data => {
                         successCallback(data);
                     })
                     .catch(error => {
-                        console.error('Error fetching events:', error);
+                        console.error('Error:', error);
                         failureCallback(error);
                     });
             },
@@ -103,34 +192,86 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
             },
             dateClick: function(info) {
-                // Handle date click if needed
-            },
-            eventClick: function(info) {
-                // Handle event click if needed
+                // Show employee search modal when clicking on a date
+                const modal = new bootstrap.Modal(document.getElementById('employeeSearchModal'));
+                document.getElementById('selectedDate').value = info.dateStr;
+                modal.show();
             }
+        });
+
+        // Fix calendar rendering on tab change
+        document.querySelector('button[data-bs-target="#calendar-view"]').addEventListener('shown.bs.tab', function (e) {
+            setTimeout(() => calendar.render(), 0);
         });
 
         calendar.render();
 
-        // Add filter change handlers if elements exist
-        const departmentFilter = document.getElementById('department-filter-calendar');
-        const employeeFilter = document.getElementById('employee-filter-calendar');
-        const shiftTypeFilter = document.getElementById('shift-type-filter-calendar');
-        const viewModeSelect = document.getElementById('view-mode-calendar');
+        // Handle filter changes
+        departmentFilter?.addEventListener('change', () => calendar.refetchEvents());
+        shiftTypeFilter?.addEventListener('change', () => calendar.refetchEvents());
 
-        if (departmentFilter) {
-            departmentFilter.addEventListener('change', () => calendar.refetchEvents());
-        }
-        if (employeeFilter) {
-            employeeFilter.addEventListener('change', () => calendar.refetchEvents());
-        }
-        if (shiftTypeFilter) {
-            shiftTypeFilter.addEventListener('change', () => calendar.refetchEvents());
-        }
-        if (viewModeSelect) {
-            viewModeSelect.addEventListener('change', (e) => calendar.changeView(e.target.value));
-        }
+        // Employee Search Functionality
+        let searchTimeout;
+        searchInput?.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            
+            if (query.length < 2) {
+                searchResults.classList.remove('show');
+                return;
+            }
+
+            searchTimeout = setTimeout(() => {
+                fetch(`/attendance/api/search_employees/?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        searchResults.innerHTML = data.map(emp => `
+                            <div class="employee-item" data-id="${emp.id}" data-name="${emp.name}" data-number="${emp.employee_number}">
+                                ${emp.name} (${emp.employee_number})
+                            </div>
+                        `).join('');
+                        searchResults.classList.add('show');
+                    });
+            }, 300);
+        });
+
+        // Handle employee selection
+        searchResults?.addEventListener('click', function(e) {
+            const item = e.target.closest('.employee-item');
+            if (item) {
+                selectedEmployeeId = item.dataset.id;
+                selectedEmployeeDiv.innerHTML = `
+                    <div class="selected-employee">
+                        <span>${item.dataset.name} (${item.dataset.number})</span>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="removeEmployee">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                `;
+                searchInput.value = '';
+                searchResults.classList.remove('show');
+                calendar.refetchEvents();
+            }
+        });
+
+        // Handle remove employee
+        document.getElementById('clearEmployee')?.addEventListener('click', function() {
+            selectedEmployeeId = null;
+            selectedEmployeeDiv.innerHTML = '';
+            searchInput.value = '';
+            calendar.refetchEvents();
+        });
+
+        // Close search results when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.employee-search')) {
+                searchResults?.classList.remove('show');
+            }
+        });
     }
+
+    // Initialize employee search in modal
+    initializeEmployeeSearch();
 
     // Quick assignment form handlers
     const quickAssignmentForm = document.getElementById('quick-assignment-form');
