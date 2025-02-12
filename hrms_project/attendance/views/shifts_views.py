@@ -13,6 +13,7 @@ from dateutil import parser
 from django.views.decorators.http import require_http_methods
 from django.utils.dateparse import parse_date
 from calendar import monthrange
+from django.db import transaction
 
 from ..serializers import ShiftSerializer
 from ..models import Shift, ShiftAssignment, DateSpecificShiftOverride
@@ -301,44 +302,141 @@ def shift_assignment_calendar_events(request):
 def quick_shift_assignment(request):
     """API endpoint for quick shift assignments from calendar"""
     try:
-        employee_id = request.data.get('employee')
+        # Get employee IDs from the array format
+        employee_ids = request.data.get('employee[]', '').split(',')
         shift_id = request.data.get('shift')
         date = request.data.get('date')
         start_time = request.data.get('start_time')
         end_time = request.data.get('end_time')
 
-        if not all([employee_id, shift_id, date]):
+        if not all([employee_ids, shift_id, date]) or not employee_ids[0]:
             return Response({
                 'success': False,
                 'error': 'Missing required fields'
             }, status=400)
 
-        employee = get_object_or_404(Employee, id=employee_id)
         shift = get_object_or_404(Shift, id=shift_id)
+        assignments = []
+        skipped = []
+        
+        # Parse the date once
+        assignment_date = datetime.strptime(date, '%Y-%m-%d').date()
+
+        # Check for night shift override if this is a night shift
+        if shift.shift_type == 'NIGHT':
+            override = DateSpecificShiftOverride.objects.filter(
+                date=assignment_date,
+                shift_type='NIGHT'
+            ).first()
+            
+            if override:
+                # Use override times instead of custom times for night shift
+                start_time = override.override_start_time.strftime('%H:%M')
+                end_time = override.override_end_time.strftime('%H:%M')
 
         # Create or update date-specific shift if custom times provided
-        if start_time and end_time:
+        if start_time and end_time and shift.shift_type != 'NIGHT':
             ShiftService.set_date_specific_shift(
                 shift=shift,
-                date=datetime.strptime(date, '%Y-%m-%d').date(),
+                date=assignment_date,
                 start_time=datetime.strptime(start_time, '%H:%M').time(),
                 end_time=datetime.strptime(end_time, '%H:%M').time(),
                 created_by=request.user
             )
 
-        # Create shift assignment
-        assignment = ShiftService.assign_shift(
-            employee=employee,
-            shift=shift,
-            start_date=datetime.strptime(date, '%Y-%m-%d').date(),
-            end_date=None,  # Quick assignments are for specific dates
-            created_by=request.user
-        )
+        # Create assignments for all selected employees
+        for employee_id in employee_ids:
+            try:
+                employee = get_object_or_404(Employee, id=employee_id)
+                
+                # Check for existing assignments on this date
+                existing_assignments = ShiftAssignment.objects.filter(
+                    employee=employee,
+                    start_date__lte=assignment_date,
+                    end_date__gte=assignment_date,
+                    is_active=True
+                ).select_related('shift')
 
-        return Response({
-            'success': True,
-            'assignment_id': assignment.id
-        })
+                if existing_assignments.exists():
+                    # Get the highest priority existing assignment
+                    highest_priority_assignment = max(
+                        existing_assignments,
+                        key=lambda x: x.shift.priority
+                    )
+
+                    # Skip if existing assignment has higher or equal priority
+                    if highest_priority_assignment.shift.priority >= shift.priority:
+                        skipped.append({
+                            'employee': str(employee),
+                            'reason': f'Already assigned to {highest_priority_assignment.shift.name} (higher priority)'
+                        })
+                        continue
+                    else:
+                        # Deactivate lower priority assignments for this date
+                        for existing in existing_assignments:
+                            if existing.start_date == existing.end_date == assignment_date:
+                                # If it's a single-day assignment, deactivate it
+                                existing.is_active = False
+                                existing.save()
+                            else:
+                                # If it's a multi-day assignment, split it
+                                if existing.start_date < assignment_date:
+                                    # Create a new assignment for the days before
+                                    ShiftAssignment.objects.create(
+                                        employee=employee,
+                                        shift=existing.shift,
+                                        start_date=existing.start_date,
+                                        end_date=assignment_date - timedelta(days=1),
+                                        is_active=True,
+                                        created_by=request.user
+                                    )
+                                if existing.end_date > assignment_date:
+                                    # Create a new assignment for the days after
+                                    ShiftAssignment.objects.create(
+                                        employee=employee,
+                                        shift=existing.shift,
+                                        start_date=assignment_date + timedelta(days=1),
+                                        end_date=existing.end_date,
+                                        is_active=True,
+                                        created_by=request.user
+                                    )
+                                # Deactivate the original assignment
+                                existing.is_active = False
+                                existing.save()
+
+                # Create new assignment
+                assignment = ShiftService.assign_shift(
+                    employee=employee,
+                    shift=shift,
+                    start_date=assignment_date,
+                    end_date=assignment_date,  # Set end_date to the same as start_date
+                    created_by=request.user
+                )
+                assignments.append(assignment.id)
+            except Exception as e:
+                print(f"Error assigning shift to employee {employee_id}: {str(e)}")
+                skipped.append({
+                    'employee': str(employee),
+                    'reason': str(e)
+                })
+                continue
+
+        if assignments:
+            response_data = {
+                'success': True,
+                'assignment_ids': assignments,
+                'message': f'Successfully assigned shift to {len(assignments)} employees for {date}'
+            }
+            if skipped:
+                response_data['skipped'] = skipped
+            return Response(response_data)
+        else:
+            return Response({
+                'success': False,
+                'error': 'No assignments were created',
+                'skipped': skipped
+            }, status=400)
+
     except Exception as e:
         return Response({
             'success': False,
@@ -522,3 +620,78 @@ def get_shift_overrides(request, year, month):
             'success': False,
             'error': str(e)
         }, status=400)
+
+@login_required
+def shift_day_detail(request, date):
+    """View for showing all shifts and their assigned employees for a specific day"""
+    try:
+        selected_date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        messages.error(request, 'Invalid date format')
+        return redirect('attendance:shift_assignment_list')
+
+    # Get all shifts
+    shifts = Shift.objects.filter(is_active=True)
+    
+    # Get night shift override for this date if exists
+    night_shift_override = DateSpecificShiftOverride.objects.filter(
+        date=selected_date,
+        shift_type='NIGHT'
+    ).first()
+    
+    # Get all assignments for this day
+    assignments = ShiftAssignment.objects.filter(
+        Q(start_date__lte=selected_date) & 
+        (Q(end_date__isnull=True) | Q(end_date__gte=selected_date)),
+        is_active=True
+    ).select_related('employee', 'shift', 'employee__department')
+
+    # Group assignments by shift type
+    shift_groups = {
+        'DEFAULT': {'name': 'Default Shift (7AM-4PM)', 'assignments': []},
+        'NIGHT': {
+            'name': 'Night Shift',
+            'timing': f"{night_shift_override.override_start_time.strftime('%I:%M %p')} - {night_shift_override.override_end_time.strftime('%I:%M %p')}" if night_shift_override else '7PM-4AM',
+            'is_overridden': bool(night_shift_override),
+            'assignments': []
+        },
+        'OPEN': {'name': 'Open Shift', 'assignments': []}
+    }
+
+    for assignment in assignments:
+        shift_type = assignment.shift.shift_type
+        if shift_type in shift_groups:
+            # Get shift timing for this specific date
+            if shift_type == 'NIGHT' and night_shift_override:
+                timing = f"{night_shift_override.override_start_time.strftime('%I:%M %p')} - {night_shift_override.override_end_time.strftime('%I:%M %p')}"
+                is_date_specific = True
+                is_ramadan = False  # Override takes precedence over Ramadan timing
+            else:
+                shift_timing = ShiftService.get_shift_timing(assignment.shift, selected_date)
+                timing = f"{shift_timing['start_time'].strftime('%I:%M %p')} - {shift_timing['end_time'].strftime('%I:%M %p')}"
+                is_date_specific = shift_timing.get('is_date_specific', False)
+                is_ramadan = shift_timing.get('is_ramadan', False)
+            
+            shift_groups[shift_type]['assignments'].append({
+                'employee': assignment.employee,
+                'shift': assignment.shift,
+                'timing': timing,
+                'is_date_specific': is_date_specific,
+                'is_ramadan': is_ramadan
+            })
+
+    # Get all active employees for the quick assignment modal
+    employees = Employee.objects.filter(
+        is_active=True
+    ).select_related('department').order_by('department__name', 'first_name')
+
+    context = {
+        'date': selected_date,
+        'shift_groups': shift_groups,
+        'departments': Department.objects.all(),
+        'shifts': shifts,
+        'employees': employees,
+        'night_shift_override': night_shift_override,
+    }
+    
+    return render(request, 'attendance/shifts/day_detail.html', context)

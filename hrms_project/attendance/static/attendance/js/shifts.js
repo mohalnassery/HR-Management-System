@@ -1,3 +1,7 @@
+// Global variables
+let selectedEmployeeId = null;
+let calendar = null;
+
 // Function to check for overlapping shifts
 async function checkOverlappingShifts() {
     const employeeSelect = document.getElementById('employee');
@@ -64,15 +68,244 @@ function updateNightShiftIndicator() {
     nightShiftIndicator.style.display = isNightShift ? 'block' : 'none';
 }
 
-// Add these functions at the top of the file
+// Initialize calendar
+function initializeCalendar() {
+    const calendarEl = document.getElementById('shift-assignment-calendar');
+    if (!calendarEl) return;
 
+    calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        slotMinTime: '00:00:00',
+        slotMaxTime: '24:00:00',
+        allDaySlot: false,
+        height: '800px',
+        slotDuration: '01:00:00',
+        dayMaxEvents: true,
+        displayEventTime: true, // Show event time in all views
+        eventTimeFormat: {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        },
+        views: {
+            timeGridDay: {
+                type: 'timeGrid',
+                duration: { days: 1 },
+                buttonText: 'Day'
+            },
+            timeGridWeek: {
+                type: 'timeGrid',
+                duration: { weeks: 1 },
+                buttonText: 'Week'
+            },
+            dayGridMonth: {
+                type: 'dayGrid',
+                duration: { months: 1 },
+                buttonText: 'Month'
+            }
+        },
+        events: function(info, successCallback, failureCallback) {
+            try {
+                // Build query parameters
+                const params = new URLSearchParams({
+                    start: info.startStr,
+                    end: info.endStr,
+                    view: info.view?.type || 'dayGridMonth'
+                });
+                
+                const departmentFilter = document.getElementById('departmentFilter');
+                const shiftTypeFilter = document.getElementById('shiftTypeFilter');
+                
+                if (selectedEmployeeId) {
+                    params.append('employee_id', selectedEmployeeId);
+                }
+                if (departmentFilter?.value) {
+                    params.append('department_id', departmentFilter.value);
+                }
+                if (shiftTypeFilter?.value) {
+                    params.append('shift_type', shiftTypeFilter.value);
+                }
+                
+                fetch(`/attendance/api/shift_assignment_calendar_events/?${params}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.length === 0 && selectedEmployeeId) {
+                            // Add default shift if no assignments and employee selected
+                            const defaultShift = {
+                                id: 'default',
+                                title: 'Default Shift',
+                                start: `${info.startStr.split('T')[0]}T07:00:00`,
+                                end: `${info.startStr.split('T')[0]}T16:00:00`,
+                                allDay: false,
+                                className: 'default-shift',
+                                extendedProps: {
+                                    shift_timing: '7:00 AM - 4:00 PM',
+                                    shift_type: 'DEFAULT'
+                                }
+                            };
+                            successCallback([defaultShift]);
+                        } else {
+                            // Format events to show proper timing
+                            const formattedEvents = data.map(event => ({
+                                ...event,
+                                allDay: false,
+                                className: `shift-type-${(event.extendedProps?.shift_type || 'DEFAULT').toLowerCase()}`
+                            }));
+                            successCallback(formattedEvents);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching events:', error);
+                        failureCallback(error);
+                    });
+            } catch (error) {
+                console.error('Error in events function:', error);
+                failureCallback(error);
+            }
+        },
+        eventContent: function(arg) {
+            try {
+                const shiftType = arg.event.extendedProps?.shift_type || 'DEFAULT';
+                const className = `shift-type-${shiftType.toLowerCase()}`;
+                const timeText = arg.event.extendedProps?.shift_timing || 
+                    `${arg.event.start?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - 
+                     ${arg.event.end?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+                
+                return {
+                    html: `
+                        <div class="fc-event-main-wrapper ${className}">
+                            <div class="fc-event-title">${arg.event.title || ''}</div>
+                            <div class="fc-event-time">${timeText}</div>
+                            <div class="fc-event-type">${shiftType}</div>
+                        </div>
+                    `
+                };
+            } catch (error) {
+                console.error('Error in eventContent:', error);
+                return {
+                    html: '<div>Error displaying event</div>'
+                };
+            }
+        },
+        dateClick: function(info) {
+            try {
+                if (selectedEmployeeId) {
+                    // If employee selected, show assignment modal
+                    const modal = new bootstrap.Modal(document.getElementById('employeeSearchModal'));
+                    document.getElementById('selectedDate').value = info.dateStr;
+                    modal.show();
+                } else {
+                    // If no employee selected, show day detail view
+                    window.location.href = `/attendance/shifts/day/${info.dateStr}/`;
+                }
+            } catch (error) {
+                console.error('Error in dateClick:', error);
+            }
+        }
+    });
+
+    return calendar;
+}
+
+// Initialize employee search functionality
 function initializeEmployeeSearch() {
+    const searchInput = document.getElementById('employeeSearch');
+    const searchResults = document.getElementById('searchResults');
+    const selectedEmployeeDiv = document.getElementById('selectedEmployee');
+    const clearEmployeeBtn = document.getElementById('clearEmployee');
+    
+    if (!searchInput || !searchResults || !selectedEmployeeDiv || !clearEmployeeBtn) return;
+
+    let searchTimeout;
+
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        
+        if (query.length < 2) {
+            searchResults.classList.remove('show');
+            return;
+        }
+
+        searchTimeout = setTimeout(() => {
+            fetch(`/attendance/api/search_employees/?q=${encodeURIComponent(query)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // Debug log to see the structure of the API response
+                    console.log('API Response:', data);
+                    if (data.length > 0) {
+                        console.log('First employee data:', data[0]);
+                    }
+
+                    searchResults.innerHTML = data.map(emp => {
+                        // Debug log for each employee object
+                        console.log('Processing employee:', emp);
+                        const employeeName = emp.full_name || emp.get_full_name || `${emp.first_name} ${emp.last_name}`.trim();
+                        console.log('Resolved employee name:', employeeName);
+                        
+                        return `
+                            <div class="employee-item" data-id="${emp.id}" data-name="${employeeName}" data-number="${emp.employee_number}">
+                                ${employeeName} (${emp.employee_number})
+                            </div>
+                        `;
+                    }).join('');
+                    searchResults.classList.add('show');
+                });
+        }, 300);
+    });
+
+    searchResults.addEventListener('click', function(e) {
+        const item = e.target.closest('.employee-item');
+        if (item) {
+            selectedEmployeeId = item.dataset.id;
+            selectedEmployeeDiv.innerHTML = `
+                <div class="selected-employee">
+                    <span>${item.dataset.name} (${item.dataset.number})</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-employee">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            `;
+            searchResults.classList.remove('show');
+            searchInput.value = '';
+            if (calendar) calendar.refetchEvents();
+        }
+    });
+
+    clearEmployeeBtn.addEventListener('click', function() {
+        selectedEmployeeId = null;
+        selectedEmployeeDiv.innerHTML = '';
+        if (calendar) calendar.refetchEvents();
+    });
+
+    // Close search results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+            searchResults.classList.remove('show');
+        }
+    });
+}
+
+// Initialize modal employee search
+function initializeModalEmployeeSearch() {
     const searchInput = document.getElementById('modalEmployeeSearch');
     const modalEmployeeList = document.getElementById('modalEmployeeList');
     const modalDepartmentFilter = document.getElementById('modalDepartmentFilter');
-    let searchTimeout;
+    const confirmButton = document.getElementById('confirmEmployeeSelection');
+    
+    if (!searchInput || !modalEmployeeList || !modalDepartmentFilter || !confirmButton) return;
 
-    if (!searchInput || !modalEmployeeList) return;
+    let searchTimeout;
 
     // Employee search functionality
     searchInput.addEventListener('input', function() {
@@ -80,7 +313,6 @@ function initializeEmployeeSearch() {
         const query = this.value.trim();
         
         if (query.length < 2) {
-            modalEmployeeList.innerHTML = ''; // Clear results if query is too short
             return;
         }
 
@@ -101,177 +333,65 @@ function initializeEmployeeSearch() {
     });
 
     // Department filter
-    if (modalDepartmentFilter) {
-        modalDepartmentFilter.addEventListener('change', function() {
-            const department = this.value;
-            document.querySelectorAll('#modalEmployeeList .employee-item').forEach(item => {
-                const empDepartment = item.dataset.department;
-                item.style.display = (!department || empDepartment === department) ? '' : 'none';
-            });
+    modalDepartmentFilter.addEventListener('change', function() {
+        const department = this.value;
+        document.querySelectorAll('#modalEmployeeList .employee-item').forEach(item => {
+            const empDepartment = item.dataset.department;
+            item.style.display = (!department || empDepartment === department) ? '' : 'none';
         });
-    }
+    });
 
     // Handle employee selection confirmation
-    const confirmButton = document.getElementById('confirmEmployeeSelection');
-    if (confirmButton) {
-        confirmButton.addEventListener('click', function() {
-            const selectedDate = document.getElementById('selectedDate').value;
-            const selectedEmployees = [];
-            
-            document.querySelectorAll('#modalEmployeeList .employee-checkbox:checked').forEach(checkbox => {
-                selectedEmployees.push({
-                    id: checkbox.value,
-                    fullname: checkbox.dataset.fullname,
-                    number: checkbox.dataset.number,
-                    department: checkbox.dataset.department
-                });
+    confirmButton.addEventListener('click', function() {
+        const selectedDate = document.getElementById('selectedDate').value;
+        const selectedEmployees = [];
+        
+        document.querySelectorAll('#modalEmployeeList .employee-checkbox:checked').forEach(checkbox => {
+            selectedEmployees.push({
+                id: checkbox.value,
+                fullname: checkbox.dataset.fullname,
+                number: checkbox.dataset.number,
+                department: checkbox.dataset.department
             });
-
-            if (selectedEmployees.length > 0) {
-                // Here you can handle the selected employees and date
-                console.log('Selected Date:', selectedDate);
-                console.log('Selected Employees:', selectedEmployees);
-                
-                // Update calendar or handle the selection as needed
-                calendar.refetchEvents();
-            }
-
-            // Close the modal
-            bootstrap.Modal.getInstance(document.getElementById('employeeSearchModal')).hide();
         });
-    }
+
+        if (selectedEmployees.length > 0) {
+            // Here you can handle the selected employees and date
+            console.log('Selected Date:', selectedDate);
+            console.log('Selected Employees:', selectedEmployees);
+            
+            // Update calendar
+            if (calendar) calendar.refetchEvents();
+        }
+
+        // Close the modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('employeeSearchModal'));
+        if (modal) modal.hide();
+    });
 }
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize calendar if element exists
-    const calendarEl = document.getElementById('shift-assignment-calendar');
-    if (calendarEl) {
-        const calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
-            height: '800px',
-            events: function(info, successCallback, failureCallback) {
-                // Build query parameters
-                const params = new URLSearchParams({
-                    start: info.startStr,
-                    end: info.endStr
-                });
-                
-                if (selectedEmployeeId) {
-                    params.append('employee_id', selectedEmployeeId);
-                }
-                if (departmentFilter.value) {
-                    params.append('department_id', departmentFilter.value);
-                }
-                if (shiftTypeFilter.value) {
-                    params.append('shift_type', shiftTypeFilter.value);
-                }
-                
-                // Fetch events
-                fetch(`/attendance/api/shift_assignment_calendar_events/?${params}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        successCallback(data);
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        failureCallback(error);
-                    });
-            },
-            eventContent: function(arg) {
-                return {
-                    html: `
-                        <div class="fc-event-title">${arg.event.title}</div>
-                        <div class="fc-event-time">${arg.event.extendedProps.shift_timing || ''}</div>
-                    `
-                };
-            },
-            dateClick: function(info) {
-                // Show employee search modal when clicking on a date
-                const modal = new bootstrap.Modal(document.getElementById('employeeSearchModal'));
-                document.getElementById('selectedDate').value = info.dateStr;
-                modal.show();
-            }
-        });
-
+    // Initialize calendar
+    calendar = initializeCalendar();
+    if (calendar) {
         // Fix calendar rendering on tab change
-        document.querySelector('button[data-bs-target="#calendar-view"]').addEventListener('shown.bs.tab', function (e) {
+        document.querySelector('button[data-bs-target="#calendar-view"]')?.addEventListener('shown.bs.tab', function (e) {
             setTimeout(() => calendar.render(), 0);
         });
-
         calendar.render();
-
-        // Handle filter changes
-        departmentFilter?.addEventListener('change', () => calendar.refetchEvents());
-        shiftTypeFilter?.addEventListener('change', () => calendar.refetchEvents());
-
-        // Employee Search Functionality
-        let searchTimeout;
-        searchInput?.addEventListener('input', function() {
-            clearTimeout(searchTimeout);
-            const query = this.value.trim();
-            
-            if (query.length < 2) {
-                searchResults.classList.remove('show');
-                return;
-            }
-
-            searchTimeout = setTimeout(() => {
-                fetch(`/attendance/api/search_employees/?q=${encodeURIComponent(query)}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        searchResults.innerHTML = data.map(emp => `
-                            <div class="employee-item" data-id="${emp.id}" data-name="${emp.name}" data-number="${emp.employee_number}">
-                                ${emp.name} (${emp.employee_number})
-                            </div>
-                        `).join('');
-                        searchResults.classList.add('show');
-                    });
-            }, 300);
-        });
-
-        // Handle employee selection
-        searchResults?.addEventListener('click', function(e) {
-            const item = e.target.closest('.employee-item');
-            if (item) {
-                selectedEmployeeId = item.dataset.id;
-                selectedEmployeeDiv.innerHTML = `
-                    <div class="selected-employee">
-                        <span>${item.dataset.name} (${item.dataset.number})</span>
-                        <button type="button" class="btn btn-sm btn-outline-danger" id="removeEmployee">
-                            <i class="bi bi-x"></i>
-                        </button>
-                    </div>
-                `;
-                searchInput.value = '';
-                searchResults.classList.remove('show');
-                calendar.refetchEvents();
-            }
-        });
-
-        // Handle remove employee
-        document.getElementById('clearEmployee')?.addEventListener('click', function() {
-            selectedEmployeeId = null;
-            selectedEmployeeDiv.innerHTML = '';
-            searchInput.value = '';
-            calendar.refetchEvents();
-        });
-
-        // Close search results when clicking outside
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.employee-search')) {
-                searchResults?.classList.remove('show');
-            }
-        });
     }
 
-    // Initialize employee search in modal
+    // Initialize search functionalities
     initializeEmployeeSearch();
+    initializeModalEmployeeSearch();
+
+    // Initialize filters
+    const departmentFilter = document.getElementById('departmentFilter');
+    const shiftTypeFilter = document.getElementById('shiftTypeFilter');
+    
+    departmentFilter?.addEventListener('change', () => calendar?.refetchEvents());
+    shiftTypeFilter?.addEventListener('change', () => calendar?.refetchEvents());
 
     // Quick assignment form handlers
     const quickAssignmentForm = document.getElementById('quick-assignment-form');
@@ -326,3 +446,58 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Add this CSS to the existing styles
+const styles = `
+    .shift-type-default {
+        background-color: #0d6efd !important;
+        border-color: #0a58ca !important;
+    }
+    .shift-type-night {
+        background-color: #0dcaf0 !important;
+        border-color: #0a9ec0 !important;
+    }
+    .shift-type-open {
+        background-color: #6c757d !important;
+        border-color: #565e64 !important;
+    }
+    .fc-event-main-wrapper {
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    .fc-event-title {
+        font-weight: bold;
+        margin-bottom: 2px;
+    }
+    .fc-event-time {
+        font-size: 0.9em;
+        opacity: 0.9;
+    }
+    .fc-event-type {
+        font-size: 0.8em;
+        opacity: 0.8;
+        font-style: italic;
+    }
+    #shift-legend {
+        margin-top: 10px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 15px;
+    }
+    .legend-color {
+        width: 15px;
+        height: 15px;
+        margin-right: 5px;
+        border-radius: 3px;
+    }
+`;
+
+// Add the styles to the document
+const styleSheet = document.createElement('style');
+styleSheet.textContent = styles;
+document.head.appendChild(styleSheet);

@@ -36,25 +36,27 @@ class RamadanPeriod(models.Model):
 class Shift(models.Model):
     """Define different types of shifts"""
     SHIFT_TYPES = [
-        ('DEFAULT', 'Default Shift (7AM-4PM)'),
+        ('DEFAULT', 'Default Shift'),
         ('NIGHT', 'Night Shift'),
         ('OPEN', 'Open Shift'),
     ]
 
+    SHIFT_PRIORITIES = {
+        'NIGHT': 3,    # Highest priority
+        'OPEN': 2,     # Medium priority
+        'DEFAULT': 1,  # Lowest priority
+    }
+
     name = models.CharField(max_length=100)
-    shift_type = models.CharField(max_length=20, choices=SHIFT_TYPES, default='DEFAULT')
+    shift_type = models.CharField(max_length=10, choices=SHIFT_TYPES)
     start_time = models.TimeField()
     end_time = models.TimeField()
-    default_start_time = models.TimeField(
-        null=True,
-        blank=True,
-        help_text="Default start time for this shift type"
-    )
-    default_end_time = models.TimeField(
-        null=True,
-        blank=True,
-        help_text="Default end time for this shift type"
-    )
+    is_night_shift = models.BooleanField(default=False)
+    grace_period = models.IntegerField(default=15)  # in minutes
+    break_duration = models.IntegerField(default=60)  # in minutes
+    is_active = models.BooleanField(default=True)
+    default_night_start_time = models.TimeField(null=True, blank=True)
+    default_night_end_time = models.TimeField(null=True, blank=True)
     ramadan_start_time = models.TimeField(
         null=True,
         blank=True,
@@ -65,20 +67,46 @@ class Shift(models.Model):
         blank=True,
         help_text="End time during Ramadan period"
     )
-    grace_period = models.PositiveIntegerField(
-        default=15,
-        help_text="Grace period in minutes"
-    )
-    break_duration = models.PositiveIntegerField(
-        default=60,
-        help_text="Break duration in minutes"
-    )
-    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def priority(self):
+        """Get the priority of this shift type"""
+        return self.SHIFT_PRIORITIES.get(self.shift_type, 0)
+
+    @classmethod
+    def get_default_shifts(cls):
+        """Return the default shift configurations"""
+        return [
+            {
+                'name': 'Default Shift',
+                'shift_type': 'DEFAULT',
+                'start_time': '07:00',
+                'end_time': '16:00',
+                'grace_period': 15,
+                'break_duration': 60,
+            },
+            {
+                'name': 'Night Shift',
+                'shift_type': 'NIGHT',
+                'start_time': '19:00',
+                'end_time': '04:00',
+                'grace_period': 15,
+                'break_duration': 60,
+            },
+            {
+                'name': 'Open Shift',
+                'shift_type': 'OPEN',
+                'start_time': '00:00',
+                'end_time': '23:59',
+                'grace_period': 30,
+                'break_duration': 60,
+            },
+        ]
+
     def __str__(self):
-        return f"{self.name} ({self.start_time}-{self.end_time})"
+        return self.name
 
     class Meta:
         ordering = ['start_time']
