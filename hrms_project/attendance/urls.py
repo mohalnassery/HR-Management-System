@@ -57,9 +57,9 @@ urlpatterns = [
     path('api/logs/', attendance_views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance-logs-api'), # Corrected line to attendance_views
 
     # Ramadan Period URLs - these are in ramadan_views.py
-    path('ramadan_periods/', ramadan_views.ramadan_periods, name='ramadan_periods'), # Corrected line to ramadan_views
-    path('ramadan_period_add/', ramadan_views.ramadan_period_add, name='ramadan_period_add'), # Corrected line to ramadan_views
-    path('ramadan_period_detail/<int:pk>/', ramadan_views.ramadan_period_detail, name='ramadan_period_detail'), # Corrected line to ramadan_views
+    path('ramadan_periods/', ramadan_views.RamadanPeriodListView.as_view(), name='ramadan_periods'),
+    path('ramadan_period/add/', ramadan_views.RamadanPeriodAddView.as_view(), name='ramadan_period_add'),
+    path('ramadan_period/<int:pk>/', ramadan_views.RamadanPeriodDetailView.as_view(), name='ramadan_period_detail'),
 
     # Shift Management URLs - these are in shifts_views.py
     path('shifts/', shifts_views.shift_list, name='shift_list'), # Corrected line to shifts_views

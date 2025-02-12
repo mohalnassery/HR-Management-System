@@ -50,6 +50,10 @@
                    class="list-group-item list-group-item-action {% if 'assignment' in request.resolver_match.url_name %}active{% endif %}">
                     <i class="fas fa-users"></i> Shift Assignments
                 </a>
+                <a href="{% url 'attendance:ramadan_periods' %}"
+                   class="list-group-item list-group-item-action {% if request.resolver_match.url_name == 'ramadan_periods' %}active{% endif %}">
+                    <i class="fas fa-moon"></i> Ramadan Periods
+                </a>
             </div>
 
             <!-- Holiday Management Section -->

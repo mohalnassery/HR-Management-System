@@ -23,10 +23,10 @@
                         <label class="form-label">Shift Type*</label>
                         <select class="form-select" name="shift_type" required="">
                             <option value="">Select Shift Type</option>
-                            {% for type_code, type_label in shift_types %}  {# Iterate through shift_types #}
-                                <option value="{{ type_code }}" {% if shift.shift_type == type_code %}selected{% endif %}>
-                                    {{ type_label }}
-                                </option>
+                            {% for type_code, type_label in shift_types %}
+                              <option value="{{ type_code }}" {% if shift.shift_type == type_code %}selected{% endif %}>
+                                  {{ type_label }}
+                              </option>
                             {% endfor %}
                         </select>
                     </div>
@@ -47,7 +47,7 @@
                     </div>
                 </div>
 
-                <!-- Additional Settings -->
+                <!-- Settings Column -->
                 <div class="col-md-6">
                     <div class="mb-3">
                         <label class="form-label">Grace Period (minutes)</label>
@@ -67,38 +67,22 @@
                         </small>
                     </div>
 
-                    <div class="mb-3" id="nightShiftTimingFields" style="display: none;">
-                        <label class="form-label">Default Night Shift Start Time</label>
-                        <input type="time" class="form-control" name="default_night_start_time"
-                               value="{{ shift.default_night_start_time|time:'H:i'|default:'' }}">
-                        <small class="text-muted">
-                            Default start time for night shift schedule
-                        </small>
-                    </div>
-
-                    <div class="mb-3" id="nightShiftTimingFields_end" style="display: none;">
-                        <label class="form-label">Default Night Shift End Time</label>
-                        <input type="time" class="form-control" name="default_night_end_time"
-                               value="{{ shift.default_night_end_time|time:'H:i'|default:'' }}">
-                        <small class="text-muted">
-                            Default end time for night shift schedule
-                        </small>
-                    </div>
-                </div>
-
-                <!-- Status -->
-                <div class="col-md-6">
+                    <!-- Default Timings -->
                     <div class="mb-3">
-                        <div class="form-check form-switch">
-                            <input type="checkbox" class="form-check-input" name="is_night_shift" id="is_night_shift"
-                                   {% if shift.is_night_shift %}checked{% endif %}>
-                            <label class="form-check-label" for="is_night_shift">Night Shift</label>
-                        </div>
-                        <small class="text-muted">
-                            Enable for shifts that span across midnight
-                        </small>
+                        <label class="form-label">Default Start Time</label>
+                        <input type="time" class="form-control" name="default_start_time" 
+                               value="{{ shift.default_start_time|time:'H:i'|default:'' }}">
+                        <small class="text-muted">Default start time for this shift type</small>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label">Default End Time</label>
+                        <input type="time" class="form-control" name="default_end_time" 
+                               value="{{ shift.default_end_time|time:'H:i'|default:'' }}">
+                        <small class="text-muted">Default end time for this shift type</small>
+                    </div>
+
+                    <!-- Active Status -->
                     <div class="mb-3">
                         <div class="form-check form-switch">
                             <input type="checkbox" class="form-check-input" name="is_active" id="is_active"
@@ -131,28 +115,34 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('shift-form');
     const startTimeInput = form.querySelector('[name="start_time"]');
     const endTimeInput = form.querySelector('[name="end_time"]');
-    const isNightShiftCheckbox = document.getElementById('is_night_shift');
-    const nightShiftTimingFields = document.getElementById('nightShiftTimingFields');
-    const nightShiftTimingFields_end = document.getElementById('nightShiftTimingFields_end');
+    const shiftTypeSelect = form.querySelector('[name="shift_type"]');
+    const defaultStartTime = form.querySelector('[name="default_start_time"]');
+    const defaultEndTime = form.querySelector('[name="default_end_time"]');
 
-    // Function to toggle night shift timing fields
-    function toggleNightShiftFields() {
-        if (isNightShiftCheckbox.checked) {
-            nightShiftTimingFields.style.display = 'block';
-            nightShiftTimingFields_end.style.display = 'block';
+    // Function to handle shift type changes
+    function handleShiftTypeChange() {
+        const isOpen = shiftTypeSelect.value === 'OPEN';
+        const isNight = shiftTypeSelect.value === 'NIGHT';
+
+        // Handle Open shift
+        if (isOpen) {
+            defaultStartTime.value = '';
+            defaultEndTime.value = '';
+            defaultStartTime.disabled = true;
+            defaultEndTime.disabled = true;
         } else {
-            nightShiftTimingFields.style.display = 'none';
-            nightShiftTimingFields_end.style.display = 'none';
+            defaultStartTime.disabled = false;
+            defaultEndTime.disabled = false;
+        }
+
+        // Auto-suggest default times for night shift
+        if (isNight && !defaultStartTime.value && !defaultEndTime.value) {
+            defaultStartTime.value = '19:00';  // 7 PM
+            defaultEndTime.value = '04:00';    // 4 AM
         }
     }
 
-    // Check initial state
-    toggleNightShiftFields();
-
-    // Add toggle listener
-    isNightShiftCheckbox.addEventListener('change', toggleNightShiftFields);
-
-    // Function to check if end time is before start time (indicating night shift)
+    // Function to check if times indicate a night shift
     function checkNightShift() {
         const startTime = startTimeInput.value;
         const endTime = endTimeInput.value;
@@ -161,16 +151,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const start = new Date(`2000-01-01T${startTime}`);
             const end = new Date(`2000-01-01T${endTime}`);
             
-            if (end < start) {
-                isNightShiftCheckbox.checked = true;
+            if (end < start && shiftTypeSelect.value !== 'NIGHT') {
+                if (confirm('These times indicate a night shift. Would you like to change the shift type to Night Shift?')) {
+                    shiftTypeSelect.value = 'NIGHT';
+                    handleShiftTypeChange();
+                }
             }
         }
     }
 
     // Add event listeners
+    shiftTypeSelect.addEventListener('change', handleShiftTypeChange);
     [startTimeInput, endTimeInput].forEach(input => {
         input.addEventListener('change', checkNightShift);
     });
+
+    // Initial state setup
+    handleShiftTypeChange();
 
     // Form validation
     form.addEventListener('submit', function(e) {
@@ -181,18 +178,6 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             alert('Start time and end time cannot be the same');
             return;
-        }
-        
-        const start = new Date(`2000-01-01T${startTime}`);
-        const end = new Date(`2000-01-01T${endTime}`);
-        
-        // If end time is before start time and not marked as night shift
-        if (end < start && !isNightShiftCheckbox.checked) {
-            e.preventDefault();
-            if (confirm('This appears to be a night shift. Would you like to mark it as such?')) {
-                isNightShiftCheckbox.checked = true;
-                form.submit();
-            }
         }
     });
 });

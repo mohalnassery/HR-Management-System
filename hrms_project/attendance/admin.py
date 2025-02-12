@@ -17,20 +17,48 @@ class DateSpecificShiftOverrideAdmin(admin.ModelAdmin):
 
 @admin.register(Shift)
 class ShiftAdmin(admin.ModelAdmin):
-    list_display = ('name', 'shift_type', 'timing_display', 'default_timing_display', 'grace_period', 'is_active')
+    list_display = ('name', 'shift_type_display', 'timing_display', 'default_timing_display', 'break_display', 'is_active')
     list_filter = ('shift_type', 'is_active')
     search_fields = ('name', 'description')
-    ordering = ('name',)
+    ordering = ('shift_type', 'name')
+    
+    def shift_type_display(self, obj):
+        shift_colors = {
+            'DEFAULT': 'green',
+            'NIGHT': 'purple',
+            'OPEN': 'blue'
+        }
+        color = shift_colors.get(obj.shift_type, 'gray')
+        return format_html(
+            '<span style="color: {};">{}</span>',
+            color,
+            obj.get_shift_type_display()
+        )
+    shift_type_display.short_description = 'Type'
     
     def timing_display(self, obj):
-        return f"{obj.start_time.strftime('%I:%M %p')} - {obj.end_time.strftime('%I:%M %p')}"
+        return format_html(
+            '<span title="Current shift timing">{}</span>',
+            f"{obj.start_time.strftime('%I:%M %p')} - {obj.end_time.strftime('%I:%M %p')}"
+        )
     timing_display.short_description = 'Current Timing'
     
     def default_timing_display(self, obj):
         if obj.default_start_time and obj.default_end_time:
-            return f"{obj.default_start_time.strftime('%I:%M %p')} - {obj.default_end_time.strftime('%I:%M %p')}"
-        return "Not set"
+            return format_html(
+                '<span title="Default shift timing">{}</span>',
+                f"{obj.default_start_time.strftime('%I:%M %p')} - {obj.default_end_time.strftime('%I:%M %p')}"
+            )
+        return format_html('<span class="text-muted">Not set</span>')
     default_timing_display.short_description = 'Default Timing'
+
+    def break_display(self, obj):
+        return format_html(
+            '<span title="Break duration & Grace period">{}m break / {}m grace</span>',
+            obj.break_duration,
+            obj.grace_period
+        )
+    break_display.short_description = 'Break/Grace'
 
 @admin.register(ShiftAssignment)
 class ShiftAssignmentAdmin(admin.ModelAdmin):

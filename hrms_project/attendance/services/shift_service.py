@@ -86,35 +86,59 @@ class ShiftService:
         )
 
     @staticmethod
-    def get_ramadan_shift_timing(shift: Shift, date: date) -> Optional[Dict[str, Any]]:
+    def get_shift_timing(shift: Shift, date: date) -> Dict[str, Any]:
         """
-        Get adjusted shift timing if the given date falls in Ramadan period
+        Get shift timing for a given date considering:
+        1. Date-specific overrides
+        2. Default shift timings
+        3. Ramadan adjustments
         
         Args:
             shift: The shift to check
-            date: The date to check for Ramadan timing
+            date: The date to check timing for
             
         Returns:
-            Dict with adjusted start_time and end_time if in Ramadan, None otherwise
+            Dict with start_time and end_time
         """
+        # Check for date-specific override first
+        override = DateSpecificShiftOverride.objects.filter(
+            date=date,
+            shift_type=shift.shift_type
+        ).first()
+        
+        if override and override.override_start_time and override.override_end_time:
+            return {
+                'start_time': override.override_start_time,
+                'end_time': override.override_end_time
+            }
+        
+        # Use default timing if available
+        if shift.default_start_time and shift.default_end_time:
+            start_time = shift.default_start_time
+            end_time = shift.default_end_time
+        else:
+            start_time = shift.start_time
+            end_time = shift.end_time
+        
+        # Check for Ramadan adjustment for Muslim employees
         ramadan_period = RamadanPeriod.objects.filter(
             start_date__lte=date,
             end_date__gte=date,
             is_active=True
         ).first()
         
-        if not ramadan_period:
-            return None
-            
-        # Default Ramadan adjustment (reduce by 2 hours)
-        start_time = shift.start_time
-        end_time = (
-            datetime.combine(date, shift.end_time) - timedelta(hours=2)
-        ).time()
+        if ramadan_period:
+            # During Ramadan, adjust to 6-hour workday if not night shift
+            if shift.shift_type != 'NIGHT':
+                end_time = (
+                    datetime.combine(date, start_time) + timedelta(hours=6)
+                ).time()
         
         return {
             'start_time': start_time,
-            'end_time': end_time
+            'end_time': end_time,
+            'is_override': bool(override and override.override_start_time),
+            'is_ramadan': bool(ramadan_period)
         }
 
     @staticmethod
