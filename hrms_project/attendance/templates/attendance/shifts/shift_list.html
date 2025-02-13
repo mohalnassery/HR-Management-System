@@ -85,7 +85,7 @@
                 <div class="mb-3">
                     <span class="badge bg-primary me-2">Default Shift (7AM-4PM)</span>
                     <span class="badge bg-success me-2">Open Shift</span>
-                    <span class="badge bg-dark me-2">Night Shift (7PM-4AM)</span>
+                    <span class="badge bg-dark me-2">Night Shift (6PM-3AM)</span>
                     <span class="badge bg-warning me-2">Override Night Shift</span>
                 </div>
 
@@ -252,7 +252,7 @@ function updateCalendar() {
                 <div class="shift-time shift-open">Open Shift</div>
                 ${hasOverride ? 
                     `<div class="shift-time shift-override">Night: ${hasOverride.start_time}-${hasOverride.end_time}</div>` :
-                    `<div class="shift-time shift-night">Night: 7PM-4AM</div>`
+                    `<div class="shift-time shift-night">Night: 6PM-3AM</div>`
                 }
             </div>
         `;
@@ -289,8 +289,8 @@ function showOverrideModal(date) {
         document.getElementById('endTime').value = override.end_time;
         document.getElementById('removeOverride').style.display = 'block';
     } else {
-        document.getElementById('startTime').value = '19:00';
-        document.getElementById('endTime').value = '04:00';
+        document.getElementById('startTime').value = '18:00';
+        document.getElementById('endTime').value = '03:00';
         document.getElementById('removeOverride').style.display = 'none';
     }
     

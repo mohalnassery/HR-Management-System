@@ -754,7 +754,7 @@ def shift_day_detail(request, date):
         'DEFAULT': {'name': 'Default Shift (7AM-4PM)', 'assignments': []},
         'NIGHT': {
             'name': 'Night Shift',
-            'timing': f"{night_shift_override.override_start_time.strftime('%I:%M %p')} - {night_shift_override.override_end_time.strftime('%I:%M %p')}" if night_shift_override else '7PM-4AM',
+            'timing': f"{night_shift_override.override_start_time.strftime('%I:%M %p')} - {night_shift_override.override_end_time.strftime('%I:%M %p')}" if night_shift_override else '6PM-3AM',
             'is_overridden': bool(night_shift_override),
             'assignments': []
         },

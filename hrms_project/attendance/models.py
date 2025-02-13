@@ -90,8 +90,8 @@ class Shift(models.Model):
             {
                 'name': 'Night Shift',
                 'shift_type': 'NIGHT',
-                'start_time': '19:00',
-                'end_time': '04:00',
+                'start_time': '18:00',
+                'end_time': '03:00',
                 'grace_period': 15,
                 'break_duration': 60,
             },

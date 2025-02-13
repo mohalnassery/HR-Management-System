@@ -32,10 +32,10 @@ DEFAULT_SHIFTS = [
     {
         'name': 'Night Shift Default',
         'shift_type': 'NIGHT',
-        'start_time': time(19, 0),        # Current timing
-        'end_time': time(4, 0),          # Current timing
-        'default_start_time': time(19, 0), # Default timing
-        'default_end_time': time(4, 0),    # Default timing
+        'start_time': time(18, 0),        # Current timing
+        'end_time': time(3, 0),          # Current timing
+        'default_start_time': time(18, 0), # Default timing
+        'default_end_time': time(3, 0),    # Default timing
         'break_duration': 60,
         'grace_period': 15
     }
