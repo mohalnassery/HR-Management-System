@@ -357,34 +357,41 @@ class RecurringHolidayService:
 
     @staticmethod
     def generate_next_year_holidays():
-        """Generate holidays for next year based on recurring holidays"""
-        # Only run in December
-        if timezone.now().month != 12:
-            return
-
-        next_year = timezone.now().year + 1
-        holidays = Holiday.objects.filter(
-            is_recurring=True,
-            is_active=True
-        )
-
-        for holiday in holidays:
-            # Create holiday for next year
-            Holiday.objects.get_or_create(
-                date=holiday.date.replace(year=next_year),
-                defaults={
-                    'name': holiday.name,
-                    'holiday_type': holiday.holiday_type,
-                    'description': holiday.description,
-                    'is_paid': holiday.is_paid,
-                    'is_recurring': False,  # New instance is not recurring
-                }
+        """Generate next year's holidays from recurring holidays"""
+        current_year = timezone.now().year
+        next_year = current_year + 1
+        
+        recurring_holidays = Holiday.objects.filter(is_recurring=True)
+        
+        for holiday in recurring_holidays:
+            # Create new holiday instance for next year
+            new_date = holiday.date.replace(year=next_year)
+            Holiday.objects.create(
+                name=holiday.name,
+                date=new_date,
+                holiday_type=holiday.holiday_type,
+                description=holiday.description,
+                is_paid=holiday.is_paid,
+                is_recurring=False  # New instance is not recurring
             )
-            
-            if holiday.applicable_departments.exists():
-                new_holiday = Holiday.objects.get(
-                    date=holiday.date.replace(year=next_year)
-                )
-                new_holiday.applicable_departments.set(
-                    holiday.applicable_departments.all()
-                )
+
+class HolidayService:
+    @staticmethod
+    def generate_next_year_holidays():
+        """Generate next year's holidays from recurring holidays"""
+        current_year = timezone.now().year
+        next_year = current_year + 1
+        
+        recurring_holidays = Holiday.objects.filter(is_recurring=True)
+        
+        for holiday in recurring_holidays:
+            # Create new holiday instance for next year
+            new_date = holiday.date.replace(year=next_year)
+            Holiday.objects.create(
+                name=holiday.name,
+                date=new_date,
+                holiday_type=holiday.holiday_type,
+                description=holiday.description,
+                is_paid=holiday.is_paid,
+                is_recurring=False  # New instance is not recurring
+            )

@@ -24,6 +24,7 @@ from attendance.models import (
 from attendance.services import ShiftService, RamadanService
 from attendance.serializers import ShiftSerializer, AttendanceRecordSerializer, AttendanceLogSerializer, LeaveSerializer, HolidaySerializer
 from attendance.utils import process_attendance_excel, process_daily_attendance, get_attendance_summary
+from attendance.forms import HolidayForm
 
 
 @login_required
@@ -31,7 +32,8 @@ def holiday_list(request):
     """View for displaying list of holidays"""
     holidays = Holiday.objects.all().order_by('-date')
     context = {
-        'holidays': holidays
+        'holidays': holidays,
+        'title': 'Holidays'
     }
     return render(request, 'attendance/holiday_list.html', context)
 
@@ -39,38 +41,75 @@ def holiday_list(request):
 def holiday_create(request):
     """View for creating new holidays"""
     if request.method == 'POST':
-        # Handle form submission
-        name = request.POST.get('name')
-        date_str = request.POST.get('date')  # Get date as string
-        description = request.POST.get('description')
-        is_recurring = request.POST.get('is_recurring', False)
-
-        try:
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date() # Parse string to date object
-            Holiday.objects.create(
-                name=name,
-                date=date_obj, # Use date object here
-                description=description,
-                is_recurring=is_recurring,
-                created_by=request.user  # Assuming you want to set created_by
-            )
+        form = HolidayForm(request.POST)
+        if form.is_valid():
+            holiday = form.save(commit=False)
+            holiday.created_by = request.user
+            holiday.save()
+            form.save_m2m()  # Save many-to-many relationships
+            messages.success(request, 'Holiday created successfully.')
             return redirect('attendance:holiday_list')
-
-        except ValueError:
-            messages.error(request, "Invalid date format. Please use YYYY-MM-DD.")
-            return render(request, 'attendance/holiday_create.html') # Re-render form with error
-
-    return render(request, 'attendance/holiday_create.html')
+    else:
+        form = HolidayForm()
+    
+    context = {
+        'form': form,
+        'title': 'Create Holiday',
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/holiday_form.html', context)
 
 
 @login_required
 def recurring_holidays(request):
     """View for managing recurring holidays"""
     holidays = Holiday.objects.filter(is_recurring=True).order_by('-date')
+    departments = Department.objects.all()
     context = {
-        'holidays': holidays
+        'holidays': holidays,
+        'departments': departments,
+        'title': 'Recurring Holidays'
     }
     return render(request, 'attendance/recurring_holidays.html', context)
+
+
+@login_required
+def holiday_edit(request, pk):
+    """View for editing holidays"""
+    holiday = get_object_or_404(Holiday, pk=pk)
+    
+    if request.method == 'POST':
+        form = HolidayForm(request.POST, instance=holiday)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Holiday updated successfully.')
+            return redirect('attendance:holiday_list')
+    else:
+        form = HolidayForm(instance=holiday)
+    
+    context = {
+        'form': form,
+        'holiday': holiday,
+        'title': 'Edit Holiday',
+        'departments': Department.objects.all()
+    }
+    return render(request, 'attendance/holiday_form.html', context)
+
+
+@login_required
+def holiday_delete(request, pk):
+    """View for deleting holidays"""
+    holiday = get_object_or_404(Holiday, pk=pk)
+    
+    if request.method == 'POST':
+        holiday.delete()
+        messages.success(request, 'Holiday deleted successfully.')
+        return redirect('attendance:holiday_list')
+        
+    context = {
+        'holiday': holiday
+    }
+    return render(request, 'attendance/holiday_confirm_delete.html', context)
 
 
 class HolidayViewSet(viewsets.ModelViewSet):

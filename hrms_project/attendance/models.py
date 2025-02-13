@@ -594,13 +594,6 @@ class Holiday(models.Model):
     description = models.TextField(blank=True)
     is_paid = models.BooleanField(default=True)
     
-    # Specific employee groups this holiday applies to
-    applicable_departments = models.ManyToManyField(
-        'employees.Department',
-        blank=True,
-        related_name='holidays'
-    )
-    
     # System fields
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
