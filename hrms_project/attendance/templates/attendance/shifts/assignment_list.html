@@ -541,6 +541,19 @@ document.addEventListener('DOMContentLoaded', function() {
     endDateInput.addEventListener('change', function() {
         startDateInput.max = this.value;
     });
+
+    // Add the confirmDelete function
+    window.confirmDelete = function(assignmentId) {
+        const modal = document.getElementById('deleteModal');
+        const deleteForm = document.getElementById('deleteForm');
+        
+        // Set the form action URL
+        deleteForm.action = `{% url 'attendance:shift_assignment_list' %}${assignmentId}/delete/`;
+        
+        // Show the modal
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    }
 });
 </script>
 {% endblock %}
