@@ -411,6 +411,23 @@ class LeaveBalance(models.Model):
         unique_together = ['employee', 'leave_type']
         ordering = ['employee', 'leave_type']
 
+class LeaveBeginningBalance(models.Model):
+    """Stores initial leave balances for employees as of a specific date."""
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='beginning_balances', verbose_name="Employee")
+    leave_type = models.ForeignKey('LeaveType', on_delete=models.CASCADE, verbose_name="Leave Type")
+    balance_days = models.DecimalField(max_digits=6, decimal_places=2, verbose_name="Balance Days", help_text="Initial leave balance in days.")
+    as_of_date = models.DateField(help_text="Date when this balance was recorded", verbose_name="As of Date")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['employee', 'leave_type', 'as_of_date']
+        verbose_name = "Leave Beginning Balance"
+        verbose_name_plural = "Leave Beginning Balances"
+
+    def __str__(self):
+        return f"{self.employee} - {self.leave_type} - Balance as of {self.as_of_date}"
+
 class LeaveRule(models.Model):
     """Defines rules and configurations for different leave types"""
     name = models.CharField(max_length=100)

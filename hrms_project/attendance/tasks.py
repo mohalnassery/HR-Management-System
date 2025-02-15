@@ -232,3 +232,29 @@ def notify_missing_shift_assignments():
         return employees.count()
     
     return 0
+
+
+def process_monthly_leave_accruals():
+    """Process monthly leave accruals for all employees"""
+    today = timezone.now().date()
+    
+    # Check if it's the first day of the month
+    if today.day == 1:
+        employees = Employee.objects.filter(
+            is_active=True
+        )
+        
+        for employee in employees:
+            with transaction.atomic():
+                # Increment leave balance for each leave type
+                for leave_type in employee.leave_types.all():
+                    employee.leave_balances.create(
+                        leave_type=leave_type,
+                        year=today.year,
+                        balance=leave_type.accrual_rate
+                    )
+        
+        logger.info("Processed monthly leave accruals")
+        return employees.count()
+    
+    return 0
