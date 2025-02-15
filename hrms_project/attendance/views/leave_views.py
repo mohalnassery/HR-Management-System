@@ -3,16 +3,19 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum, Count
-from django.db import models  # If you need the models module, import it from django.db
+from django.db import models
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Leave, LeaveType, LeaveBalance, LeaveBeginningBalance
+from ..models import (
+    Leave, LeaveType, LeaveBalance, LeaveBeginningBalance,
+    AttendanceLog, Holiday  # Add these imports
+)
 from ..serializers import LeaveSerializer
 from ..forms import LeaveBalanceUploadForm
-from employees.models import Employee
+from employees.models import Employee, Department  # Add Department here
 
 @login_required
 def leave_request_list(request):
@@ -163,20 +166,111 @@ def leave_balance(request):
         # Get balances for the target employee
         for leave_type in leave_types:
             leave_balance = LeaveBalance.objects.filter(employee=target_employee, leave_type=leave_type).first()
-            if leave_balance:  # Check if balance exists
-                balances.append({
-                    'leave_type': leave_type,
-                    'total_days': leave_type.days_allowed,
-                    'used_days': leave_balance.used_days,
-                    'remaining_days': leave_balance.available_days
-                })
-            else:
-                balances.append({ # Handle case where LeaveBalance does not exist.
-                    'leave_type': leave_type,
-                    'total_days': leave_type.days_allowed,
-                    'used_days': 0,
-                    'remaining_days': leave_type.days_allowed
-                })
+            
+            if leave_type.code in ['ANNUAL', 'HALF_DAY']:  # Special calculation for annual and half-day leaves
+                # Get beginning balance
+                beginning_balance = LeaveBeginningBalance.objects.filter(
+                    employee=target_employee,
+                    leave_type=leave_type
+                ).order_by('-as_of_date').first()
+                
+                initial_balance = beginning_balance.balance_days if beginning_balance else 0
+                
+                # Get beginning date (try join_date first, then beginning balance, then default to Jan 1st)
+                if beginning_balance:
+                    start_date = beginning_balance.as_of_date
+                else:
+                    # Try to get join_date if it exists
+                    try:
+                        if hasattr(target_employee, 'join_date') and target_employee.join_date:
+                            start_date = target_employee.join_date
+                        else:
+                            # Default to January 1st of current year if no join_date
+                            current_year = date.today().year
+                            start_date = date(current_year, 1, 1)
+                    except AttributeError:
+                        # Default to January 1st of current year if join_date field doesn't exist
+                        current_year = date.today().year
+                        start_date = date(current_year, 1, 1)
+                    
+                end_date = date.today()
+                
+                try:
+                    # Get holidays for the period once
+                    holiday_dates = set(Holiday.objects.filter(
+                        date__range=[start_date, end_date]
+                    ).values_list('date', flat=True))
+                    
+                    # Get attendance logs for the period
+                    attendance_logs = set(AttendanceLog.objects.filter(
+                        employee=target_employee,
+                        date__range=[start_date, end_date]
+                    ).exclude(
+                        Q(status='absent') & 
+                        ~Q(date__in=holiday_dates)
+                    ).values_list('date', flat=True))
+                    
+                    # Count Fridays that should be included
+                    friday_count = 0
+                    current_date = start_date
+                    while current_date <= end_date:
+                        if current_date.weekday() == 4:  # Friday
+                            thursday = current_date - timedelta(days=1)
+                            saturday = current_date + timedelta(days=1)
+                            
+                            # Check if Thursday or Saturday was attended or was a holiday
+                            thursday_attended = thursday in attendance_logs
+                            saturday_attended = saturday in attendance_logs
+                            thursday_holiday = thursday in holiday_dates
+                            saturday_holiday = saturday in holiday_dates
+                            
+                            if thursday_attended or saturday_attended or thursday_holiday or saturday_holiday:
+                                friday_count += 1
+                        
+                        current_date += timedelta(days=1)
+                    
+                    # Calculate total working days including valid Fridays
+                    total_working_days = len(attendance_logs) + friday_count
+                    
+                    # Calculate accrued leave
+                    accrued_days = total_working_days * 0.083286667
+                    
+                    # Get used days
+                    used_days = leave_balance.used_days if leave_balance else 0
+                    
+                    # Calculate total and remaining days
+                    total_days = initial_balance + accrued_days
+                    remaining_days = total_days - used_days
+                    
+                    balances.append({
+                        'leave_type': leave_type,
+                        'total_days': round(total_days, 2),
+                        'used_days': round(used_days, 2),
+                        'remaining_days': round(remaining_days, 2)
+                    })
+                except Exception as e:
+                    messages.error(request, f"Error calculating {leave_type.name} balance: {str(e)}")
+                    balances.append({
+                        'leave_type': leave_type,
+                        'total_days': initial_balance,
+                        'used_days': used_days if 'used_days' in locals() else 0,
+                        'remaining_days': initial_balance
+                    })
+            else:  # Regular leave types
+                if leave_balance:  # Check if balance exists
+                    balances.append({
+                        'leave_type': leave_type,
+                        'total_days': leave_type.days_allowed,
+                        'used_days': leave_balance.used_days,
+                        'remaining_days': leave_balance.available_days
+                    })
+                else:
+                    balances.append({ # Handle case where LeaveBalance does not exist.
+                        'leave_type': leave_type,
+                        'total_days': leave_type.days_allowed,
+                        'used_days': 0,
+                        'remaining_days': leave_type.days_allowed
+                    })
 
     # Add context for template
     context = {

@@ -138,20 +138,24 @@
                         <div class="row text-center">
                             <div class="col">
                                 <small class="text-muted d-block">Total</small>
-                                <strong>{{ balance.total_days }}</strong>
+                                <strong>{{ balance.total_days|floatformat:2 }}</strong>
                             </div>
                             <div class="col">
                                 <small class="text-muted d-block">Used</small>
-                                <strong>{{ balance.used_days }}</strong>
+                                <strong>{{ balance.used_days|floatformat:2 }}</strong>
                             </div>
                             <div class="col">
                                 <small class="text-muted d-block">Remaining</small>
-                                <strong>{{ balance.remaining_days }}</strong>
+                                <strong>{{ balance.remaining_days|floatformat:2 }}</strong>
                             </div>
                         </div>
                         {% if balance.leave_type.description %}
                         <div class="mt-3">
                             <small class="text-muted">{{ balance.leave_type.description }}</small>
+                        </div>
+                        {% elif balance.leave_type.code == 'ANNUAL' %}
+                        <div class="mt-3">
+                            <small class="text-muted">Annual leave accrued at 2.5 days per 30 working days (0.083 days per working day)</small>
                         </div>
                         {% endif %}
                     </div>
