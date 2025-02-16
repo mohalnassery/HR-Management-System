@@ -4,6 +4,7 @@
 {% block extra_css %}
 {{ block.super }}
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
 <style>
 .fc-event {
     cursor: pointer;
@@ -175,6 +176,7 @@
 {% block extra_js %}
 {{ block.super }}
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Select2
@@ -239,35 +241,27 @@ document.addEventListener('DOMContentLoaded', function() {
         displayEventTime: false, // Hide time from event display
         eventDisplay: 'block', // Display events as blocks
         events: function(info, successCallback, failureCallback) {
-            // Get filter values
             const department = $('#department-filter').val();
             const employee = $('#employee-filter').val();
             
-            $.ajax({
-                url: '{% url "attendance:calendar_events" %}',
-                data: {
-                    start: info.startStr,
-                    end: info.endStr,
-                    department: department,
-                    employee: employee
-                },
-                success: function(response) {
-                    if (response && Array.isArray(response)) {
-                        const events = response.map(event => ({
-                            ...event,
-                            display: 'block',
-                            classNames: [event.color ? `bg-${event.color}` : '']
-                        }));
-                        successCallback(events);
-                    } else {
-                        failureCallback('Invalid response format');
+            // Format dates in ISO format without timezone
+            const start = info.startStr;
+            const end = info.endStr;
+            
+            fetch(`/attendance/api/calendar_events/?start=${start}&end=${end}&department=${department}&employee=${employee}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
                     }
-                },
-                error: function(xhr, status, error) {
-                    console.error('Error loading events:', error);
-                    failureCallback('Error loading events');
-                }
-            });
+                    return response.json();
+                })
+                .then(data => {
+                    successCallback(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching events:', error);
+                    failureCallback(error);
+                });
         }
     });
 

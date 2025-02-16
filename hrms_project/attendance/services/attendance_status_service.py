@@ -24,7 +24,14 @@ class AttendanceStatusService:
 
         shift = attendance_log.shift
         if not shift:
-            return 'absent'  # No shift assigned
+            # Try to get default shift if none assigned
+            shift = Shift.objects.filter(
+                shift_type='DEFAULT',
+                is_active=True
+            ).first()
+            if not shift:
+                return 'absent'  # No shift assigned and no default shift available
+            attendance_log.shift = shift  # Update log with default shift
 
         # Get base shift timings
         shift_start_time = shift.default_start_time or shift.start_time

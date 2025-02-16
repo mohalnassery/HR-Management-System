@@ -1,4 +1,5 @@
 from datetime import datetime
+from django.db.models import Q
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -53,14 +54,22 @@ def calendar_events(request):
     """Get attendance events for calendar"""
     start_date = request.query_params.get('start')
     end_date = request.query_params.get('end')
+    department = request.query_params.get('department')
+    employee = request.query_params.get('employee')
 
     try:
-        start = datetime.strptime(start_date, '%Y-%m-%d').date()
-        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        # Parse ISO format dates with timezone
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00')).date()
+        end = datetime.fromisoformat(end_date.replace('Z', '+00:00')).date()
 
-        logs = AttendanceLog.objects.filter(
-            date__range=[start, end]
-        ).select_related('employee')
+        # Build query
+        query = Q(date__range=[start, end])
+        if department:
+            query &= Q(employee__department_id=department)
+        if employee:
+            query &= Q(employee_id=employee)
+
+        logs = AttendanceLog.objects.filter(query).select_related('employee')
 
         events = []
         for log in logs:
@@ -89,9 +98,8 @@ def calendar_events(request):
             })
 
         return Response(events)
-    except (ValueError, TypeError):
-        return Response({'error': 'Invalid date format'}, status=400)
-    
+    except (ValueError, TypeError) as e:
+        return Response({'error': f'Invalid date format: {str(e)}'}, status=400)
 
 
 # API Views - Keep these API views here as they are general API related
@@ -139,4 +147,3 @@ def get_calendar_events(request):
         return Response(events)
     except (ValueError, TypeError):
         return Response({'error': 'Invalid date format'}, status=400)
-

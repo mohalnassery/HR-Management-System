@@ -238,26 +238,32 @@ class LeaveBalanceService:
 
         for employee in employees:
             for leave_type in leave_types:
-                if leave_type.accrual_type == 'annual':
+                if leave_type.accrual_enabled and leave_type.accrual_period == 'WORKED':
                     # Calculate accrual for previous month
                     last_month_end = first_of_month - timedelta(days=1)
                     last_month_start = last_month_end.replace(day=1)
                     
-                    accrual = LeaveBalanceService.calculate_annual_leave_accrual(
-                        employee, last_month_start, last_month_end
-                    )
+                    try:
+                        # Calculate accrual
+                        accrual = LeaveBalanceService.calculate_annual_leave_accrual(
+                            employee, last_month_start, last_month_end
+                        )
 
-                    # Update balance
-                    balance, created = LeaveBalance.objects.get_or_create(
-                        employee=employee,
-                        leave_type=leave_type,
-                        is_active=True,
-                        defaults={'total_days': 0, 'available_days': 0}
-                    )
-                    
-                    balance.total_days += accrual
-                    balance.available_days += accrual
-                    balance.save()
+                        # Update balance
+                        balance, created = LeaveBalance.objects.get_or_create(
+                            employee=employee,
+                            leave_type=leave_type,
+                            is_active=True,
+                            defaults={'total_days': 0}
+                        )
+                        
+                        # Update last accrual date
+                        balance.last_accrual_date = last_month_end
+                        balance.total_days += accrual
+                        balance.save()
+                    except Exception as e:
+                        print(f"Error updating leave balance for {employee} - {leave_type}: {str(e)}")
+                        continue
 
 class LeaveRequestService:
     """Service class for handling leave requests"""

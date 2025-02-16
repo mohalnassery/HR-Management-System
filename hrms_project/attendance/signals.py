@@ -301,7 +301,8 @@ def process_leave_request(sender, instance, created, **kwargs):
                 leave_type=instance.leave_type,
                 is_active=True
             )
-            balance.available_days -= instance.duration
+            balance.used_days += instance.duration
+            balance.pending_days = max(0, balance.pending_days - instance.duration)  # Remove from pending if was pending
             balance.save()
         except LeaveBalance.DoesNotExist:
             pass
@@ -328,7 +329,7 @@ def cleanup_leave_request(sender, instance, **kwargs):
                 leave_type=instance.leave_type,
                 is_active=True
             )
-            balance.available_days += instance.duration
+            balance.used_days = max(0, balance.used_days - instance.duration)  # Ensure we don't go negative
             balance.save()
         except LeaveBalance.DoesNotExist:
             pass
@@ -393,8 +394,10 @@ def create_leave_balances(sender, instance, created, **kwargs):
                 balances.append(LeaveBalance(
                     employee=employee,
                     leave_type=instance,
-                    total_days=instance.default_days,
-                    available_days=instance.default_days
+                    total_days=instance.days_allowed if not instance.accrual_enabled else 0,
+                    used_days=0,
+                    pending_days=0,
+                    last_reset_date=timezone.now().date()
                 ))
         
         if balances:

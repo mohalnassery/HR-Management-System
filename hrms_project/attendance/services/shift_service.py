@@ -26,7 +26,14 @@ class ShiftService:
         ).filter(
             Q(end_date__isnull=True) | Q(end_date__gte=today)
         ).first()
-        return assignment.shift if assignment else None
+        if assignment:
+            return assignment.shift
+        
+        # Fallback to default shift if no assignment
+        return Shift.objects.filter(
+            shift_type='DEFAULT',
+            is_active=True
+        ).first()
 
     @staticmethod
     def get_employee_shift_history(employee: Employee) -> List[Dict[str, Any]]:
