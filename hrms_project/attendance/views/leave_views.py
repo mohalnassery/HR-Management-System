@@ -3,6 +3,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum, Count
+from decimal import Decimal
 from django.db import models
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -204,9 +205,8 @@ def leave_balance(request):
                     # Get attendance logs for the period
                     attendance_logs = set(AttendanceLog.objects.filter(
                         employee=target_employee,
-                        date__range=[start_date, end_date]
-                    ).exclude(
-                        Q(status='absent')
+                        date__range=[start_date, end_date],
+                        status='present'  # Only count present days
                     ).values_list('date', flat=True))
                     
                     # Count Fridays that should be included
@@ -227,21 +227,32 @@ def leave_balance(request):
                         current_date += timedelta(days=1)
                     
                     # Calculate total working days including valid Fridays and holidays
-                    total_working_days = len(attendance_logs) + friday_count + len(holiday_dates)
+                    total_working_days = Decimal(len(attendance_logs) + friday_count + len(holiday_dates))
                     
                     # Calculate monthly rate (2.5 days per month, assuming 30 working days per month)
-                    daily_rate = 2.5 / 30
+                    daily_rate = Decimal('2.5') / Decimal('30')
                     
                     # Calculate accrued leave
                     accrued_days = total_working_days * daily_rate
                     
                     # Get used days
-                    used_days = leave_balance.used_days if leave_balance else 0
+                    used_days = leave_balance.used_days if leave_balance else Decimal('0')
                     
                     # Calculate total and remaining days
-                    total_days = initial_balance + accrued_days
+                    total_days = Decimal(initial_balance) + accrued_days
                     remaining_days = total_days - used_days
+                    
+                    # Add debug message
+                    print(f"Leave calculation for {leave_type.code}:")
+                    print(f"Start date: {start_date}, End date: {end_date}")
+                    print(f"Working days: {len(attendance_logs)}, Fridays: {friday_count}, Holidays: {len(holiday_dates)}")
+                    print(f"Total working days: {total_working_days}")
+                    print(f"Daily rate: {daily_rate}, Accrued days: {accrued_days}")
+                    print(f"Initial balance: {initial_balance}, Used days: {used_days}")
+                    print(f"Total days: {total_days}, Remaining days: {remaining_days}")
+                    
                 except Exception as e:
+                    print(f"Error in leave calculation: {str(e)}")
                     # If there's an error in calculation, use defaults
                     total_days = 0
                     remaining_days = 0
