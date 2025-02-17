@@ -167,7 +167,7 @@ def leave_balance(request):
         for leave_type in leave_types:
             leave_balance = LeaveBalance.objects.filter(employee=target_employee, leave_type=leave_type).first()
             
-            if leave_type.code in ['ANNUAL', 'HALF_DAY']:  # Special calculation for annual and half-day leaves
+            if leave_type.code in ['ANNUAL', 'HALF']:  # Special calculation for annual and half-day leaves
                 # Get beginning balance
                 beginning_balance = LeaveBeginningBalance.objects.filter(
                     employee=target_employee,
@@ -206,8 +206,7 @@ def leave_balance(request):
                         employee=target_employee,
                         date__range=[start_date, end_date]
                     ).exclude(
-                        Q(status='absent') & 
-                        ~Q(date__in=holiday_dates)
+                        Q(status='absent')
                     ).values_list('date', flat=True))
                     
                     # Count Fridays that should be included
@@ -219,21 +218,22 @@ def leave_balance(request):
                             saturday = current_date + timedelta(days=1)
                             
                             # Check if Thursday or Saturday was attended or was a holiday
-                            thursday_attended = thursday in attendance_logs
-                            saturday_attended = saturday in attendance_logs
-                            thursday_holiday = thursday in holiday_dates
-                            saturday_holiday = saturday in holiday_dates
+                            thursday_attended = thursday in attendance_logs or thursday in holiday_dates
+                            saturday_attended = saturday in attendance_logs or saturday in holiday_dates
                             
-                            if thursday_attended or saturday_attended or thursday_holiday or saturday_holiday:
+                            if thursday_attended or saturday_attended:
                                 friday_count += 1
                         
                         current_date += timedelta(days=1)
                     
-                    # Calculate total working days including valid Fridays
-                    total_working_days = len(attendance_logs) + friday_count
+                    # Calculate total working days including valid Fridays and holidays
+                    total_working_days = len(attendance_logs) + friday_count + len(holiday_dates)
+                    
+                    # Calculate monthly rate (2.5 days per month, assuming 30 working days per month)
+                    daily_rate = 2.5 / 30
                     
                     # Calculate accrued leave
-                    accrued_days = total_working_days * 0.083286667
+                    accrued_days = total_working_days * daily_rate
                     
                     # Get used days
                     used_days = leave_balance.used_days if leave_balance else 0
@@ -241,36 +241,23 @@ def leave_balance(request):
                     # Calculate total and remaining days
                     total_days = initial_balance + accrued_days
                     remaining_days = total_days - used_days
-                    
-                    balances.append({
-                        'leave_type': leave_type,
-                        'total_days': round(total_days, 2),
-                        'used_days': round(used_days, 2),
-                        'remaining_days': round(remaining_days, 2)
-                    })
                 except Exception as e:
-                    messages.error(request, f"Error calculating {leave_type.name} balance: {str(e)}")
-                    balances.append({
-                        'leave_type': leave_type,
-                        'total_days': initial_balance,
-                        'used_days': used_days if 'used_days' in locals() else 0,
-                        'remaining_days': initial_balance
-                    })
-            else:  # Regular leave types
-                if leave_balance:  # Check if balance exists
-                    balances.append({
-                        'leave_type': leave_type,
-                        'total_days': leave_type.days_allowed,
-                        'used_days': leave_balance.used_days,
-                        'remaining_days': leave_balance.available_days
-                    })
-                else:
-                    balances.append({ # Handle case where LeaveBalance does not exist.
-                        'leave_type': leave_type,
-                        'total_days': leave_type.days_allowed,
-                        'used_days': 0,
-                        'remaining_days': leave_type.days_allowed
-                    })
+                    # If there's an error in calculation, use defaults
+                    total_days = 0
+                    remaining_days = 0
+                    used_days = 0
+            else:
+                # For all other leave types, simply use the allowed days and subtract used days
+                total_days = leave_type.days_allowed
+                used_days = leave_balance.used_days if leave_balance else 0
+                remaining_days = total_days - used_days
+            
+            balances.append({
+                'leave_type': leave_type,
+                'total_days': round(total_days, 2),
+                'used_days': round(used_days, 2),
+                'remaining_days': round(remaining_days, 2)
+            })
 
     # Add context for template
     context = {
@@ -283,15 +270,12 @@ def leave_balance(request):
         'selected_employee': selected_employee
     }
 
+    #save context to txt file
+    with open('context.txt', 'w') as f:
+        f.write(str(context))
+
     return render(request, 'attendance/leave_balance.html', context)
 
-
-    context = {
-        'balances': balances,
-        'form': form,
-        'beginning_balances': beginning_balances
-    }
-    return render(request, 'attendance/leave_balance.html', context)
 
 @login_required
 def leave_types(request):

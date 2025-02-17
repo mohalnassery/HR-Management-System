@@ -1,0 +1,11 @@
+{
+    "departments": [],
+    "employees": [
+        {
+            "id": 194,
+            "name": "AHMED KADHIM nan (1001)"
+        }
+    ],
+    "selected_department": null,
+    "selected_employee": null
+}
