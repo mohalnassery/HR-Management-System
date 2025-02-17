@@ -102,32 +102,32 @@
             <div class="col-md-3">
                 <div class="card bg-success text-white">
                     <div class="card-body">
-                        <h6 class="card-title">Present</h6>
-                        <h3 class="card-text" id="present-count">0</h3>
+                        <h5 class="card-title">Present</h5>
+                        <h2 class="mb-0" id="present-count">{{ present_count }}</h2>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card bg-danger text-white">
                     <div class="card-body">
-                        <h6 class="card-title">Absent</h6>
-                        <h3 class="card-text" id="absent-count">0</h3>
+                        <h5 class="card-title">Absent</h5>
+                        <h2 class="mb-0" id="absent-count">{{ absent_count }}</h2>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card bg-warning">
+                <div class="card bg-warning text-dark">
                     <div class="card-body">
-                        <h6 class="card-title">Late</h6>
-                        <h3 class="card-text" id="late-count">0</h3>
+                        <h5 class="card-title">Late</h5>
+                        <h2 class="mb-0" id="late-count">{{ late_count }}</h2>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card bg-info text-white">
                     <div class="card-body">
-                        <h6 class="card-title">On Leave</h6>
-                        <h3 class="card-text" id="leave-count">0</h3>
+                        <h5 class="card-title">On Leave</h5>
+                        <h2 class="mb-0" id="leave-count">{{ on_leave_count }}</h2>
                     </div>
                 </div>
             </div>
@@ -169,15 +169,20 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Initial load
+    // Set default dates to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('start-date').value = today;
+    document.getElementById('end-date').value = today;
+
+    // Initial load of attendance data
     fetchAttendanceLogs();
 
     // Add event listeners for filters
-    document.getElementById('start-date').addEventListener('change', () => fetchAttendanceLogs(1));
-    document.getElementById('end-date').addEventListener('change', () => fetchAttendanceLogs(1));
-    document.getElementById('department-filter').addEventListener('change', () => fetchAttendanceLogs(1));
-    document.getElementById('status-filter').addEventListener('change', () => fetchAttendanceLogs(1));
-    document.getElementById('search-input').addEventListener('input', debounce(() => fetchAttendanceLogs(1), 500));
+    document.getElementById('start-date').addEventListener('change', debounce(fetchAttendanceLogs, 500));
+    document.getElementById('end-date').addEventListener('change', debounce(fetchAttendanceLogs, 500));
+    document.getElementById('department-filter').addEventListener('change', debounce(fetchAttendanceLogs, 500));
+    document.getElementById('status-filter').addEventListener('change', debounce(fetchAttendanceLogs, 500));
+    document.getElementById('search-input').addEventListener('input', debounce(fetchAttendanceLogs, 500));
 
     // Initialize employee select in reprocess modal
     const employeeSelect = document.querySelector('#reprocessModal select[name="employee_id"]');

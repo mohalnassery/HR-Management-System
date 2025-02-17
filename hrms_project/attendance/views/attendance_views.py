@@ -33,9 +33,43 @@ from attendance.utils import process_attendance_excel, process_daily_attendance,
 @login_required
 def attendance_list(request):
     """Display attendance list page"""
+    # Get filter parameters
+    start_date = request.GET.get('start_date', date.today().strftime('%Y-%m-%d'))
+    end_date = request.GET.get('end_date', date.today().strftime('%Y-%m-%d'))
+    department = request.GET.get('department', '')
+    search = request.GET.get('search', '')
+
+    # Base queryset
+    queryset = AttendanceLog.objects.filter(date=date.today())
+
+    # Apply filters
+    if department:
+        queryset = queryset.filter(employee__department_id=department)
+    if search:
+        queryset = queryset.filter(
+            Q(employee__first_name__icontains=search) |
+            Q(employee__last_name__icontains=search) |
+            Q(employee__employee_number__icontains=search)
+        )
+
+    # Calculate summary counts
+    present_count = queryset.filter(first_in_time__isnull=False, is_late=False).count()
+    late_count = queryset.filter(is_late=True).count()
+    absent_count = queryset.filter(first_in_time__isnull=True).count()
+    on_leave_count = Leave.objects.filter(
+        Q(start_date__lte=date.today()) & 
+        Q(end_date__gte=date.today()) &
+        Q(status='approved')
+    ).count()
+
     context = {
-        'departments': Department.objects.all()
+        'departments': Department.objects.all(),
+        'present_count': present_count,
+        'late_count': late_count,
+        'absent_count': absent_count,
+        'on_leave_count': on_leave_count,
     }
+    print(context)
     return render(request, 'attendance/attendance_list.html', context)
 
 @login_required
@@ -319,6 +353,64 @@ class AttendanceLogListViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        
+        # Calculate summary counts
+        present_count = queryset.filter(first_in_time__isnull=False, is_late=False).count()
+        late_count = queryset.filter(is_late=True).count()
+        absent_count = queryset.filter(first_in_time__isnull=True).count()
+        
+        # Get on leave count with proper date validation
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        # Use today's date if no valid dates are provided
+        try:
+            if not start_date:
+                start_date = date.today()
+            else:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                
+            if not end_date:
+                end_date = date.today()
+            else:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            # If date parsing fails, default to today
+            start_date = date.today()
+            end_date = date.today()
+
+        on_leave_count = Leave.objects.filter(
+            Q(start_date__lte=end_date) & 
+            Q(end_date__gte=start_date) &
+            Q(status='approved')
+        ).count()
+
+        # Get paginated results
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['summary'] = {
+                'present': present_count,
+                'absent': absent_count,
+                'late': late_count,
+                'leave': on_leave_count
+            }
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'results': serializer.data,
+            'summary': {
+                'present': present_count,
+                'absent': absent_count,
+                'late': late_count,
+                'leave': on_leave_count
+            }
+        })
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
