@@ -9,9 +9,55 @@
                 <h5 class="mb-0">Daily Attendance</h5>
             </div>
             <div class="col-auto">
+                <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#reprocessModal">
+                    <i class="fas fa-sync"></i> Reprocess Attendance
+                </button>
                 <a href="{% url 'attendance:upload_attendance' %}" class="btn btn-primary">
                     <i class="fas fa-upload"></i> Upload Attendance
                 </a>
+            </div>
+
+            <!-- Reprocess Modal -->
+            <div class="modal fade" id="reprocessModal" tabindex="-1" aria-labelledby="reprocessModalLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form method="post" action="{% url 'attendance:reprocess_attendance' %}">
+                            {% csrf_token %}
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="reprocessModalLabel">Reprocess Attendance</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Date Range</label>
+                                    <div class="row">
+                                        <div class="col">
+                                            <input type="date" name="start_date" class="form-control" required>
+                                        </div>
+                                        <div class="col">
+                                            <input type="date" name="end_date" class="form-control" required>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Employee (Optional)</label>
+                                    <select name="employee_id" class="form-select">
+                                        <option value="">All Employees</option>
+                                    </select>
+                                </div>
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle"></i> This will recalculate attendance statuses based on current rules. Please use with caution.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="fas fa-sync"></i> Reprocess
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -132,6 +178,36 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('department-filter').addEventListener('change', () => fetchAttendanceLogs(1));
     document.getElementById('status-filter').addEventListener('change', () => fetchAttendanceLogs(1));
     document.getElementById('search-input').addEventListener('input', debounce(() => fetchAttendanceLogs(1), 500));
+
+    // Initialize employee select in reprocess modal
+    const employeeSelect = document.querySelector('#reprocessModal select[name="employee_id"]');
+    employeeSelect.addEventListener('focus', function() {
+        if (!this.dataset.loaded) {
+            fetch('{% url "attendance:get_department_employees" %}')
+                .then(response => response.json())
+                .then(data => {
+                    const options = data.employees.map(emp => 
+                        `<option value="${emp.id}">${emp.name}</option>`
+                    ).join('');
+                    this.innerHTML += options;
+                    this.dataset.loaded = 'true';
+                })
+                .catch(error => console.error('Error loading employees:', error));
+        }
+    });
+
+    // Automatically populate reprocess date range with current filter values
+    document.querySelector('[data-bs-target="#reprocessModal"]').addEventListener('click', function() {
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+        
+        if (startDate) {
+            document.querySelector('#reprocessModal input[name="start_date"]').value = startDate;
+        }
+        if (endDate) {
+            document.querySelector('#reprocessModal input[name="end_date"]').value = endDate;
+        }
+    });
 });
 
 function debounce(func, wait) {

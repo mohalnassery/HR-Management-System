@@ -9,6 +9,7 @@ from django.http import JsonResponse, Http404
 from django.utils import timezone
 from django.contrib import messages
 from django.conf import settings
+from django.core.management import call_command
 from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes, action
@@ -29,7 +30,6 @@ from attendance.serializers import (
 )
 from attendance.utils import process_attendance_excel, process_daily_attendance, get_attendance_summary
 
-
 @login_required
 def attendance_list(request):
     """Display attendance list page"""
@@ -38,18 +38,15 @@ def attendance_list(request):
     }
     return render(request, 'attendance/attendance_list.html', context)
 
-
 @login_required
 def mark_attendance(request):
     """View for manual attendance marking"""
     return render(request, 'attendance/mark_attendance.html')
 
-
 @login_required
 def upload_attendance(request):
     """Display attendance upload page"""
     return render(request, 'attendance/upload_attendance.html')
-
 
 @login_required
 def attendance_detail_view(request):
@@ -167,7 +164,6 @@ def attendance_detail_view(request):
         messages.error(request, "An error occurred while retrieving attendance details")
         return redirect('attendance:attendance_list')
 
-
 @login_required
 def attendance_report(request):
     """View for displaying attendance reports and analytics"""
@@ -176,6 +172,33 @@ def attendance_report(request):
     }
     return render(request, 'attendance/attendance_report.html', context)
 
+@login_required
+def reprocess_attendance_view(request):
+    """View for triggering attendance reprocessing"""
+    if request.method == 'POST':
+        try:
+            start_date = request.POST.get('start_date')
+            end_date = request.POST.get('end_date')
+            employee_id = request.POST.get('employee_id')
+
+            command_args = []
+            
+            if start_date and end_date:
+                command_args.extend(['--date-range', start_date, end_date])
+            elif start_date:
+                command_args.extend(['--date', start_date])
+                
+            if employee_id:
+                command_args.extend(['--employee-id', employee_id])
+
+            # Call the management command
+            call_command('reprocess_attendance', *command_args)
+            
+            messages.success(request, "Attendance logs have been reprocessed successfully")
+        except Exception as e:
+            messages.error(request, f"Error reprocessing attendance logs: {str(e)}")
+
+    return redirect('attendance:attendance_list')
 
 # API ViewSets
 class AttendanceRecordViewSet(viewsets.ModelViewSet):
@@ -302,7 +325,6 @@ class AttendanceLogListViewSet(viewsets.ReadOnlyModelViewSet):
         context['request'] = self.request
         return context
 
-
 @login_required
 def get_department_employees(request):
     """AJAX view to get employees by department"""
@@ -334,7 +356,6 @@ def get_department_employees(request):
 
     return JsonResponse({'employees': employee_list})
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_employee_attendance(request, employee_id):
@@ -358,7 +379,6 @@ def get_employee_attendance(request, employee_id):
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -410,7 +430,6 @@ def attendance_detail_api(request):
     except AttendanceLog.DoesNotExist:
         return Response({'error': 'Log not found'}, status=404)
 
-
 @api_view(['PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def attendance_record_api(request, record_id):
@@ -443,12 +462,10 @@ def attendance_record_api(request, record_id):
                     first_record = records.first()
                     last_record = records.last()
 
-
                     if log.first_in_time and log.first_in_time == first_record.timestamp.time(): #compare time not datetime
                         log.first_in_time = new_time.time() # set time only
                     elif log.last_out_time and log.last_out_time == last_record.timestamp.time(): #compare time not datetime
                         log.last_out_time = new_time.time() # set time only
-
 
                 log.save()
                 return Response({'status': 'success'})
@@ -457,7 +474,6 @@ def attendance_record_api(request, record_id):
                 
     except AttendanceLog.DoesNotExist:
         return Response({'error': 'Record not found'}, status=404)
-
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -499,7 +515,6 @@ def add_attendance_record(request):
     except Exception as e:
         return Response({'error': f'Error creating record: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 @api_view(['GET'])
 def search_employees(request):
     """Search employees by ID or name"""
@@ -539,7 +554,6 @@ def search_employees(request):
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 @api_view(['GET'])
 def attendance_details(request):

@@ -3,6 +3,7 @@ from typing import Optional
 
 from django.utils import timezone
 
+from ..models import Shift
 from .ramadan_service import RamadanService
 
 class AttendanceStatusService:
@@ -15,10 +16,9 @@ class AttendanceStatusService:
         - Night shift overrides
         - Grace periods
         """
-        if attendance_log.is_leave:
-            return 'leave'
-        elif attendance_log.is_holiday:
-            return 'holiday'
+        # Check existing status for leave and holiday
+        if attendance_log.status in ['leave', 'holiday']:
+            return attendance_log.status
         elif not attendance_log.first_in_time:
             return 'absent'
 
@@ -33,20 +33,11 @@ class AttendanceStatusService:
                 return 'absent'  # No shift assigned and no default shift available
             attendance_log.shift = shift  # Update log with default shift
 
-        # Get base shift timings
-        shift_start_time = shift.default_start_time or shift.start_time
-        shift_end_time = shift.default_end_time or shift.end_time
-
-        # Check for Ramadan period and adjust timings for Muslim employees
-        is_ramadan_period = RamadanService.get_active_period(attendance_log.date) is not None
-        is_muslim_employee = attendance_log.employee.religion == "Muslim"
-
-        if is_ramadan_period and is_muslim_employee:
-            # During Ramadan, Muslim employees work 6 hours
-            shift_end_time = (
-                datetime.combine(attendance_log.date, shift_start_time) + 
-                timedelta(hours=6)
-            ).time()
+        # Get shift timings using ShiftService
+        from .shift_service import ShiftService
+        shift_timing = ShiftService.get_shift_timing(shift, attendance_log.date)
+        shift_start_time = shift_timing['start_time']
+        shift_end_time = shift_timing['end_time']
 
         # Check for night shift override
         if shift.shift_type == 'NIGHT':
@@ -124,22 +115,24 @@ class AttendanceStatusService:
         if not shift:
             return 0
 
-        # Get effective shift timings
-        shift_start_time = shift.default_start_time or shift.start_time
-        shift_end_time = shift.default_end_time or shift.end_time
-
-        # Check for night shift override
-        if shift.shift_type == 'NIGHT':
-            from attendance.models import DateSpecificShiftOverride
-            override = DateSpecificShiftOverride.objects.filter(
-                date=attendance_log.date,
-                shift_type='NIGHT'
-            ).first()
-            if override:
-                if override.override_start_time:
-                    shift_start_time = override.override_start_time
-                if override.override_end_time:
-                    shift_end_time = override.override_end_time
+        # First check for Ramadan timings if employee is Muslim
+        if attendance_log.employee.religion == "Muslim":
+            ramadan_timing = RamadanService.get_ramadan_shift_timing(shift, attendance_log.date)
+            if ramadan_timing:
+                shift_start_time = ramadan_timing['start_time']
+                shift_end_time = ramadan_timing['end_time']
+            else:
+                # Get regular shift timings if not in Ramadan period
+                from .shift_service import ShiftService
+                shift_timing = ShiftService.get_shift_timing(shift, attendance_log.date)
+                shift_start_time = shift_timing['start_time']
+                shift_end_time = shift_timing['end_time']
+        else:
+            # Non-Muslim employees use regular shift timings
+            from .shift_service import ShiftService
+            shift_timing = ShiftService.get_shift_timing(shift, attendance_log.date)
+            shift_start_time = shift_timing['start_time']
+            shift_end_time = shift_timing['end_time']
 
         # Handle night shift spanning midnight
         if shift.shift_type == 'NIGHT' and shift_end_time < shift_start_time:
@@ -151,12 +144,29 @@ class AttendanceStatusService:
         duration = int((last_out - first_in).total_seconds() / 60)  # Convert to minutes
 
         # Check if employee is Muslim and date falls in Ramadan
-        is_ramadan_period = RamadanService.get_active_period(attendance_log.date) is not None
+        ramadan_period = RamadanService.get_active_period(attendance_log.date)
         is_muslim_employee = employee.religion == "Muslim"
 
-        # For non-Ramadan or non-Muslim employees, deduct break duration
-        # During Ramadan, Muslim employees work continuously without break
-        if not (is_ramadan_period and is_muslim_employee):
+        if ramadan_period and is_muslim_employee:
+            if shift.ramadan_end_time:
+                # Use Ramadan-specific end time to calculate duration
+                expected_hours = (
+                    datetime.combine(date, shift.ramadan_end_time) - 
+                    datetime.combine(date, shift_start_time)
+                ).seconds / 3600
+            else:
+                # Calculate Ramadan hours if no specific end time is set
+                normal_hours = (
+                    datetime.combine(date, shift_end_time) - 
+                    datetime.combine(date, shift_start_time)
+                ).seconds / 3600
+                expected_hours = RamadanService.calculate_working_hours(normal_hours, is_ramadan=True)
+
+            # Convert expected hours to minutes for comparison
+            expected_minutes = int(expected_hours * 60)
+            duration = min(duration, expected_minutes)
+        else:
+            # For non-Ramadan or non-Muslim employees, deduct break duration
             duration -= shift.break_duration
 
         return max(duration, 0)  # Ensure non-negative duration

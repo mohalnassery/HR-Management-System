@@ -36,6 +36,7 @@ urlpatterns = [
     path('leave_request_create/', leave_views.leave_request_create, name='leave_request_create'), # Corrected line
     path('upload_attendance/', attendance_views.upload_attendance, name='upload_attendance'),
     path('attendance_report/', attendance_views.attendance_report, name='attendance_report'),
+    path('reprocess_attendance/', attendance_views.reprocess_attendance_view, name='reprocess_attendance'),
     path('holiday_list/', holiday_views.holiday_list, name='holiday_list'),
     path('holiday_create/', holiday_views.holiday_create, name='holiday_create'),
     path('holiday_edit/<int:pk>/', holiday_views.holiday_edit, name='holiday_edit'),

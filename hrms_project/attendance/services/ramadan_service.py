@@ -159,6 +159,36 @@ class RamadanService:
         return max(normal_hours - 2, 4)  # Minimum 4 hours
 
     @staticmethod
+    def get_ramadan_shift_timing(shift, date) -> Dict[str, Any]:
+        """
+        Get Ramadan-adjusted shift timing if applicable
+
+        Args:
+            shift: The shift to get timings for
+            date: The date to check
+
+        Returns:
+            Dict with start_time and end_time, or empty dict if not in Ramadan
+        """
+        if not shift:
+            return {}
+
+        # Check if date falls in Ramadan period
+        ramadan_period = RamadanService.get_active_period(date)
+        if not ramadan_period:
+            return {}
+
+        # Use Ramadan specific times if set, otherwise use default times
+        start_time = shift.ramadan_start_time or shift.start_time
+        end_time = shift.ramadan_end_time or shift.end_time
+
+        return {
+            'start_time': start_time,
+            'end_time': end_time,
+            'is_ramadan': True
+        }
+
+    @staticmethod
     def validate_period_dates(
         start_date: date,
         end_date: date,
