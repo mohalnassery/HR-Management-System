@@ -381,6 +381,38 @@ class RecurringHolidayService:
                 is_recurring=False  # New instance is not recurring
             )
 
+class RamadanService:
+    """Service class for handling Ramadan-specific logic"""
+
+    @staticmethod
+    def get_ramadan_shift_timing(shift, date):
+        """
+        Get Ramadan-adjusted shift timing if applicable
+        Returns dict with start_time and end_time
+        """
+        if not shift:
+            return {}
+
+        # Check if date falls in Ramadan period
+        ramadan_period = RamadanPeriod.objects.filter(
+            year=date.year,
+            start_date__lte=date,
+            end_date__gte=date,
+            is_active=True
+        ).first()
+
+        if not ramadan_period:
+            return {}
+
+        # Use Ramadan specific times if set, otherwise use default times
+        start_time = shift.ramadan_start_time or shift.start_time
+        end_time = shift.ramadan_end_time or shift.end_time
+
+        return {
+            'start_time': start_time,
+            'end_time': end_time
+        }
+
 class HolidayService:
     @staticmethod
     def generate_next_year_holidays():

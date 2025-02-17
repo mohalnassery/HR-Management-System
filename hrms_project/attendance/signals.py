@@ -3,6 +3,8 @@ from django.dispatch import receiver
 from django.core.cache import cache
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
+from datetime import datetime, timedelta
 
 from .models import Shift, ShiftAssignment, RamadanPeriod, AttendanceLog
 from .services import ShiftService, RamadanService
@@ -142,52 +144,70 @@ def handle_shift_changes(sender, instance, created, **kwargs):
 
 @receiver(pre_save, sender=AttendanceLog)
 def calculate_attendance_status(sender, instance, **kwargs):
-    """Calculate attendance status based on shift"""
-    if not hasattr(instance, 'employee'):
+    """
+    Calculate attendance status based on shift
+    """
+    # Skip calculation for holidays and leaves
+    if instance.status in ['holiday', 'leave']:
         return
-        
-    # Get employee's shift for the date
-    shift = ShiftService.get_employee_current_shift(instance.employee)
+
+    # Get the employee's shift for this date
+    shift = instance.shift
     if not shift:
+        shift = ShiftAssignment.objects.filter(
+            employee=instance.employee,
+            start_date__lte=instance.date,
+            is_active=True
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=instance.date)
+        ).order_by('-start_date').first()
+
+        if shift:
+            shift = shift.shift
+        else:
+            # Use default shift if no assignment found
+            shift = Shift.objects.filter(shift_type='DEFAULT', is_active=True).first()
+
+        instance.shift = shift
+
+    if not shift:
+        instance.status = 'absent'
         return
-        
-    # Get Ramadan adjusted timing if applicable
-    ramadan_timing = RamadanService.get_ramadan_shift_timing(shift, instance.date)
-    
-    if ramadan_timing:
-        shift_start = ramadan_timing['start_time']
-        shift_end = ramadan_timing['end_time']
-    else:
-        shift_start = shift.start_time
-        shift_end = shift.end_time
-    
-    # Calculate late status
+
+    # If we have first_in_time, employee is present
     if instance.first_in_time:
-        grace_minutes = shift.grace_period
-        shift_start_dt = datetime.combine(instance.date, shift_start)
-        actual_in_dt = datetime.combine(instance.date, instance.first_in_time)
+        # Get shift timing considering Ramadan period
+        ramadan_timing = RamadanService.get_ramadan_shift_timing(shift, instance.date)
+        start_time = ramadan_timing.get('start_time', shift.start_time)
         
-        instance.is_late = actual_in_dt > (shift_start_dt + timedelta(minutes=grace_minutes))
-        if instance.is_late:
-            instance.late_minutes = int((actual_in_dt - shift_start_dt).total_seconds() / 60)
-    
-    # Calculate early departure
-    if instance.last_out_time:
-        shift_end_dt = datetime.combine(instance.date, shift_end)
-        actual_out_dt = datetime.combine(instance.date, instance.last_out_time)
+        # Convert times to datetime for comparison
+        date = instance.date
+        shift_start = datetime.combine(date, start_time)
+        first_in = datetime.combine(date, instance.first_in_time)
+
+        # Calculate late minutes
+        grace_minutes = shift.grace_period if shift else 15
+        grace_time = shift_start + timedelta(minutes=grace_minutes)
         
-        instance.early_departure = actual_out_dt < shift_end_dt
-        if instance.early_departure:
-            instance.early_minutes = int((shift_end_dt - actual_out_dt).total_seconds() / 60)
-    
-    # Calculate work duration
-    if instance.first_in_time and instance.last_out_time:
-        total_minutes = int(
-            (instance.last_out_time.hour * 60 + instance.last_out_time.minute) -
-            (instance.first_in_time.hour * 60 + instance.first_in_time.minute)
-        )
-        # Subtract break duration
-        instance.total_work_minutes = max(0, total_minutes - shift.break_duration)
+        if first_in > grace_time:
+            instance.is_late = True
+            instance.late_minutes = int((first_in - grace_time).total_seconds() / 60)
+            instance.status = 'late'
+        else:
+            instance.is_late = False
+            instance.late_minutes = 0
+            instance.status = 'present'
+
+        # Calculate total work minutes if we have last_out_time
+        if instance.last_out_time:
+            last_out = datetime.combine(date, instance.last_out_time)
+            if last_out < first_in:  # Handle case where checkout is next day
+                last_out += timedelta(days=1)
+            total_minutes = int((last_out - first_in).total_seconds() / 60)
+            instance.total_work_minutes = max(0, total_minutes)
+    else:
+        instance.status = 'absent'
+        instance.total_work_minutes = 0
 
 @receiver(post_save, sender=AttendanceRecord)
 def process_attendance_record(sender, instance, created, **kwargs):
@@ -342,25 +362,20 @@ def process_holiday(sender, instance, created, **kwargs):
     if not instance.is_active:
         return
 
-    # Create attendance logs for holiday
+    # Get all active employees
     employees = Employee.objects.filter(is_active=True)
-    if instance.applicable_departments.exists():
-        employees = employees.filter(department__in=instance.applicable_departments.all())
 
     for employee in employees:
-        # Skip if log already exists
-        if not AttendanceLog.objects.filter(
+        # Update or create attendance log
+        AttendanceLog.objects.update_or_create(
             employee=employee,
             date=instance.date,
-            is_active=True
-        ).exists():
-            AttendanceLog.objects.create(
-                employee=employee,
-                date=instance.date,
-                status='holiday',
-                source='holiday',
-                holiday=instance
-            )
+            defaults={
+                'status': 'holiday',
+                'source': 'holiday',
+                'is_active': True
+            }
+        )
 
 @receiver(post_delete, sender=Holiday)
 def cleanup_holiday(sender, instance, **kwargs):
@@ -371,7 +386,6 @@ def cleanup_holiday(sender, instance, **kwargs):
     AttendanceLog.objects.filter(
         date=instance.date,
         source='holiday',
-        holiday=instance,
         is_active=True
     ).delete()
 

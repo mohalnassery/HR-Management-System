@@ -58,11 +58,29 @@ def calendar_events(request):
     employee = request.query_params.get('employee')
 
     try:
-        # Parse ISO format dates with timezone
-        start = datetime.fromisoformat(start_date.replace('Z', '+00:00')).date()
-        end = datetime.fromisoformat(end_date.replace('Z', '+00:00')).date()
+        # Parse dates in YYYY-MM-DD format
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
 
-        # Build query
+        # Get holidays in the date range
+        holidays = Holiday.objects.filter(
+            date__range=[start, end],
+            is_active=True
+        )
+        
+        # Create holiday events first
+        events = []
+        for holiday in holidays:
+            events.append({
+                'id': f'holiday_{holiday.id}',
+                'title': holiday.name,  # Show holiday name instead of employee
+                'start': holiday.date.isoformat(),
+                'end': holiday.date.isoformat(),
+                'color': '#6f42c1',  # purple for holidays
+                'allDay': True
+            })
+
+        # Build query for attendance logs
         query = Q(date__range=[start, end])
         if department:
             query &= Q(employee__department_id=department)
@@ -71,20 +89,29 @@ def calendar_events(request):
 
         logs = AttendanceLog.objects.filter(query).select_related('employee')
 
-        events = []
+        # Add attendance events
         for log in logs:
-            status = 'Present'
-            color = '#28a745'  # green
-
-            if not log.first_in_time:
-                status = 'Absent'
+            # Skip weekends (Friday) unless there's attendance
+            if log.date.weekday() == 4:  # Friday is 4 in Python's weekday() (0 = Monday)
+                if not log.first_in_time:
+                    continue  # Skip showing absent on Fridays
+            
+            status = log.status.title()
+            
+            # Set color based on status
+            if status == 'Present':
+                color = '#28a745'  # green
+            elif status == 'Absent' and log.date.weekday() != 4:  # Don't show absent for Fridays
                 color = '#dc3545'  # red
-            elif log.is_late:
-                status = 'Late'
+            elif status == 'Late':
                 color = '#ffc107'  # yellow
+            elif status == 'Leave':
+                color = '#17a2b8'  # cyan
+            else:
+                continue  # Skip other statuses like holiday since we handle them separately
 
             events.append({
-                'id': log.id,
+                'id': f'attendance_{log.id}',
                 'title': f"{log.employee.get_full_name()} - {status}",
                 'start': log.date.isoformat(),
                 'end': log.date.isoformat(),
@@ -99,7 +126,11 @@ def calendar_events(request):
 
         return Response(events)
     except (ValueError, TypeError) as e:
-        return Response({'error': f'Invalid date format: {str(e)}'}, status=400)
+        print(e)
+        return Response({
+            'error': f'Invalid date format. Expected YYYY-MM-DD, received: start={start_date}, end={end_date}',
+            'details': str(e)
+        }, status=400)
 
 
 # API Views - Keep these API views here as they are general API related

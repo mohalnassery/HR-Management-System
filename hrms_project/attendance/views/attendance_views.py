@@ -8,6 +8,7 @@ from django.db.models import Q, Sum, Count
 from django.http import JsonResponse, Http404
 from django.utils import timezone
 from django.contrib import messages
+from django.conf import settings
 from rest_framework import status
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes, action
@@ -19,10 +20,13 @@ from rest_framework.pagination import PageNumberPagination
 from employees.models import Employee, Department
 from attendance.models import (
     AttendanceRecord, AttendanceLog, Leave, Holiday, LeaveType,
-    RamadanPeriod
+    RamadanPeriod, ShiftAssignment
 )
 from attendance.services import ShiftService, RamadanService
-from attendance.serializers import ShiftSerializer, AttendanceRecordSerializer, AttendanceLogSerializer, LeaveSerializer, HolidaySerializer
+from attendance.serializers import (
+    ShiftSerializer, AttendanceRecordSerializer, AttendanceLogSerializer,
+    LeaveSerializer, HolidaySerializer
+)
 from attendance.utils import process_attendance_excel, process_daily_attendance, get_attendance_summary
 
 
@@ -58,10 +62,14 @@ def attendance_detail_view(request):
             raise Http404("Missing required parameters")
             
         try:
-            # Parse the date from the URL
-            date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
+            # Try parsing YYYY-MM-DD format first
+            date = datetime.strptime(date_str.strip(), '%Y-%m-%d').date()
         except ValueError:
-            raise Http404("Invalid date format")
+            try:
+                # Fallback to MMM DD, YYYY format
+                date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
+            except ValueError:
+                raise Http404("Invalid date format. Expected YYYY-MM-DD or MMM DD, YYYY")
             
         try:
             employee = Employee.objects.get(employee_number=personnel_id)
@@ -73,7 +81,7 @@ def attendance_detail_view(request):
             employee=employee,
             date=date,
             defaults={
-                'source': 'Web Interface'
+                'source': 'manual'
             }
         )
             
@@ -84,15 +92,17 @@ def attendance_detail_view(request):
             is_active=True
         ).order_by('timestamp')
         
+        # Get the employee's shift for this date
+        shift = ShiftService.get_employee_current_shift(employee)
+        shift_start = shift.start_time if shift else time(8, 0)  # Default to 8 AM
+        shift_end = shift.end_time if shift else time(17, 0)  # Default to 5 PM
+        
         # Calculate statistics
         total_hours = timedelta()
-        status = 'Absent'
-        is_late = False
+        status = log.status
+        is_late = log.is_late
         first_in = None
         last_out = None
-        
-        # Default shift start time (8:00 AM)
-        shift_start = time(8, 0)  # Using datetime.time
         
         records = []
         if attendance_records:
@@ -100,81 +110,63 @@ def attendance_detail_view(request):
             first_record = attendance_records.first()
             last_record = attendance_records.last()
             
-            # Set first IN
-            first_in = first_record.timestamp.time()
-            is_late = first_in > shift_start
-            status = 'Late' if is_late else 'Present'
-            
-            # Set last OUT
-            last_out = last_record.timestamp.time()
-            
-            # Calculate total hours from first IN to last OUT
-            if first_in and last_out:
-                in_datetime = datetime.combine(date, first_in)
-                out_datetime = datetime.combine(date, last_out)
-                
-                # Handle case where checkout is next day
-                if out_datetime < in_datetime:
-                    out_datetime += timedelta(days=1)
-                    
-                total_hours = out_datetime - in_datetime
-            
-            # Prepare records for template, alternating between IN and OUT
-            for i, record in enumerate(attendance_records):
-                # First record is IN, last record is OUT, others alternate
-                if record == first_record:
-                    record_type = 'IN'
-                    is_special = True
-                    badge_class = 'bg-primary'
-                    label = ' (First)'
-                elif record == last_record:
-                    record_type = 'OUT'
-                    is_special = True
-                    badge_class = 'bg-primary'
-                    label = ' (Last)'
-                else:
-                    # Alternate between IN and OUT for middle records
-                    record_type = 'IN' if i % 2 == 0 else 'OUT'
-                    is_special = False
-                    badge_class = 'bg-success' if record_type == 'IN' else 'bg-danger'
-                    label = ''
-                
+            if first_record:
+                first_in = first_record.timestamp
                 records.append({
-                    'id': record.id,
-                    'time': record.timestamp.strftime('%I:%M %p'),
-                    'type': record_type,
-                    'label': label,
-                    'source': record.event_description or '-',
-                    'device_name': record.device_name or '-',
-                    'is_special': is_special,
-                    'badge_class': badge_class
+                    'id': first_record.id,
+                    'time': first_record.timestamp.strftime('%I:%M %p'),
+                    'type': 'IN',
+                    'label': ' (First)',
+                    'source': first_record.event_description or '-',
+                    'device_name': first_record.device_name or '-',
+                    'is_special': True,
+                    'badge_class': 'bg-primary'
                 })
+            
+            if last_record and last_record != first_record:
+                last_out = last_record.timestamp
+                records.append({
+                    'id': last_record.id,
+                    'time': last_record.timestamp.strftime('%I:%M %p'),
+                    'type': 'OUT',
+                    'label': ' (Last)',
+                    'source': last_record.event_description or '-',
+                    'device_name': last_record.device_name or '-',
+                    'is_special': True,
+                    'badge_class': 'bg-primary'
+                })
+                
+                if first_in and last_out:
+                    total_hours = last_out - first_in
         
         # Format total hours as decimal
         total_hours_decimal = total_hours.total_seconds() / 3600
         
         context = {
-            'log': log,
-            'employee_name': log.employee.get_full_name(),
-            'personnel_id': log.employee.employee_number,
-            'department': log.employee.department.name if log.employee.department else '-',
-            'designation': log.employee.designation or '-',
+            'employee_name': employee.get_full_name(),
+            'personnel_id': employee.employee_number,
+            'department': employee.department.name if employee.department else '-',
+            'designation': employee.designation or '-',
             'date': date.strftime('%b %d, %Y'),
             'day': date.strftime('%A'),
             'records': records,
             'stats': {
                 'total_hours': f"{total_hours_decimal:.2f}",
                 'is_late': is_late,
-                'status': status,
+                'status': status.title(),
                 'first_in': first_in.strftime('%I:%M %p') if first_in else '-',
                 'last_out': last_out.strftime('%I:%M %p') if last_out else '-',
             }
         }
-            
+        
         return render(request, 'attendance/attendance_detail.html', context)
         
-    except AttendanceLog.DoesNotExist:
-        raise Http404("Attendance log not found")
+    except Exception as e:
+        if settings.DEBUG:
+            raise e
+        messages.error(request, "An error occurred while retrieving attendance details")
+        return redirect('attendance:attendance_list')
+
 
 @login_required
 def attendance_report(request):

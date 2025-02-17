@@ -268,7 +268,11 @@ class AttendanceLog(models.Model):
     total_work_minutes = models.PositiveIntegerField(default=0)
     source = models.CharField(
         max_length=20,
-        choices=[('system', 'System'), ('manual', 'Manual')],
+        choices=[
+            ('system', 'System'),
+            ('manual', 'Manual'),
+            ('holiday', 'Holiday')
+        ],
         default='system'
     )
     is_active = models.BooleanField(default=True)
@@ -285,7 +289,7 @@ class AttendanceLog(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.employee} - {self.date}"
+        return f"{self.employee} - {self.date} ({self.status})"
 
 class AttendanceEdit(models.Model):
     """Track changes to attendance logs"""
@@ -610,8 +614,6 @@ class Holiday(models.Model):
     )
     description = models.TextField(blank=True)
     is_paid = models.BooleanField(default=True)
-    
-    # System fields
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -625,4 +627,4 @@ class Holiday(models.Model):
         ordering = ['-date']
 
     def __str__(self):
-        return f"{self.name} - {self.date}"
+        return f"{self.name} ({self.date})"

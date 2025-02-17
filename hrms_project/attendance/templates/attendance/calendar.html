@@ -244,18 +244,18 @@ document.addEventListener('DOMContentLoaded', function() {
             const department = $('#department-filter').val();
             const employee = $('#employee-filter').val();
             
-            // Format dates in ISO format without timezone
-            const start = info.startStr;
-            const end = info.endStr;
+            // Format dates in ISO format (YYYY-MM-DD)
+            const start = info.start.toISOString().split('T')[0];
+            const end = info.end.toISOString().split('T')[0];
             
             fetch(`/attendance/api/calendar_events/?start=${start}&end=${end}&department=${department}&employee=${employee}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
+                    if (data.error) {
+                        console.error('Server error:', data.error);
+                        failureCallback(new Error(data.error));
+                        return;
+                    }
                     successCallback(data);
                 })
                 .catch(error => {
