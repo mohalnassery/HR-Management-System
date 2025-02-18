@@ -100,102 +100,75 @@ def attendance_detail_view(request):
                 # Fallback to MMM DD, YYYY format
                 date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
             except ValueError:
-                raise Http404("Invalid date format. Expected YYYY-MM-DD or MMM DD, YYYY")
-            
-        try:
-            employee = Employee.objects.get(employee_number=personnel_id)
-        except Employee.DoesNotExist:
-            raise Http404("Employee not found")
+                raise Http404("Invalid date format")
 
-        # Get or create the attendance log
-        log, created = AttendanceLog.objects.get_or_create(
+        # Get employee and attendance log
+        employee = get_object_or_404(Employee, employee_number=personnel_id)
+        log = get_object_or_404(AttendanceLog, employee=employee, date=date)
+
+        # Get all raw attendance records for this date
+        records = AttendanceRecord.objects.filter(
             employee=employee,
-            date=date,
-            defaults={
-                'source': 'manual'
-            }
-        )
-            
-        # Get all raw attendance records for this employee on this date
-        attendance_records = AttendanceRecord.objects.filter(
-            employee=log.employee,
             timestamp__date=date,
             is_active=True
         ).order_by('timestamp')
-        
-        # Get the employee's shift for this date
-        shift = ShiftService.get_employee_current_shift(employee)
-        shift_start = shift.start_time if shift else time(8, 0)  # Default to 8 AM
-        shift_end = shift.end_time if shift else time(17, 0)  # Default to 5 PM
-        
-        # Calculate statistics
-        total_hours = timedelta()
-        status = log.status
-        is_late = log.is_late
-        first_in = None
-        last_out = None
-        
-        records = []
-        if attendance_records:
-            # First record of the day is IN, last is OUT
-            first_record = attendance_records.first()
-            last_record = attendance_records.last()
+
+        # Find first IN and last OUT records
+        first_in_record = None
+        last_out_record = None
+        for record in records:
+            if record.event_point == 'IN':
+                if not first_in_record:
+                    first_in_record = record
+            elif record.event_point == 'OUT':
+                last_out_record = record
+
+        raw_records = []
+        for record in records:
+            is_first_in = record == first_in_record
+            is_last_out = record == last_out_record
             
-            if first_record:
-                first_in = first_record.timestamp
-                records.append({
-                    'id': first_record.id,
-                    'time': first_record.timestamp.strftime('%I:%M %p'),
-                    'type': 'IN',
-                    'label': ' (First)',
-                    'source': first_record.event_description or '-',
-                    'device_name': first_record.device_name or '-',
-                    'is_special': True,
-                    'badge_class': 'bg-primary'
-                })
-            
-            if last_record and last_record != first_record:
-                last_out = last_record.timestamp
-                records.append({
-                    'id': last_record.id,
-                    'time': last_record.timestamp.strftime('%I:%M %p'),
-                    'type': 'OUT',
-                    'label': ' (Last)',
-                    'source': last_record.event_description or '-',
-                    'device_name': last_record.device_name or '-',
-                    'is_special': True,
-                    'badge_class': 'bg-primary'
-                })
-                
-                if first_in and last_out:
-                    total_hours = last_out - first_in
-        
-        # Format total hours as decimal
-        total_hours_decimal = total_hours.total_seconds() / 3600
-        
+            raw_records.append({
+                'id': record.id,
+                'time': record.timestamp.strftime('%I:%M %p'),
+                'event_point': record.event_point,
+                'description': record.event_description or 'Normal Punch',
+                'device': record.device_name or 'Unknown Device',
+                'is_first_in': is_first_in,
+                'is_last_out': is_last_out,
+                'label': ' (First)' if is_first_in else (' (Last)' if is_last_out else ''),
+                'row_class': 'table-primary' if is_first_in or is_last_out else ''
+            })
+
+        # Calculate total hours
+        total_hours = 0
+        if log.first_in_time and log.last_out_time:
+            first_in = datetime.combine(date, log.first_in_time)
+            last_out = datetime.combine(date, log.last_out_time)
+            duration = last_out - first_in
+            total_hours = round(duration.total_seconds() / 3600, 2)
+
         context = {
             'employee_name': employee.get_full_name(),
-            'personnel_id': employee.employee_number,
+            'personnel_id': personnel_id,
             'department': employee.department.name if employee.department else '-',
             'designation': employee.designation or '-',
             'date': date.strftime('%b %d, %Y'),
             'day': date.strftime('%A'),
-            'records': records,
+            'raw_records': raw_records,
             'stats': {
-                'total_hours': f"{total_hours_decimal:.2f}",
-                'is_late': is_late,
-                'status': status.title(),
-                'first_in': first_in.strftime('%I:%M %p') if first_in else '-',
-                'last_out': last_out.strftime('%I:%M %p') if last_out else '-',
+                'status': 'Late' if log.is_late else ('Present' if log.first_in_time else 'Absent'),
+                'total_hours': f"{total_hours:.2f}",
+                'first_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
+                'last_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-',
+                'is_late': log.is_late
             }
         }
         
         return render(request, 'attendance/attendance_detail.html', context)
         
     except Exception as e:
-        if settings.DEBUG:
-            raise e
-        messages.error(request, "An error occurred while retrieving attendance details")
+        messages.error(request, f"Error loading attendance details: {str(e)}")
         return redirect('attendance:attendance_list')
 
 @login_required
@@ -658,9 +631,14 @@ def attendance_details(request):
             return Response({'error': 'Missing required parameters'}, status=400)
         
         try:
-            date = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
+            # Try parsing YYYY-MM-DD format
+            date = datetime.strptime(date_str, '%Y-%m-%d').date()
         except ValueError:
-            return Response({'error': 'Invalid date format'}, status=400)
+            try:
+                # Fallback to MMM DD, YYYY format
+                date = datetime.strptime(date_str, '%b %d, %Y').date()
+            except ValueError:
+                return Response({'error': 'Invalid date format. Expected YYYY-MM-DD or MMM DD, YYYY'}, status=400)
             
         employee = Employee.objects.get(employee_number=personnel_id)
         log = AttendanceLog.objects.select_related('employee').get(employee=employee, date=date)
@@ -675,11 +653,20 @@ def attendance_details(request):
         raw_records = []
         for record in records:
             raw_records.append({
+                'id': record.id,
                 'time': record.timestamp.strftime('%I:%M %p'),
-                'device': record.device_name,
-                'event_point': record.event_point,
-                'description': record.event_description
+                'device': record.device_name or 'Unknown Device',
+                'event_point': record.event_point or 'IN',
+                'description': record.event_description or 'Normal Punch'
             })
+        
+        # Calculate total hours
+        total_hours = 0
+        if log.first_in_time and log.last_out_time:
+            first_in = datetime.combine(date, log.first_in_time)
+            last_out = datetime.combine(date, log.last_out_time)
+            duration = last_out - first_in
+            total_hours = round(duration.total_seconds() / 3600, 2)
         
         return Response({
             'log_id': log.id,
@@ -687,11 +674,14 @@ def attendance_details(request):
             'employee': log.employee.get_full_name(),
             'status': 'Late' if log.is_late else ('Present' if log.first_in_time else 'Absent'),
             'source': log.source or '-',
-            'original_in': log.original_in_time.strftime('%I:%M %p') if log.original_in_time else '-',
-            'original_out': log.original_out_time.strftime('%I:%M %p') if log.original_out_time else '-',
-            'current_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
-            'current_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-',
+            'stats': {
+                'status': 'Late' if log.is_late else ('Present' if log.first_in_time else 'Absent'),
+                'total_hours': f"{total_hours:.2f}",
+                'first_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
+                'last_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-',
+                'is_late': log.is_late
+            },
             'raw_records': raw_records
         })
-    except AttendanceLog.DoesNotExist:
-        return Response({'error': 'Log not found'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=400)

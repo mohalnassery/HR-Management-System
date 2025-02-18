@@ -175,14 +175,16 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('end-date').value = today;
 
     // Initial load of attendance data
-    fetchAttendanceLogs();
+    fetchAttendanceLogs(1);
 
     // Add event listeners for filters
-    document.getElementById('start-date').addEventListener('change', debounce(fetchAttendanceLogs, 500));
-    document.getElementById('end-date').addEventListener('change', debounce(fetchAttendanceLogs, 500));
-    document.getElementById('department-filter').addEventListener('change', debounce(fetchAttendanceLogs, 500));
-    document.getElementById('status-filter').addEventListener('change', debounce(fetchAttendanceLogs, 500));
-    document.getElementById('search-input').addEventListener('input', debounce(fetchAttendanceLogs, 500));
+    const filters = ['start-date', 'end-date', 'department-filter', 'status-filter', 'search-input'];
+    filters.forEach(id => {
+        const element = document.getElementById(id);
+        element.addEventListener(id === 'search-input' ? 'input' : 'change', () => {
+            fetchAttendanceLogs(1);
+        });
+    });
 
     // Initialize employee select in reprocess modal
     const employeeSelect = document.querySelector('#reprocessModal select[name="employee_id"]');
@@ -228,12 +230,17 @@ function debounce(func, wait) {
 }
 
 function fetchAttendanceLogs(page = 1) {
+    // Ensure page is a number
+    if (typeof page !== 'number') {
+        page = 1;
+    }
+
     const params = new URLSearchParams({
-        start_date: document.getElementById('start-date').value,
-        end_date: document.getElementById('end-date').value,
-        department: document.getElementById('department-filter').value,
-        status: document.getElementById('status-filter').value,
-        search: document.getElementById('search-input').value,
+        start_date: document.getElementById('start-date').value || '',
+        end_date: document.getElementById('end-date').value || '',
+        department: document.getElementById('department-filter').value || '',
+        status: document.getElementById('status-filter').value || '',
+        search: document.getElementById('search-input').value || '',
         page: page.toString()
     });
 
@@ -262,12 +269,12 @@ function fetchAttendanceLogs(page = 1) {
             <tr>
                 <td>${log.personnel_id || '-'}</td>
                 <td>
-                    <a href="/employees/${log.employee_id}/" class="text-decoration-none" ${log.employee_id ? '' : 'onclick="return false;"'}>
-                        ${log.employee_name}
+                    <a href="/employees/${log.employee_id}/" class="text-decoration-none">
+                        ${log.employee_name || '-'}
                     </a>
                 </td>
                 <td>${log.department || '-'}</td>
-                <td id="log-date-${log.id}">${formatDate(log.date)}</td>
+                <td id="log-date-${log.id}">${formatDate(log.date) || '-'}</td>
                 <td>${formatTime(log.first_in_time) || '-'}</td>
                 <td>${formatTime(log.last_out_time) || '-'}</td>
                 <td>
@@ -277,7 +284,8 @@ function fetchAttendanceLogs(page = 1) {
                 </td>
                 <td>${log.source || '-'}</td>
                 <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="viewDetails(${log.id}, '${log.personnel_id || ''}')">
+                    <button class="btn btn-sm btn-outline-primary" 
+                            onclick="viewDetails('${log.id}', '${log.personnel_id || ''}', '${log.date}')">
                         <i class="fas fa-eye"></i>
                     </button>
                 </td>
@@ -288,7 +296,8 @@ function fetchAttendanceLogs(page = 1) {
     })
     .catch(error => {
         console.error('Error fetching attendance logs:', error);
-        document.getElementById('attendance-logs').innerHTML = `
+        const tbody = document.getElementById('attendance-logs');
+        tbody.innerHTML = `
             <tr>
                 <td colspan="9" class="text-center text-danger">
                     Error loading attendance data. Please try again.
@@ -378,8 +387,11 @@ function updatePagination(data) {
     pagination.innerHTML = paginationHtml;
 }
 
-function viewDetails(logId, personnelId) {
-    const date = document.getElementById(`log-date-${logId}`).textContent;
+function viewDetails(logId, personnelId, date) {
+    if (!personnelId || !date) {
+        console.error('Missing required parameters for viewDetails');
+        return;
+    }
     window.location.href = `{% url 'attendance:attendance_detail' %}?personnel_id=${personnelId}&date=${date}`;
 }
 </script>

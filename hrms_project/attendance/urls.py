@@ -85,4 +85,5 @@ urlpatterns = [
     path('shift_override/<str:date>/', views.delete_shift_override, name='shift_override_delete'),
     path('shift_overrides/<int:year>/<int:month>/', views.get_shift_overrides, name='shift_overrides_list'),
     path('shifts/day/<str:date>/', shifts_views.shift_day_detail, name='shift_day_detail'),
+    path('api/details/', attendance_views.attendance_details, name='attendance_details'),
 ]

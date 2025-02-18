@@ -23,10 +23,7 @@
                 <div class="card bg-light">
                     <div class="card-body text-center">
                         <h6 class="card-title">Status</h6>
-                        <p class="card-text h4 mb-0 
-                            {% if stats.status == 'Present' %}text-success
-                            {% elif stats.status == 'Late' %}text-warning
-                            {% else %}text-danger{% endif %}">
+                        <p class="card-text h4 mb-0" id="status">
                             {{ stats.status }}
                         </p>
                     </div>
@@ -36,7 +33,9 @@
                 <div class="card bg-light">
                     <div class="card-body text-center">
                         <h6 class="card-title">Total Hours</h6>
-                        <p class="card-text h4 mb-0">{{ stats.total_hours }}</p>
+                        <p class="card-text h4 mb-0" id="total-hours">
+                            {{ stats.total_hours }}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -44,7 +43,7 @@
                 <div class="card bg-light">
                     <div class="card-body text-center">
                         <h6 class="card-title">First In</h6>
-                        <p class="card-text h4 mb-0 {% if stats.is_late %}text-warning{% endif %}">
+                        <p class="card-text h4 mb-0" id="first-in">
                             {{ stats.first_in }}
                         </p>
                     </div>
@@ -54,7 +53,9 @@
                 <div class="card bg-light">
                     <div class="card-body text-center">
                         <h6 class="card-title">Last Out</h6>
-                        <p class="card-text h4 mb-0">{{ stats.last_out }}</p>
+                        <p class="card-text h4 mb-0" id="last-out">
+                            {{ stats.last_out }}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -103,7 +104,7 @@
             <div class="card-body">
                 <h6 class="card-title">Attendance Logs</h6>
                 <div class="table-responsive">
-                    <table class="table table-hover" id="logs-table">
+                    <table class="table table-hover">
                         <thead>
                             <tr>
                                 <th>Time</th>
@@ -113,22 +114,28 @@
                                 <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="logs-body">
-                            {% for record in records %}
-                            <tr {% if record.is_special %}class="table-primary"{% endif %}>
+                        <tbody id="attendance-logs">
+                            {% for record in raw_records %}
+                            <tr {% if record.time == stats.first_in or record.time == stats.last_out %}class="table-primary"{% endif %}>
                                 <td>{{ record.time }}</td>
                                 <td>
-                                    <span class="badge {{ record.badge_class }}">
-                                        {{ record.type }}{{ record.label }}
+                                    <span class="badge {% if record.event_point == 'IN' %}bg-success{% else %}bg-danger{% endif %}">
+                                        {{ record.event_point }}
+                                        {% if record.time == stats.first_in %}
+                                            (First)
+                                        {% elif record.time == stats.last_out %}
+                                            (Last)
+                                        {% endif %}
                                     </span>
                                 </td>
-                                <td>{{ record.source }}</td>
-                                <td>{{ record.device_name }}</td>
+                                <td>{{ record.description }}</td>
+                                <td>{{ record.device }}</td>
+                        
                                 <td>
-                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editLog({{ record.id }})">
+                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editLog('{{ record.id }}')">
                                         <i class="fas fa-edit"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete({{ record.id }})">
+                                    <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete('{{ record.id }}')">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </td>
@@ -239,6 +246,77 @@
 let currentPersonnelId = '{{ personnel_id }}';
 let currentDate = '{{ date }}';
 
+function loadAttendanceDetails() {
+    // Format the date as YYYY-MM-DD for the API
+    const dateObj = new Date(currentDate);
+    const formattedDate = dateObj.toISOString().split('T')[0];
+
+    fetch(`/attendance/api/details/?personnel_id=${currentPersonnelId}&date=${formattedDate}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Update summary stats
+            document.querySelector('#status').textContent = data.stats.status;
+            document.querySelector('#total-hours').textContent = data.stats.total_hours;
+            document.querySelector('#first-in').textContent = data.stats.first_in;
+            document.querySelector('#last-out').textContent = data.stats.last_out;
+            
+            // Update attendance logs
+            const logsBody = document.querySelector('#attendance-logs');
+            logsBody.innerHTML = '';
+            
+            if (data.raw_records.length === 0) {
+                logsBody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center">No attendance records found for this date.</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            data.raw_records.forEach(record => {
+                const isFirstIn = record.time === data.stats.first_in;
+                const isLastOut = record.time === data.stats.last_out;
+                const rowClass = (isFirstIn || isLastOut) ? 'table-primary' : '';
+                
+                const row = `
+                    <tr class="${rowClass}">
+                        <td>${record.time}</td>
+                        <td>
+                            <span class="badge ${record.event_point === 'IN' ? 'bg-success' : 'bg-danger'}">
+                                ${record.event_point}
+                                ${isFirstIn ? ' (First)' : ''}
+                                ${isLastOut ? ' (Last)' : ''}
+                            </span>
+                        </td>
+                        <td>${record.description}</td>
+                        <td>${record.device}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editLog('${record.id}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete('${record.id}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                logsBody.innerHTML += row;
+            });
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to load attendance details');
+        });
+}
+
+// Load attendance details when page loads
+document.addEventListener('DOMContentLoaded', loadAttendanceDetails);
+
 function editLog(recordId) {
     fetch(`/attendance/api/records/${recordId}/`)
         .then(response => response.json())
@@ -280,7 +358,9 @@ function saveLogEdit() {
         return response.json();
     })
     .then(() => {
-        location.reload();
+        loadAttendanceDetails(); // Reload data instead of full page refresh
+        const modal = bootstrap.Modal.getInstance(document.getElementById('editLogModal'));
+        modal.hide();
     })
     .catch(error => {
         console.error('Error:', error);
@@ -317,7 +397,9 @@ function addNewLog() {
         return response.json();
     })
     .then(() => {
-        location.reload();
+        loadAttendanceDetails(); // Reload data instead of full page refresh
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addLogModal'));
+        modal.hide();
     })
     .catch(error => {
         console.error('Error:', error);
@@ -342,7 +424,9 @@ function deleteLog() {
     })
     .then(response => {
         if (!response.ok) throw new Error('Failed to delete log');
-        location.reload();
+        loadAttendanceDetails(); // Reload data instead of full page refresh
+        const modal = bootstrap.Modal.getInstance(document.getElementById('deleteLogModal'));
+        modal.hide();
     })
     .catch(error => {
         console.error('Error:', error);
