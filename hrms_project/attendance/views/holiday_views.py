@@ -74,6 +74,66 @@ def recurring_holidays(request):
 
 
 @login_required
+def preview_next_year_holidays(request):
+    """Preview holidays for next year based on recurring holidays"""
+    current_year = timezone.now().year
+    next_year = current_year + 1
+    
+    # Get all recurring holidays
+    recurring_holidays = Holiday.objects.filter(is_recurring=True)
+    
+    # Generate preview data
+    preview_holidays = []
+    for holiday in recurring_holidays:
+        # Create a new date for next year while keeping month and day
+        next_year_date = holiday.date.replace(year=next_year)
+        preview_holidays.append({
+            'name': holiday.name,
+            'date': next_year_date.strftime('%Y-%m-%d'),
+            'type': 'Recurring',
+            'departments': [dept.name for dept in holiday.departments.all()]
+        })
+    
+    return JsonResponse({'holidays': preview_holidays})
+
+
+@login_required
+def generate_next_year_holidays(request):
+    """Generate holidays for next year based on recurring holidays"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
+    
+    current_year = timezone.now().year
+    next_year = current_year + 1
+    count = 0
+    
+    # Get all recurring holidays
+    recurring_holidays = Holiday.objects.filter(is_recurring=True)
+    
+    with transaction.atomic():
+        for holiday in recurring_holidays:
+            # Create a new date for next year while keeping month and day
+            next_year_date = holiday.date.replace(year=next_year)
+            
+            # Check if holiday already exists for this date
+            if not Holiday.objects.filter(date=next_year_date, name=holiday.name).exists():
+                # Create new holiday
+                new_holiday = Holiday.objects.create(
+                    name=holiday.name,
+                    date=next_year_date,
+                    description=holiday.description,
+                    is_recurring=True,
+                    created_by=request.user
+                )
+                
+                # Add departments
+                new_holiday.departments.set(holiday.departments.all())
+                count += 1
+    
+    return JsonResponse({'count': count})
+
+
+@login_required
 def holiday_edit(request, pk):
     """View for editing holidays"""
     holiday = get_object_or_404(Holiday, pk=pk)
