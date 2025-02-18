@@ -25,6 +25,7 @@ class AttendanceLogSerializer(serializers.ModelSerializer):
     shift_name = serializers.SerializerMethodField()
     employee_id = serializers.SerializerMethodField()
     personnel_id = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = AttendanceLog
@@ -41,6 +42,38 @@ class AttendanceLogSerializer(serializers.ModelSerializer):
 
     def get_personnel_id(self, obj):
         return obj.employee.employee_number if obj.employee else None
+        
+    def get_status(self, obj):
+        # Check for approved leave first
+        is_on_leave = Leave.objects.filter(
+            employee=obj.employee,
+            start_date__lte=obj.date,
+            end_date__gte=obj.date,
+            status='approved'
+        ).exists()
+        
+        if is_on_leave:
+            return 'leave'
+
+        # Check if the date is a holiday
+        is_holiday = Holiday.objects.filter(
+            date=obj.date,
+            is_active=True
+        ).exists()
+        
+        # On holidays, show as present if they came, otherwise don't show status
+        if is_holiday:
+            if obj.first_in_time:
+                return 'present'
+            return None  # This will exclude the record from display
+        
+        # Normal day status logic
+        if obj.is_late:
+            return 'late'
+        elif obj.first_in_time:
+            return 'present'
+        else:
+            return 'absent'
 
 class AttendanceEditSerializer(serializers.ModelSerializer):
     edited_by_name = serializers.SerializerMethodField()

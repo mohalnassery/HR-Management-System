@@ -52,10 +52,24 @@ def attendance_list(request):
             Q(employee__employee_number__icontains=search)
         )
 
+    # Get holidays for the current date
+    is_holiday = Holiday.objects.filter(
+        Q(date=date.today()) & Q(is_active=True)
+    ).exists()
+
     # Calculate summary counts
-    present_count = queryset.filter(first_in_time__isnull=False, is_late=False).count()
-    late_count = queryset.filter(is_late=True).count()
-    absent_count = queryset.filter(first_in_time__isnull=True).count()
+    if is_holiday:
+        # On holidays, only count people who came to work
+        present_count = queryset.filter(first_in_time__isnull=False).count()
+        late_count = 0
+        absent_count = 0
+        # Filter out absent employees on holidays
+        queryset = queryset.filter(first_in_time__isnull=False)
+    else:
+        present_count = queryset.filter(first_in_time__isnull=False, is_late=False).count()
+        late_count = queryset.filter(is_late=True).count()
+        absent_count = queryset.filter(first_in_time__isnull=True).count()
+
     on_leave_count = Leave.objects.filter(
         Q(start_date__lte=date.today()) & 
         Q(end_date__gte=date.today()) &
@@ -330,10 +344,44 @@ class AttendanceLogListViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         
+        # Get date parameters and parse them
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        try:
+            if not start_date:
+                start_date = date.today()
+            else:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                
+            if not end_date:
+                end_date = date.today()
+            else:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = date.today()
+            end_date = date.today()
+
+        # Check for holidays in the date range
+        holidays_in_range = Holiday.objects.filter(
+            Q(date__range=[start_date, end_date]) & Q(is_active=True)
+        )
+        holiday_dates = set(h.date for h in holidays_in_range)
+
+        # For holiday dates, only include employees who came to work
+        holiday_queryset = queryset.filter(date__in=holiday_dates, first_in_time__isnull=False)
+        non_holiday_queryset = queryset.exclude(date__in=holiday_dates)
+
+        # Combine querysets
+        queryset = non_holiday_queryset | holiday_queryset
+
         # Calculate summary counts
-        present_count = queryset.filter(first_in_time__isnull=False, is_late=False).count()
-        late_count = queryset.filter(is_late=True).count()
-        absent_count = queryset.filter(first_in_time__isnull=True).count()
+        present_count = (
+            non_holiday_queryset.filter(first_in_time__isnull=False, is_late=False).count() +
+            holiday_queryset.filter(first_in_time__isnull=False).count()
+        )
+        late_count = non_holiday_queryset.filter(is_late=True).count()
+        absent_count = non_holiday_queryset.filter(first_in_time__isnull=True).count()
         
         # Get on leave count with proper date validation
         start_date = self.request.query_params.get('start_date')
