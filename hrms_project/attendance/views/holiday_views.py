@@ -91,7 +91,7 @@ def preview_next_year_holidays(request):
             'name': holiday.name,
             'date': next_year_date.strftime('%Y-%m-%d'),
             'type': 'Recurring',
-            'departments': [dept.name for dept in holiday.departments.all()]
+            'type': holiday.get_holiday_type_display()
         })
     
     return JsonResponse({'holidays': preview_holidays})
@@ -126,8 +126,7 @@ def generate_next_year_holidays(request):
                     created_by=request.user
                 )
                 
-                # Add departments
-                new_holiday.departments.set(holiday.departments.all())
+                # Set other fields from the recurring holiday
                 count += 1
     
     return JsonResponse({'count': count})

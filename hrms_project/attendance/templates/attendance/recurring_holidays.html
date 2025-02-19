@@ -26,15 +26,6 @@
                     <option value="OPTIONAL">Optional Holiday</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Department</label>
-                <select class="form-select" id="department-filter">
-                    <option value="">All Departments</option>
-                    {% for dept in departments %}
-                    <option value="{{ dept.id }}">{{ dept.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
             <div class="col-md-3 d-flex align-items-end">
                 <button class="btn btn-primary" id="apply-filters">Apply Filters</button>
             </div>
@@ -48,7 +39,6 @@
                         <th>Date Pattern</th>
                         <th>Name</th>
                         <th>Type</th>
-                        <th>Departments</th>
                         <th>Last Generated</th>
                         <th>Actions</th>
                     </tr>
@@ -62,15 +52,6 @@
                             <span class="badge bg-{{ holiday.holiday_type|lower }}">
                                 {{ holiday.get_holiday_type_display }}
                             </span>
-                        </td>
-                        <td>
-                            {% if holiday.applicable_departments.all %}
-                            {% for dept in holiday.applicable_departments.all %}
-                            <span class="badge bg-info">{{ dept.name }}</span>
-                            {% endfor %}
-                            {% else %}
-                            <span class="badge bg-secondary">All Departments</span>
-                            {% endif %}
                         </td>
                         <td>
                             {% if holiday.last_generated %}
@@ -223,7 +204,7 @@ $(document).ready(function() {
                 
                 data.holidays.forEach(function(holiday) {
                     const li = $('<li>').text(
-                        `${holiday.name} - ${holiday.date} (${holiday.type})`
+                        `${holiday.name} - ${holiday.date} - ${holiday.type}`
                     );
                     previewList.append(li);
                 });
@@ -257,9 +238,7 @@ $(document).ready(function() {
     // Apply filters
     $('#apply-filters').click(function() {
         const type = $('#type-filter').val();
-        const department = $('#department-filter').val();
-        
-        window.location.href = `?type=${type}&department=${department}`;
+        window.location.href = `?type=${type}`;
     });
 });
 </script>

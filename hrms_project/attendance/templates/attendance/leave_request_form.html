@@ -1,0 +1,158 @@
+{% extends 'attendance/base.html' %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block attendance_content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h5 class="mb-0">New Leave Request</h5>
+            </div>
+            <div class="col-auto">
+                <a href="{% url 'attendance:leave_request_list' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if user.is_staff %}
+        <!-- Employee Selection Form -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-user"></i> Select Employee
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="get" class="row g-3" id="employeeSelectForm">
+                    <div class="col-md-3">
+                        <label class="form-label">Department</label>
+                        <select class="form-select" id="department" name="department">
+                            <option value="">All Departments</option>
+                            {% for dept in departments %}
+                            <option value="{{ dept.id }}" {% if request.GET.department == dept.id|stringformat:"s" %}selected{% endif %}>
+                                {{ dept.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Search Employee</label>
+                        <input type="text" class="form-control" name="search" placeholder="Name or Employee Number" value="{{ request.GET.search }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Employee</label>
+                        <select class="form-select" id="employee" name="employee" required>
+                            <option value="">Select Employee</option>
+                            {% for emp in employees %}
+                            <option value="{{ emp.id }}" {% if selected_employee.id == emp.id %}selected{% endif %}>
+                                {{ emp.employee_number }} - {{ emp.get_full_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">Select</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if selected_employee or not user.is_staff %}
+        <!-- Leave Balance Summary -->
+        <div class="row mb-4">
+            {% for balance in leave_balances %}
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">{{ balance.leave_type.name }} Balance</h6>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h3 class="mb-0">{{ balance.balance_days }}</h3>
+                            <small class="text-muted">days remaining</small>
+                        </div>
+                        <div class="progress mt-2" style="height: 5px;">
+                            <div class="progress-bar {% if balance.leave_type.code == 'annual' %}bg-success{% elif balance.leave_type.code == 'sick' %}bg-info{% else %}bg-warning{% endif %}" 
+                                 style="width: {{ balance.balance_percentage }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Leave Request Form -->
+        <form method="post" enctype="multipart/form-data">
+            {% if selected_employee %}
+            <input type="hidden" name="employee" value="{{ selected_employee.id }}">
+            {% endif %}
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6">
+                    {{ form.leave_type|as_crispy_field }}
+                </div>
+                <div class="col-md-6">
+                    {{ form.duration_type|as_crispy_field }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    {{ form.start_date|as_crispy_field }}
+                </div>
+                <div class="col-md-6">
+                    {{ form.end_date|as_crispy_field }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12">
+                    {{ form.reason|as_crispy_field }}
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12">
+                    {{ form.document|as_crispy_field }}
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Submit Request
+                    </button>
+                    <a href="{% url 'attendance:leave_request_list' %}" class="btn btn-secondary">
+                        Cancel
+                    </a>
+                </div>
+            </div>
+        </form>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> Please select an employee to create a leave request.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock attendance_content %}
+
+{% block extra_js %}
+<script>
+    // Initialize date inputs
+    const startDateInput = document.getElementById('id_start_date');
+    const endDateInput = document.getElementById('id_end_date');
+    
+    if (startDateInput && endDateInput) {
+        // Set minimum date to today
+        const today = new Date().toISOString().split('T')[0];
+        startDateInput.min = today;
+        
+        // Update end date minimum when start date changes
+        startDateInput.addEventListener('change', function() {
+            endDateInput.min = this.value;
+            if (endDateInput.value && endDateInput.value < this.value) {
+                endDateInput.value = this.value;
+            }
+        });
+    }
+</script>
+{% endblock extra_js %}

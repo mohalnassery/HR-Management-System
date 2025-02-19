@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.db.models import Q, Sum, Count
 from decimal import Decimal
 from django.db import models
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -12,10 +13,10 @@ from rest_framework.response import Response
 
 from ..models import (
     Leave, LeaveType, LeaveBalance, LeaveBeginningBalance,
-    AttendanceLog, Holiday  # Add these imports
+    AttendanceLog, Holiday, LeaveDocument  # Add these imports
 )
 from ..serializers import LeaveSerializer
-from ..forms import LeaveBalanceUploadForm
+from ..forms import LeaveBalanceUploadForm, LeaveRequestForm
 from employees.models import Employee, Department  # Add Department here
 
 @login_required
@@ -25,8 +26,127 @@ def leave_request_list(request):
 
 @login_required
 def leave_request_create(request):
-    """Display leave request creation page"""
-    return render(request, 'attendance/leave_request_form.html')
+    """Display leave request creation page and handle form submission"""
+    # Get selected employee from query params or POST data
+    employee_id = request.GET.get('employee') or request.POST.get('employee')
+    employee = None
+    leave_balances = None
+    departments = None
+    employees = None
+    
+    # For staff users, allow employee selection
+    if request.user.is_staff:
+        departments = Department.objects.all().order_by('name')
+        employees_query = Employee.objects.all()
+        
+        # Filter by department if provided
+        department_id = request.GET.get('department')
+        if department_id:
+            employees_query = employees_query.filter(department_id=department_id)
+        
+        # Filter by search query if provided
+        search_query = request.GET.get('search', '').strip()
+        if search_query:
+            employees_query = employees_query.filter(
+                Q(employee_number__icontains=search_query) |
+                Q(first_name__icontains=search_query) |
+                Q(last_name__icontains=search_query)
+            )
+        
+        employees = employees_query.order_by('first_name', 'last_name')
+        
+        if employee_id:
+            try:
+                employee = employees_query.get(id=employee_id)
+                leave_balances = LeaveBalance.objects.filter(employee=employee)
+            except Employee.DoesNotExist:
+                messages.error(request, "Selected employee not found.")
+                return redirect('attendance:leave_request_list')
+    else:
+        # For regular users, only allow them to request for themselves
+        try:
+            employee = request.user.employee
+            leave_balances = LeaveBalance.objects.filter(employee=employee)
+        except AttributeError:
+            messages.error(request, "No employee record found for your user account. Please contact HR.")
+            return redirect('attendance:leave_request_list')
+    
+    if request.method == 'POST':
+        if not employee:
+            messages.error(request, "Please select an employee first.")
+            return redirect('attendance:leave_request_create')
+            
+        form = LeaveRequestForm(request.POST, request.FILES)
+        if form.is_valid():
+            leave_request = form.save(commit=False)
+            leave_request.employee = employee
+            leave_request.status = 'pending'
+            
+            # Calculate duration based on start and end dates
+            duration = (leave_request.end_date - leave_request.start_date).days + 1
+            if form.cleaned_data['duration_type'] == 'half_day':
+                duration = 0.5
+            leave_request.duration = duration
+            
+            # Check if employee has sufficient balance
+            try:
+                balance = leave_balances.get(leave_type=leave_request.leave_type)
+                if balance.balance_days < duration:
+                    messages.error(request, f'Insufficient {leave_request.leave_type.name} balance. Available: {balance.balance_days} days')
+                    return render(request, 'attendance/leave_request_form.html', {
+                        'form': form,
+                        'leave_balances': leave_balances,
+                        'departments': departments,
+                        'employees': employees,
+                        'selected_employee': employee
+                    })
+            except LeaveBalance.DoesNotExist:
+                messages.error(request, f'No balance found for {leave_request.leave_type.name}')
+                return render(request, 'attendance/leave_request_form.html', {
+                    'form': form,
+                    'leave_balances': leave_balances,
+                    'departments': departments,
+                    'employees': employees,
+                    'selected_employee': employee
+                })
+            
+            # If HR admin is creating the request, auto-approve it
+            if request.user.is_staff:
+                leave_request.status = 'approved'
+                leave_request.approved_by = request.user
+                leave_request.approved_at = timezone.now()
+            
+            leave_request.save()
+            
+            # Handle document upload if provided
+            if form.cleaned_data.get('document'):
+                LeaveDocument.objects.create(
+                    leave=leave_request,
+                    document=form.cleaned_data['document'],
+                    document_type='supporting_document'
+                )
+            
+            messages.success(request, 'Leave request submitted successfully')
+            return redirect('attendance:leave_request_list')
+    else:
+        form = LeaveRequestForm()
+    
+    # Calculate balance percentages for progress bars
+    if leave_balances:
+        for balance in leave_balances:
+            total_allocation = balance.leave_type.default_days
+            if total_allocation > 0:
+                balance.balance_percentage = (balance.balance_days / total_allocation) * 100
+            else:
+                balance.balance_percentage = 0
+    
+    return render(request, 'attendance/leave_request_form.html', {
+        'form': form,
+        'leave_balances': leave_balances,
+        'departments': departments,
+        'employees': employees,
+        'selected_employee': employee
+    })
 
 @login_required
 def leave_request_detail(request, pk):
