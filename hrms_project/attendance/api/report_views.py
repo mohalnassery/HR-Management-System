@@ -7,7 +7,6 @@ from rest_framework.exceptions import ValidationError
 from django.http import HttpResponse
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
-import io
 import xlsxwriter
 import csv
 
@@ -15,12 +14,6 @@ from ..models import AttendanceLog, Leave, Holiday
 from ..serializers import AttendanceLogSerializer
 from ..services.report_service import ReportService
 from ..services.pdf_service import PDFReportService
-
-class LargeResultsSetPagination(PageNumberPagination):
-    """Custom pagination class for large result sets"""
-    page_size = 400
-    page_size_query_param = 'page_size'
-    max_page_size = 1000
 
 class ReportViewSet(viewsets.ViewSet):
     """ViewSet for handling report generation and exports"""
@@ -31,39 +24,164 @@ class ReportViewSet(viewsets.ViewSet):
     def attendance(self, request):
         """Generate attendance report"""
         try:
-            params = self._validate_and_parse_params(request.GET)
+            # Get query parameters
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            departments = request.query_params.getlist('departments[]', [])
+            employees = request.query_params.getlist('employees[]', [])
+            status = request.query_params.getlist('status[]', []) or request.query_params.getlist('status', [])
+            
+            # Validate dates
+            if not start_date or not end_date:
+                raise ValidationError("Both start_date and end_date are required")
+            
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                raise ValidationError("Invalid date format. Use YYYY-MM-DD")
+            
+            if start_date > end_date:
+                raise ValidationError("Start date must be before end date")
+            
+            # Build parameters
+            params = {
+                'start_date': start_date,
+                'end_date': end_date
+            }
+            
+            # Add optional parameters
+            if departments and departments[0]:
+                params['departments'] = [int(d) for d in departments if d]
+            if employees and employees[0]:
+                params['employees'] = [int(e) for e in employees if e]
+            if status and status[0]:
+                params['status'] = status
+
+            # Generate report
             data = ReportService.get_attendance_report(**params)
             return Response(data)
         except ValidationError as e:
             return Response({"error": str(e)}, status=400)
+        except Exception as e:
+            return Response({"error": f"Unexpected error: {str(e)}"}, status=500)
     
     @action(detail=False, methods=['get'])
     def leave(self, request):
         """Generate leave report"""
         try:
-            params = self._validate_and_parse_params(request.GET)
+            # Get query parameters
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            departments = request.query_params.getlist('departments[]', [])
+            employees = request.query_params.getlist('employees[]', [])
+            leave_types = request.query_params.getlist('leave_types[]', [])
+            
+            # Validate dates
+            if not start_date or not end_date:
+                raise ValidationError("Both start_date and end_date are required")
+            
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                raise ValidationError("Invalid date format. Use YYYY-MM-DD")
+            
+            if start_date > end_date:
+                raise ValidationError("Start date must be before end date")
+            
+            # Build parameters
+            params = {
+                'start_date': start_date,
+                'end_date': end_date
+            }
+            
+            # Add optional parameters
+            if departments and departments[0]:
+                params['departments'] = [int(d) for d in departments if d]
+            if employees and employees[0]:
+                params['employees'] = [int(e) for e in employees if e]
+            if leave_types and leave_types[0]:
+                params['leave_types'] = leave_types
+            
+            # Generate report
             data = ReportService.get_leave_report(**params)
             return Response(data)
         except ValidationError as e:
             return Response({"error": str(e)}, status=400)
+        except Exception as e:
+            return Response({"error": f"Unexpected error: {str(e)}"}, status=500)
     
     @action(detail=False, methods=['get'])
     def holiday(self, request):
         """Generate holiday report"""
         try:
-            params = self._validate_and_parse_params(request.GET)
-            data = ReportService.get_holiday_report(**params)
+            # Get and validate dates
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            
+            if not start_date or not end_date:
+                raise ValidationError("Both start_date and end_date are required")
+            
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                raise ValidationError("Invalid date format. Use YYYY-MM-DD")
+            
+            if start_date > end_date:
+                raise ValidationError("Start date must be before end date")
+            
+            # Generate report
+            data = ReportService.get_holiday_report(start_date, end_date)
             return Response(data)
         except ValidationError as e:
             return Response({"error": str(e)}, status=400)
+        except Exception as e:
+            return Response({"error": f"Unexpected error: {str(e)}"}, status=500)
     
     @action(detail=False, methods=['get'])
     def export(self, request):
         """Export report in specified format"""
         try:
-            params = self._validate_and_parse_params(request.GET)
-            report_type = request.GET.get('type', 'attendance')
-            export_format = request.GET.get('format', 'csv')
+            # Get export parameters
+            report_type = request.query_params.get('type', 'attendance')
+            export_format = request.query_params.get('format', 'csv')
+            
+            # Build report parameters similar to above methods
+            params = {}
+            
+            # Get and validate dates
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            
+            if not start_date or not end_date:
+                raise ValidationError("Both start_date and end_date are required")
+            
+            try:
+                params['start_date'] = datetime.strptime(start_date, '%Y-%m-%d')
+                params['end_date'] = datetime.strptime(end_date, '%Y-%m-%d')
+            except ValueError:
+                raise ValidationError("Invalid date format. Use YYYY-MM-DD")
+            
+            # Add optional parameters based on report type
+            if report_type in ['attendance', 'leave']:
+                departments = request.query_params.getlist('departments[]', [])
+                employees = request.query_params.getlist('employees[]', [])
+                
+                if departments and departments[0]:
+                    params['departments'] = [int(d) for d in departments if d]
+                if employees and employees[0]:
+                    params['employees'] = [int(e) for e in employees if e]
+                
+                if report_type == 'attendance':
+                    status = request.query_params.getlist('status[]', []) or request.query_params.getlist('status', [])
+                    if status and status[0]:
+                        params['status'] = status
+                elif report_type == 'leave':
+                    leave_types = request.query_params.getlist('leave_types[]', [])
+                    if leave_types and leave_types[0]:
+                        params['leave_types'] = leave_types
             
             # Get report data based on type
             if report_type == 'attendance':
@@ -90,48 +208,7 @@ class ReportViewSet(viewsets.ViewSet):
         except ValidationError as e:
             return Response({"error": str(e)}, status=400)
         except Exception as e:
-            return Response({"error": str(e)}, status=500)
-    
-    def _validate_and_parse_params(self, params):
-        """Validate and parse request parameters"""
-        try:
-            # Required parameters
-            start_date = datetime.strptime(params.get('start_date', ''), '%Y-%m-%d')
-            end_date = datetime.strptime(params.get('end_date', ''), '%Y-%m-%d')
-            
-            if start_date > end_date:
-                raise ValidationError("Start date must be before end date")
-            
-            # Optional parameters
-            result = {
-                'start_date': start_date,
-                'end_date': end_date
-            }
-            
-            # Parse department IDs
-            departments = params.getlist('departments')
-            if departments:
-                result['departments'] = [int(d) for d in departments]
-            
-            # Parse employee IDs
-            employees = params.getlist('employees')
-            if employees:
-                result['employees'] = [int(e) for e in employees]
-            
-            # Parse status filters
-            status = params.getlist('status')
-            if status:
-                result['status'] = status
-            
-            # Parse leave types for leave reports
-            leave_types = params.getlist('leave_types')
-            if leave_types:
-                result['leave_types'] = leave_types
-            
-            return result
-            
-        except (ValueError, TypeError) as e:
-            raise ValidationError(f"Invalid parameters: {str(e)}")
+            return Response({"error": f"Unexpected error: {str(e)}"}, status=500)
     
     def _export_pdf(self, data: dict, report_type: str) -> HttpResponse:
         """Export report as PDF"""
@@ -157,8 +234,10 @@ class ReportViewSet(viewsets.ViewSet):
     
     def _export_csv(self, data: dict, report_type: str) -> HttpResponse:
         """Export report as CSV"""
-        output = io.StringIO()
-        writer = csv.writer(output)
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{report_type}_report.csv"'
+        
+        writer = csv.writer(response)
         
         if report_type == 'attendance':
             # Write summary
@@ -204,15 +283,16 @@ class ReportViewSet(viewsets.ViewSet):
                     holiday['type']
                 ])
         
-        output.seek(0)
-        response = HttpResponse(output.read(), content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{report_type}_report.csv"'
         return response
     
     def _export_excel(self, data: dict, report_type: str) -> HttpResponse:
         """Export report as Excel"""
-        output = io.BytesIO()
-        workbook = xlsxwriter.Workbook(output)
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{report_type}_report.xlsx"'
+        
+        workbook = xlsxwriter.Workbook(response)
         
         if report_type == 'attendance':
             ws = workbook.add_worksheet('Summary')
@@ -265,11 +345,4 @@ class ReportViewSet(viewsets.ViewSet):
                 ws.write(row, 3, holiday['type'])
         
         workbook.close()
-        output.seek(0)
-        
-        response = HttpResponse(
-            output.read(),
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = f'attachment; filename="{report_type}_report.xlsx"'
         return response

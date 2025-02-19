@@ -34,7 +34,7 @@
                 <!-- Department Filter -->
                 <div class="col-md-3">
                     <label for="department" class="form-label">Department</label>
-                    <select class="form-select" id="department" multiple>
+                    <select class="form-select" id="department">
                         <option value="">All Departments</option>
                         {% for dept in departments %}
                         <option value="{{ dept.id }}">{{ dept.name }}</option>
@@ -65,6 +65,17 @@
                             <input type="date" class="form-control" id="endDate">
                         </div>
                     </div>
+                </div>
+
+                <!-- Status Filter -->
+                <div class="col-md-3">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" id="status" multiple>
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                        <option value="late">Late</option>
+                        <option value="leave">On Leave</option>
+                    </select>
                 </div>
 
                 <!-- Export Format -->

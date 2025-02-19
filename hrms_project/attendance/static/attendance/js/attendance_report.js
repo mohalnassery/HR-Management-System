@@ -12,10 +12,10 @@ let departmentChart = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize event listeners
-    document.getElementById('generateReport').addEventListener('click', generateReport);
-    document.getElementById('dateRange').addEventListener('change', handleDateRangeChange);
-    document.getElementById('exportFormat').addEventListener('change', handleExportFormat);
-    document.getElementById('reportType').addEventListener('change', handleReportTypeChange);
+    document.getElementById('generateReport')?.addEventListener('click', generateReport);
+    document.getElementById('dateRange')?.addEventListener('change', handleDateRangeChange);
+    document.getElementById('exportFormat')?.addEventListener('change', handleExportFormat);
+    document.getElementById('reportType')?.addEventListener('change', handleReportTypeChange);
     
     // Initialize date inputs with default values
     setDefaultDates();
@@ -25,30 +25,22 @@ function setDefaultDates() {
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     
-    document.getElementById('startDate').value = formatDate(firstDayOfMonth);
-    document.getElementById('endDate').value = formatDate(today);
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput) startDateInput.value = formatDate(firstDayOfMonth);
+    if (endDateInput) endDateInput.value = formatDate(today);
 }
 
 function handleDateRangeChange(event) {
     const customDateRange = document.getElementById('customDateRange');
-    customDateRange.style.display = event.target.value === 'custom' ? 'block' : 'none';
+    if (customDateRange) {
+        customDateRange.style.display = event.target.value === 'custom' ? 'block' : 'none';
+    }
     
     if (event.target.value !== 'custom') {
         setDateRangeFromPreset(event.target.value);
     }
-}
-
-function handleReportTypeChange(event) {
-    const reportType = event.target.value;
-    // Update available export formats based on report type
-    const exportFormat = document.getElementById('exportFormat');
-    exportFormat.innerHTML = `
-        <option value="html">Web View</option>
-        <option value="csv">CSV</option>
-        <option value="excel">Excel</option>
-        <option value="pdf">PDF</option>
-        ${reportType === 'attendance' ? '<option value="json">JSON</option>' : ''}
-    `;
 }
 
 function setDateRangeFromPreset(preset) {
@@ -67,8 +59,11 @@ function setDateRangeFromPreset(preset) {
             break;
     }
     
-    document.getElementById('startDate').value = formatDate(startDate);
-    document.getElementById('endDate').value = formatDate(new Date());
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (startDateInput) startDateInput.value = formatDate(startDate);
+    if (endDateInput) endDateInput.value = formatDate(new Date());
 }
 
 async function generateReport() {
@@ -76,38 +71,66 @@ async function generateReport() {
     showLoadingState();
     
     try {
-        const reportType = document.getElementById('reportType').value;
-        const response = await fetch(`/attendance/api/reports/${reportType}/?${new URLSearchParams(params)}`);
-        if (!response.ok) throw new Error('Failed to fetch report data');
+        const reportType = document.getElementById('reportType')?.value || 'attendance';
+        const searchParams = new URLSearchParams();
+        
+        // Add basic parameters
+        searchParams.append('start_date', params.start_date);
+        searchParams.append('end_date', params.end_date);
+        
+        // Add array parameters correctly
+        if (params.departments) {
+            params.departments.forEach(dept => searchParams.append('departments[]', dept));
+        }
+        if (params.employees) {
+            params.employees.forEach(emp => searchParams.append('employees[]', emp));
+        }
+        if (params.status) {
+            params.status.forEach(status => searchParams.append('status[]', status));
+        }
+        
+        const response = await fetch(`/attendance/api/reports/${reportType}/?${searchParams.toString()}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to fetch report data');
+        }
         
         const data = await response.json();
         updateReportUI(data, reportType);
     } catch (error) {
         console.error('Error generating report:', error);
-        showError('Failed to generate report. Please try again.');
+        showError(error.message || 'Failed to generate report. Please try again.');
     } finally {
         hideLoadingState();
     }
 }
 
 function getReportParameters() {
-    const dateRange = document.getElementById('dateRange').value;
     const params = {
-        departments: Array.from(document.getElementById('department').selectedOptions).map(opt => opt.value),
-        start_date: document.getElementById('startDate').value,
-        end_date: document.getElementById('endDate').value
+        start_date: document.getElementById('startDate')?.value,
+        end_date: document.getElementById('endDate')?.value
     };
-    
-    if (dateRange !== 'custom') {
+
+    // Get department value
+    const departmentSelect = document.getElementById('department');
+    if (departmentSelect?.value) {
+        params.departments = [departmentSelect.value];
+    }
+
+    // Get status values - handle multiple selection
+    const statusSelect = document.getElementById('status');
+    if (statusSelect?.selectedOptions) {
+        const selectedStatus = Array.from(statusSelect.selectedOptions).map(opt => opt.value);
+        if (selectedStatus.length > 0) {
+            params.status = selectedStatus;
+        }
+    }
+
+    const dateRange = document.getElementById('dateRange')?.value;
+    if (dateRange && dateRange !== 'custom') {
         const dates = calculateDatesFromRange(dateRange);
         params.start_date = dates.startDate;
         params.end_date = dates.endDate;
-    }
-    
-    // Add status filters if selected
-    const statusFilters = Array.from(document.getElementById('status').selectedOptions).map(opt => opt.value);
-    if (statusFilters.length > 0) {
-        params.status = statusFilters;
     }
     
     return params;
@@ -117,21 +140,29 @@ async function handleExportFormat(event) {
     const format = event.target.value;
     if (format === 'html') return;
     
-    const reportType = document.getElementById('reportType').value;
-    const params = {
-        ...getReportParameters(),
-        format: format,
-        type: reportType
-    };
+    const reportType = document.getElementById('reportType')?.value || 'attendance';
+    const params = getReportParameters();
+    const searchParams = new URLSearchParams();
+    
+    // Add all parameters
+    Object.entries(params).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+            value.forEach(v => searchParams.append(`${key}[]`, v));
+        } else {
+            searchParams.append(key, value);
+        }
+    });
+    
+    // Add export format and type
+    searchParams.append('format', format);
+    searchParams.append('type', reportType);
     
     try {
         showLoadingState();
         if (format === 'pdf') {
-            // For PDF, we need to handle the response differently
-            const response = await fetch(`/attendance/api/reports/export/?${new URLSearchParams(params)}`);
+            const response = await fetch(`/attendance/api/reports/export/?${searchParams.toString()}`);
             if (!response.ok) throw new Error('Failed to generate PDF');
             
-            // Create blob from response and download
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -142,70 +173,196 @@ async function handleExportFormat(event) {
             window.URL.revokeObjectURL(url);
             a.remove();
         } else {
-            // For other formats, use regular download
-            window.location.href = `/attendance/api/reports/export/?${new URLSearchParams(params)}`;
+            window.location.href = `/attendance/api/reports/export/?${searchParams.toString()}`;
         }
     } catch (error) {
         console.error('Error exporting report:', error);
         showError('Failed to export report. Please try again.');
     } finally {
         hideLoadingState();
-        // Reset select to HTML view
         event.target.value = 'html';
     }
 }
 
 function updateReportUI(data, reportType) {
-    switch (reportType) {
-        case 'attendance':
-            updateAttendanceReport(data);
-            break;
-        case 'leave':
-            updateLeaveReport(data);
-            break;
-        case 'holiday':
-            updateHolidayReport(data);
-            break;
+    // Update summary cards with default values in case data is missing
+    const summary = data.summary || { present: 0, absent: 0, late: 0, leave: 0 };
+    
+    const presentCount = document.getElementById('presentCount');
+    const absentCount = document.getElementById('absentCount');
+    const lateCount = document.getElementById('lateCount');
+    const leaveCount = document.getElementById('leaveCount');
+    
+    if (presentCount) presentCount.textContent = summary.present || '0';
+    if (absentCount) absentCount.textContent = summary.absent || '0';
+    if (lateCount) lateCount.textContent = summary.late || '0';
+    if (leaveCount) leaveCount.textContent = summary.leave || '0';
+    
+    // Update charts if data is available and elements exist
+    if (data.trend_data && document.getElementById('attendanceTrendChart')) {
+        updateAttendanceTrendChart(data.trend_data);
+    }
+    if (data.department_stats && document.getElementById('departmentChart')) {
+        updateDepartmentChart(data.department_stats);
+    }
+    
+    // Update report table
+    if (data.employee_records) {
+        updateReportTable(data.employee_records);
     }
 }
 
-function updateAttendanceReport(data) {
-    // Update summary cards
-    updateSummaryCards(data.summary);
+function updateReportTable(records) {
+    const tbody = document.querySelector('#reportTable tbody');
+    if (!tbody) return;
     
-    // Update charts
-    updateAttendanceTrendChart(data.trend_data);
-    updateDepartmentChart(data.department_stats);
+    tbody.innerHTML = '';
     
-    // Update detailed report table
-    updateReportTable(data.employee_records);
+    records.forEach(record => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${record.id || ''}</td>
+            <td>${record.name || ''}</td>
+            <td>${record.department || ''}</td>
+            <td>${record.present_days || 0}</td>
+            <td>${record.absent_days || 0}</td>
+            <td>${record.late_days || 0}</td>
+            <td>${record.leave_days || 0}</td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="viewEmployeeDetails(${record.id})">
+                    View Details
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
 }
 
-function updateLeaveReport(data) {
-    // Update summary stats
-    document.getElementById('presentCount').textContent = data.total_leaves;
-    document.getElementById('absentCount').textContent = data.approved_leaves;
-    document.getElementById('lateCount').textContent = data.pending_leaves;
-    document.getElementById('leaveCount').textContent = data.rejected_leaves;
+function updateAttendanceTrendChart(trendData) {
+    const ctx = document.getElementById('attendanceTrendChart')?.getContext('2d');
+    if (!ctx) return;
     
-    // Update charts with leave type distribution
-    if (data.leave_type_stats) {
-        updateLeaveTypeChart(data.leave_type_stats);
+    if (attendanceTrendChart) {
+        attendanceTrendChart.destroy();
     }
     
-    // Update detailed table
-    updateLeaveTable(data.employee_records);
-}
-
-function updateHolidayReport(data) {
-    // Update summary
-    document.getElementById('presentCount').textContent = data.total_holidays;
+    const labels = trendData.map(data => data.date);
+    const datasets = [
+        {
+            label: 'Present',
+            data: trendData.map(data => data.present),
+            backgroundColor: CHART_COLORS.present,
+            borderColor: CHART_COLORS.present,
+            tension: 0.1
+        },
+        {
+            label: 'Absent',
+            data: trendData.map(data => data.absent),
+            backgroundColor: CHART_COLORS.absent,
+            borderColor: CHART_COLORS.absent,
+            tension: 0.1
+        },
+        {
+            label: 'Late',
+            data: trendData.map(data => data.late),
+            backgroundColor: CHART_COLORS.late,
+            borderColor: CHART_COLORS.late,
+            tension: 0.1
+        },
+        {
+            label: 'Leave',
+            data: trendData.map(data => data.leave),
+            backgroundColor: CHART_COLORS.leave,
+            borderColor: CHART_COLORS.leave,
+            tension: 0.1
+        }
+    ];
     
-    // Update holiday calendar
-    updateHolidayCalendar(data.holidays);
+    attendanceTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Daily Attendance Trend'
+                }
+            }
+        }
+    });
 }
 
-// ... (keep existing chart and table update functions) ...
+function updateDepartmentChart(departmentStats) {
+    const ctx = document.getElementById('departmentChart')?.getContext('2d');
+    if (!ctx) return;
+    
+    if (departmentChart) {
+        departmentChart.destroy();
+    }
+    
+    const labels = departmentStats.map(stat => stat.department);
+    const datasets = [
+        {
+            label: 'Present',
+            data: departmentStats.map(stat => stat.present),
+            backgroundColor: CHART_COLORS.present
+        },
+        {
+            label: 'Absent',
+            data: departmentStats.map(stat => stat.absent),
+            backgroundColor: CHART_COLORS.absent
+        },
+        {
+            label: 'Late',
+            data: departmentStats.map(stat => stat.late),
+            backgroundColor: CHART_COLORS.late
+        },
+        {
+            label: 'Leave',
+            data: departmentStats.map(stat => stat.leave),
+            backgroundColor: CHART_COLORS.leave
+        }
+    ];
+    
+    departmentChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            scales: {
+                x: {
+                    stacked: true
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Department-wise Attendance'
+                }
+            }
+        }
+    });
+}
 
 function showLoadingState() {
     const overlay = document.getElementById('loadingOverlay');
@@ -226,6 +383,12 @@ function showError(message) {
         toast.show();
     } else {
         alert(message); // Fallback if toast elements don't exist
+    }
+}
+
+function viewEmployeeDetails(employeeId) {
+    if (employeeId) {
+        window.location.href = `/attendance/attendance_detail/?employee_id=${employeeId}`;
     }
 }
 

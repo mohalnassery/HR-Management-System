@@ -1,264 +1,321 @@
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union
-from django.db.models import Q, Count, Avg
+from datetime import datetime, date, timedelta
+from typing import List, Dict, Any, Optional
+from django.db.models import Count, Q
 from django.core.cache import cache
-from django.conf import settings
+from django.utils import timezone
 
-from attendance.models import AttendanceLog, Leave, Holiday
+from ..models import (
+    AttendanceLog, Leave, Holiday, LeaveType
+)
 from employees.models import Employee, Department
 
 class ReportService:
-    """Service class for generating various types of attendance and leave reports"""
+    """Service class for generating various attendance reports"""
     
     CACHE_TIMEOUT = 3600  # 1 hour cache timeout
     
     @classmethod
-    def get_attendance_report(cls, 
-                            start_date: datetime,
-                            end_date: datetime,
-                            departments: Optional[List[int]] = None,
-                            employees: Optional[List[int]] = None,
-                            status: Optional[List[str]] = None) -> Dict:
+    def _get_cache_key(cls, report_type: str, **params) -> str:
+        """Generate a cache key based on report type and parameters"""
+        param_str = "_".join(f"{k}:{v}" for k, v in sorted(params.items()))
+        return f"report_{report_type}_{param_str}"
+    
+    @classmethod
+    def get_attendance_report(cls, start_date: datetime, end_date: datetime,
+                            departments: List[int] = None,
+                            employees: List[int] = None,
+                            status: List[str] = None) -> Dict[str, Any]:
         """
         Generate attendance report for the given parameters
-        
-        Args:
-            start_date: Start date for the report
-            end_date: End date for the report
-            departments: List of department IDs to filter by
-            employees: List of employee IDs to filter by
-            status: List of status types to include ('present', 'absent', 'late', 'leave')
-            
-        Returns:
-            Dictionary containing attendance report data
         """
-        cache_key = cls._generate_cache_key("attendance", {
-            "start_date": start_date,
-            "end_date": end_date,
-            "departments": departments,
-            "employees": employees,
-            "status": status
-        })
+        # Check cache first
+        cache_key = cls._get_cache_key(
+            'attendance',
+            departments=departments,
+            employees=employees,
+            end_date=end_date,
+            start_date=start_date,
+            status=status
+        )
         
         cached_data = cache.get(cache_key)
         if cached_data:
             return cached_data
             
-        # Base query for attendance logs
-        query = AttendanceLog.objects.filter(
-            date__range=[start_date, end_date]
-        )
+        # Build base query for employees
+        base_query = Employee.objects.all()
         
         # Apply filters
         if departments:
-            query = query.filter(employee__department_id__in=departments)
+            base_query = base_query.filter(department_id__in=departments)
         if employees:
-            query = query.filter(employee_id__in=employees)
+            base_query = base_query.filter(id__in=employees)
             
-        # Calculate statistics
-        stats = {
-            "present": query.filter(status="present").count(),
-            "absent": query.filter(status="absent").count(),
-            "late": query.filter(status="late").count(),
-            "leave": Leave.objects.filter(
-                start_date__lte=end_date,
-                end_date__gte=start_date,
-                status="approved"
-            ).count()
-        }
+        # Get attendance records for the date range
+        attendance_logs = AttendanceLog.objects.filter(
+            date__range=[start_date, end_date]
+        )
+        
+        # Calculate summary statistics
+        present_count = attendance_logs.filter(
+            first_in_time__isnull=False,
+            is_late=False
+        ).count()
+        
+        late_count = attendance_logs.filter(is_late=True).count()
+        absent_count = attendance_logs.filter(first_in_time__isnull=True).count()
+        
+        leave_count = Leave.objects.filter(
+            Q(start_date__lte=end_date) & 
+            Q(end_date__gte=start_date) &
+            Q(status='approved')
+        ).count()
         
         # Get daily trend data
         trend_data = []
         current_date = start_date
         while current_date <= end_date:
-            day_stats = {
-                "date": current_date.strftime("%Y-%m-%d"),
-                "present": query.filter(date=current_date, status="present").count(),
-                "absent": query.filter(date=current_date, status="absent").count(),
-                "late": query.filter(date=current_date, status="late").count(),
-                "leave": Leave.objects.filter(
-                    start_date__lte=current_date,
-                    end_date__gte=current_date,
-                    status="approved"
+            day_logs = attendance_logs.filter(date=current_date)
+            trend_data.append({
+                'date': current_date.strftime('%Y-%m-%d'),
+                'present': day_logs.filter(first_in_time__isnull=False, is_late=False).count(),
+                'absent': day_logs.filter(first_in_time__isnull=True).count(),
+                'late': day_logs.filter(is_late=True).count(),
+                'leave': Leave.objects.filter(
+                    Q(start_date__lte=current_date) & 
+                    Q(end_date__gte=current_date) &
+                    Q(status='approved')
                 ).count()
-            }
-            trend_data.append(day_stats)
+            })
             current_date += timedelta(days=1)
             
-        # Get department-wise statistics
-        dept_stats = []
-        departments_query = Department.objects.all()
-        if departments:
-            departments_query = departments_query.filter(id__in=departments)
-            
-        for dept in departments_query:
-            dept_query = query.filter(employee__department=dept)
-            dept_stats.append({
-                "department": dept.name,
-                "present": dept_query.filter(status="present").count(),
-                "absent": dept_query.filter(status="absent").count(),
-                "late": dept_query.filter(status="late").count(),
-                "leave": Leave.objects.filter(
-                    employee__department=dept,
-                    start_date__lte=end_date,
-                    end_date__gte=start_date,
-                    status="approved"
+        # Get department statistics
+        department_stats = []
+        for dept in Department.objects.all():
+            dept_logs = attendance_logs.filter(employee__department=dept)
+            department_stats.append({
+                'department': dept.name,
+                'present': dept_logs.filter(first_in_time__isnull=False, is_late=False).count(),
+                'absent': dept_logs.filter(first_in_time__isnull=True).count(),
+                'late': dept_logs.filter(is_late=True).count(),
+                'leave': Leave.objects.filter(
+                    Q(employee__department=dept) &
+                    Q(start_date__lte=end_date) & 
+                    Q(end_date__gte=start_date) &
+                    Q(status='approved')
                 ).count()
             })
             
-        # Get detailed employee records
+        # Get employee records
         employee_records = []
-        employees_query = Employee.objects.filter(
-            attendancelog__date__range=[start_date, end_date]
-        ).distinct()
-        
-        if departments:
-            employees_query = employees_query.filter(department_id__in=departments)
-        if employees:
-            employees_query = employees_query.filter(id__in=employees)
-            
-        for emp in employees_query:
-            emp_query = query.filter(employee=emp)
+        for emp in base_query:
+            emp_logs = attendance_logs.filter(employee=emp)
             employee_records.append({
-                "id": emp.id,
-                "name": f"{emp.first_name} {emp.last_name}",
-                "department": emp.department.name,
-                "present_days": emp_query.filter(status="present").count(),
-                "absent_days": emp_query.filter(status="absent").count(),
-                "late_days": emp_query.filter(status="late").count(),
-                "leave_days": Leave.objects.filter(
-                    employee=emp,
-                    start_date__lte=end_date,
-                    end_date__gte=start_date,
-                    status="approved"
+                'id': emp.id,
+                'name': f"{emp.first_name} {emp.last_name}",
+                'department': emp.department.name if emp.department else '-',
+                'present_days': emp_logs.filter(first_in_time__isnull=False, is_late=False).count(),
+                'absent_days': emp_logs.filter(first_in_time__isnull=True).count(),
+                'late_days': emp_logs.filter(is_late=True).count(),
+                'leave_days': Leave.objects.filter(
+                    Q(employee=emp) &
+                    Q(start_date__lte=end_date) & 
+                    Q(end_date__gte=start_date) &
+                    Q(status='approved')
                 ).count()
             })
-        
+            
+        # Prepare report data
         report_data = {
-            "summary": stats,
-            "trend_data": trend_data,
-            "department_stats": dept_stats,
-            "employee_records": employee_records
+            'summary': {
+                'present': present_count,
+                'absent': absent_count,
+                'late': late_count,
+                'leave': leave_count
+            },
+            'trend_data': trend_data,
+            'department_stats': department_stats,
+            'employee_records': employee_records,
+            'start_date': start_date,
+            'end_date': end_date,
+            'generated_at': timezone.now()
         }
         
+        # Cache the report
         cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
+        
         return report_data
     
     @classmethod
-    def get_leave_report(cls,
-                        start_date: datetime,
-                        end_date: datetime,
-                        departments: Optional[List[int]] = None,
-                        employees: Optional[List[int]] = None,
-                        leave_types: Optional[List[str]] = None,
-                        status: Optional[List[str]] = None) -> Dict:
+    def get_leave_report(cls, start_date: datetime, end_date: datetime,
+                        departments: List[int] = None,
+                        employees: List[int] = None,
+                        leave_types: List[str] = None) -> Dict[str, Any]:
         """
         Generate leave report for the given parameters
         """
-        cache_key = cls._generate_cache_key("leave", {
-            "start_date": start_date,
-            "end_date": end_date,
-            "departments": departments,
-            "employees": employees,
-            "leave_types": leave_types,
-            "status": status
-        })
+        # Check cache first
+        cache_key = cls._get_cache_key(
+            'leave',
+            departments=departments,
+            employees=employees,
+            end_date=end_date,
+            start_date=start_date,
+            leave_types=leave_types
+        )
         
         cached_data = cache.get(cache_key)
         if cached_data:
             return cached_data
             
-        # Base query for leaves
-        query = Leave.objects.filter(
-            Q(start_date__range=[start_date, end_date]) |
-            Q(end_date__range=[start_date, end_date])
+        # Build base query
+        leaves = Leave.objects.filter(
+            Q(start_date__lte=end_date) & 
+            Q(end_date__gte=start_date)
         )
         
-        # Apply filters
         if departments:
-            query = query.filter(employee__department_id__in=departments)
+            leaves = leaves.filter(employee__department_id__in=departments)
         if employees:
-            query = query.filter(employee_id__in=employees)
+            leaves = leaves.filter(employee_id__in=employees)
         if leave_types:
-            query = query.filter(leave_type__in=leave_types)
-        if status:
-            query = query.filter(status__in=status)
+            leaves = leaves.filter(leave_type__name__in=leave_types)
             
-        # Calculate statistics by leave type
-        leave_type_stats = query.values('leave_type').annotate(
-            count=Count('id'),
-            avg_duration=Avg('duration')
-        )
+        # Calculate statistics
+        total_leaves = leaves.count()
+        approved_leaves = leaves.filter(status='approved').count()
+        pending_leaves = leaves.filter(status='pending').count()
+        rejected_leaves = leaves.filter(status='rejected').count()
         
-        # Get department-wise leave statistics
-        dept_stats = []
-        departments_query = Department.objects.all()
-        if departments:
-            departments_query = departments_query.filter(id__in=departments)
-            
-        for dept in departments_query:
-            dept_query = query.filter(employee__department=dept)
-            dept_stats.append({
-                "department": dept.name,
-                "total_leaves": dept_query.count(),
-                "by_type": dept_query.values('leave_type').annotate(count=Count('id'))
+        # Get leave type statistics
+        leave_type_stats = []
+        for lt in LeaveType.objects.all():
+            lt_leaves = leaves.filter(leave_type=lt)
+            if lt_leaves.exists():
+                total_days = sum((l.end_date - l.start_date).days + 1 for l in lt_leaves)
+                leave_type_stats.append({
+                    'leave_type': lt.name,
+                    'count': lt_leaves.count(),
+                    'avg_duration': total_days / lt_leaves.count() if lt_leaves.count() > 0 else 0
+                })
+        
+        # Get department statistics
+        department_stats = []
+        for dept in Department.objects.all():
+            dept_leaves = leaves.filter(employee__department=dept)
+            if dept_leaves.exists():
+                department_stats.append({
+                    'department': dept.name,
+                    'total_leaves': dept_leaves.count(),
+                    'by_type': [
+                        {
+                            'leave_type': lt.name,
+                            'count': dept_leaves.filter(leave_type=lt).count()
+                        }
+                        for lt in LeaveType.objects.all()
+                        if dept_leaves.filter(leave_type=lt).exists()
+                    ]
+                })
+        
+        # Get employee records
+        employee_records = []
+        for leave in leaves:
+            employee_records.append({
+                'employee_name': f"{leave.employee.first_name} {leave.employee.last_name}",
+                'department': leave.employee.department.name if leave.employee.department else '-',
+                'leave_type': leave.leave_type.name,
+                'start_date': leave.start_date,
+                'end_date': leave.end_date,
+                'duration': (leave.end_date - leave.start_date).days + 1,
+                'status': leave.status
             })
-            
+        
         report_data = {
-            "leave_type_stats": list(leave_type_stats),
-            "department_stats": dept_stats,
-            "total_leaves": query.count(),
-            "approved_leaves": query.filter(status="approved").count(),
-            "pending_leaves": query.filter(status="pending").count(),
-            "rejected_leaves": query.filter(status="rejected").count()
+            'total_leaves': total_leaves,
+            'approved_leaves': approved_leaves,
+            'pending_leaves': pending_leaves,
+            'rejected_leaves': rejected_leaves,
+            'leave_type_stats': leave_type_stats,
+            'department_stats': department_stats,
+            'employee_records': employee_records,
+            'start_date': start_date,
+            'end_date': end_date,
+            'generated_at': timezone.now()
         }
         
+        # Cache the report
         cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
+        
         return report_data
     
     @classmethod
-    def get_holiday_report(cls,
-                          start_date: datetime,
-                          end_date: datetime,
-                          departments: Optional[List[int]] = None) -> Dict:
+    def get_holiday_report(cls, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
         """
-        Generate holiday report for the given parameters
+        Generate holiday report for the given date range
         """
-        cache_key = cls._generate_cache_key("holiday", {
-            "start_date": start_date,
-            "end_date": end_date,
-            "departments": departments
-        })
+        # Check cache first
+        cache_key = cls._get_cache_key(
+            'holiday',
+            start_date=start_date,
+            end_date=end_date
+        )
         
         cached_data = cache.get(cache_key)
         if cached_data:
             return cached_data
             
-        # Get holidays in date range
-        query = Holiday.objects.filter(date__range=[start_date, end_date])
+        # Get holidays
+        holidays = Holiday.objects.filter(
+            date__range=[start_date, end_date],
+            is_active=True
+        ).order_by('date')
         
-        if departments:
-            query = query.filter(applicable_departments__in=departments)
-            
-        holidays = []
-        for holiday in query:
-            holidays.append({
-                "date": holiday.date.strftime("%Y-%m-%d"),
-                "name": holiday.name,
-                "description": holiday.description,
-                "type": holiday.holiday_type
+        # Calculate statistics
+        holiday_type_stats = []
+        holiday_types = holidays.values('type').annotate(count=Count('type'))
+        for ht in holiday_types:
+            holiday_type_stats.append({
+                'type': ht['type'],
+                'count': ht['count']
             })
             
+        # Monthly distribution
+        months = {}
+        for holiday in holidays:
+            month = holiday.date.strftime('%B %Y')
+            if month not in months:
+                months[month] = {
+                    'name': month,
+                    'count': 0,
+                    'holidays': []
+                }
+            months[month]['count'] += 1
+            months[month]['holidays'].append({
+                'date': holiday.date,
+                'name': holiday.name
+            })
+            
+        monthly_distribution = list(months.values())
+        
         report_data = {
-            "total_holidays": len(holidays),
-            "holidays": holidays
+            'total_holidays': holidays.count(),
+            'holidays': [
+                {
+                    'date': h.date,
+                    'name': h.name,
+                    'type': h.type,
+                    'description': h.description
+                }
+                for h in holidays
+            ],
+            'holiday_type_stats': holiday_type_stats,
+            'monthly_distribution': monthly_distribution,
+            'start_date': start_date,
+            'end_date': end_date,
+            'generated_at': timezone.now()
         }
         
+        # Cache the report
         cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
+        
         return report_data
-    
-    @classmethod
-    def _generate_cache_key(cls, report_type: str, params: Dict) -> str:
-        """Generate a cache key for the given report type and parameters"""
-        param_str = "_".join(f"{k}:{v}" for k, v in sorted(params.items()))
-        return f"report_{report_type}_{param_str}"
