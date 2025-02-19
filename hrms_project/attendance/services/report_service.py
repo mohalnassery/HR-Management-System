@@ -17,7 +17,15 @@ class ReportService:
     @classmethod
     def _get_cache_key(cls, report_type: str, **params) -> str:
         """Generate a cache key based on report type and parameters"""
-        param_str = "_".join(f"{k}:{v}" for k, v in sorted(params.items()))
+        # Convert datetime objects to strings to avoid cache key issues
+        processed_params = {}
+        for key, value in params.items():
+            if isinstance(value, (datetime, date)):
+                processed_params[key] = value.strftime('%Y-%m-%d')
+            else:
+                processed_params[key] = value
+                
+        param_str = "_".join(f"{k}:{v}" for k, v in sorted(processed_params.items()))
         return f"report_{report_type}_{param_str}"
     
     @classmethod
@@ -51,19 +59,35 @@ class ReportService:
         if employees:
             base_query = base_query.filter(id__in=employees)
             
+        # Check for holidays in the date range
+        holidays = Holiday.objects.filter(
+            date__range=[start_date, end_date],
+            is_active=True
+        )
+        holiday_dates = set(h.date for h in holidays)
+            
         # Get attendance records for the date range
         attendance_logs = AttendanceLog.objects.filter(
             date__range=[start_date, end_date]
         )
         
+        # Split logs into holiday and non-holiday
+        holiday_logs = attendance_logs.filter(date__in=holiday_dates)
+        non_holiday_logs = attendance_logs.exclude(date__in=holiday_dates)
+        
         # Calculate summary statistics
-        present_count = attendance_logs.filter(
+        # For non-holiday dates, count all statuses
+        present_count = non_holiday_logs.filter(
             first_in_time__isnull=False,
             is_late=False
         ).count()
         
-        late_count = attendance_logs.filter(is_late=True).count()
-        absent_count = attendance_logs.filter(first_in_time__isnull=True).count()
+        late_count = non_holiday_logs.filter(is_late=True).count()
+        absent_count = non_holiday_logs.filter(first_in_time__isnull=True).count()
+        
+        # For holidays, only count people who came to work
+        holiday_present_count = holiday_logs.filter(first_in_time__isnull=False).count()
+        present_count += holiday_present_count
         
         leave_count = Leave.objects.filter(
             Q(start_date__lte=end_date) & 
@@ -76,28 +100,56 @@ class ReportService:
         current_date = start_date
         while current_date <= end_date:
             day_logs = attendance_logs.filter(date=current_date)
-            trend_data.append({
-                'date': current_date.strftime('%Y-%m-%d'),
-                'present': day_logs.filter(first_in_time__isnull=False, is_late=False).count(),
-                'absent': day_logs.filter(first_in_time__isnull=True).count(),
-                'late': day_logs.filter(is_late=True).count(),
-                'leave': Leave.objects.filter(
-                    Q(start_date__lte=current_date) & 
-                    Q(end_date__gte=current_date) &
-                    Q(status='approved')
-                ).count()
-            })
+            is_holiday = current_date in holiday_dates
+            holiday_obj = holidays.filter(date=current_date).first() if is_holiday else None
+            
+            if is_holiday:
+                # On holidays, only count present employees
+                present = day_logs.filter(first_in_time__isnull=False).count()
+                trend_data.append({
+                    'date': current_date.strftime('%Y-%m-%d'),
+                    'present': present,
+                    'absent': 0,  # Don't count absences on holidays
+                    'late': 0,    # Don't count late on holidays
+                    'leave': Leave.objects.filter(
+                        Q(start_date__lte=current_date) & 
+                        Q(end_date__gte=current_date) &
+                        Q(status='approved')
+                    ).count(),
+                    'is_holiday': True,
+                    'holiday_name': holiday_obj.name if holiday_obj else 'Holiday'
+                })
+            else:
+                # Normal day statistics
+                trend_data.append({
+                    'date': current_date.strftime('%Y-%m-%d'),
+                    'present': day_logs.filter(first_in_time__isnull=False, is_late=False).count(),
+                    'absent': day_logs.filter(first_in_time__isnull=True).count(),
+                    'late': day_logs.filter(is_late=True).count(),
+                    'leave': Leave.objects.filter(
+                        Q(start_date__lte=current_date) & 
+                        Q(end_date__gte=current_date) &
+                        Q(status='approved')
+                    ).count(),
+                    'is_holiday': False,
+                    'holiday_name': None
+                })
             current_date += timedelta(days=1)
             
         # Get department statistics
         department_stats = []
         for dept in Department.objects.all():
-            dept_logs = attendance_logs.filter(employee__department=dept)
+            dept_holiday_logs = holiday_logs.filter(employee__department=dept)
+            dept_non_holiday_logs = non_holiday_logs.filter(employee__department=dept)
+            
             department_stats.append({
                 'department': dept.name,
-                'present': dept_logs.filter(first_in_time__isnull=False, is_late=False).count(),
-                'absent': dept_logs.filter(first_in_time__isnull=True).count(),
-                'late': dept_logs.filter(is_late=True).count(),
+                'present': (
+                    dept_non_holiday_logs.filter(first_in_time__isnull=False, is_late=False).count() +
+                    dept_holiday_logs.filter(first_in_time__isnull=False).count()
+                ),
+                'absent': dept_non_holiday_logs.filter(first_in_time__isnull=True).count(),
+                'late': dept_non_holiday_logs.filter(is_late=True).count(),
                 'leave': Leave.objects.filter(
                     Q(employee__department=dept) &
                     Q(start_date__lte=end_date) & 
@@ -109,14 +161,19 @@ class ReportService:
         # Get employee records
         employee_records = []
         for emp in base_query:
-            emp_logs = attendance_logs.filter(employee=emp)
+            emp_holiday_logs = holiday_logs.filter(employee=emp)
+            emp_non_holiday_logs = non_holiday_logs.filter(employee=emp)
+            
             employee_records.append({
                 'id': emp.id,
                 'name': f"{emp.first_name} {emp.last_name}",
                 'department': emp.department.name if emp.department else '-',
-                'present_days': emp_logs.filter(first_in_time__isnull=False, is_late=False).count(),
-                'absent_days': emp_logs.filter(first_in_time__isnull=True).count(),
-                'late_days': emp_logs.filter(is_late=True).count(),
+                'present_days': (
+                    emp_non_holiday_logs.filter(first_in_time__isnull=False, is_late=False).count() +
+                    emp_holiday_logs.filter(first_in_time__isnull=False).count()
+                ),
+                'absent_days': emp_non_holiday_logs.filter(first_in_time__isnull=True).count(),
+                'late_days': emp_non_holiday_logs.filter(is_late=True).count(),
                 'leave_days': Leave.objects.filter(
                     Q(employee=emp) &
                     Q(start_date__lte=end_date) & 
@@ -138,7 +195,15 @@ class ReportService:
             'employee_records': employee_records,
             'start_date': start_date,
             'end_date': end_date,
-            'generated_at': timezone.now()
+            'generated_at': timezone.now(),
+            'holidays': [
+                {
+                    'date': h.date.strftime('%Y-%m-%d'),
+                    'name': h.name,
+                    'description': h.description if hasattr(h, 'description') else ''
+                }
+                for h in holidays
+            ]
         }
         
         # Cache the report
@@ -270,15 +335,6 @@ class ReportService:
             is_active=True
         ).order_by('date')
         
-        # Calculate statistics
-        holiday_type_stats = []
-        holiday_types = holidays.values('type').annotate(count=Count('type'))
-        for ht in holiday_types:
-            holiday_type_stats.append({
-                'type': ht['type'],
-                'count': ht['count']
-            })
-            
         # Monthly distribution
         months = {}
         for holiday in holidays:
@@ -303,12 +359,10 @@ class ReportService:
                 {
                     'date': h.date,
                     'name': h.name,
-                    'type': h.type,
-                    'description': h.description
+                    'description': h.description if hasattr(h, 'description') else ''
                 }
                 for h in holidays
             ],
-            'holiday_type_stats': holiday_type_stats,
             'monthly_distribution': monthly_distribution,
             'start_date': start_date,
             'end_date': end_date,

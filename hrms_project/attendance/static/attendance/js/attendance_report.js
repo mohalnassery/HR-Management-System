@@ -198,11 +198,29 @@ function updateReportUI(data, reportType) {
     if (lateCount) lateCount.textContent = summary.late || '0';
     if (leaveCount) leaveCount.textContent = summary.leave || '0';
     
-    // Update charts if data is available and elements exist
-    if (data.trend_data && document.getElementById('attendanceTrendChart')) {
+    // Display holidays if they exist
+    const holidayInfo = document.getElementById('holidayInfo');
+    if (holidayInfo && data.holidays && data.holidays.length > 0) {
+        holidayInfo.innerHTML = `
+            <div class="alert alert-info">
+                <h5>Holidays in Selected Period:</h5>
+                <ul class="list-unstyled mb-0">
+                    ${data.holidays.map(holiday => 
+                        `<li><strong>${formatDate(new Date(holiday.date))}:</strong> ${holiday.name}</li>`
+                    ).join('')}
+                </ul>
+            </div>
+        `;
+        holidayInfo.style.display = 'block';
+    } else if (holidayInfo) {
+        holidayInfo.style.display = 'none';
+    }
+    
+    // Update charts if data is available
+    if (data.trend_data) {
         updateAttendanceTrendChart(data.trend_data);
     }
-    if (data.department_stats && document.getElementById('departmentChart')) {
+    if (data.department_stats) {
         updateDepartmentChart(data.department_stats);
     }
     
@@ -246,7 +264,11 @@ function updateAttendanceTrendChart(trendData) {
         attendanceTrendChart.destroy();
     }
     
-    const labels = trendData.map(data => data.date);
+    const labels = trendData.map(data => {
+        const label = formatDate(new Date(data.date));
+        return data.is_holiday ? `${label} (Holiday)` : label;
+    });
+    
     const datasets = [
         {
             label: 'Present',
@@ -288,6 +310,16 @@ function updateAttendanceTrendChart(trendData) {
                 mode: 'index'
             },
             scales: {
+                x: {
+                    ticks: {
+                        callback: function(value, index) {
+                            // Add an asterisk to holiday dates
+                            const isHoliday = trendData[index]?.is_holiday;
+                            const label = this.getLabelForValue(value);
+                            return isHoliday ? `${label} *` : label;
+                        }
+                    }
+                },
                 y: {
                     beginAtZero: true,
                     ticks: {
@@ -299,6 +331,19 @@ function updateAttendanceTrendChart(trendData) {
                 title: {
                     display: true,
                     text: 'Daily Attendance Trend'
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            const index = context[0].dataIndex;
+                            const data = trendData[index];
+                            let title = formatDate(new Date(data.date));
+                            if (data.is_holiday) {
+                                title += ` (Holiday - ${data.holiday_name})`;
+                            }
+                            return title;
+                        }
+                    }
                 }
             }
         }
@@ -364,6 +409,85 @@ function updateDepartmentChart(departmentStats) {
     });
 }
 
+function getReportParameters() {
+    const params = {
+        start_date: document.getElementById('startDate')?.value,
+        end_date: document.getElementById('endDate')?.value
+    };
+
+    // Get department value
+    const departmentSelect = document.getElementById('department');
+    if (departmentSelect?.value) {
+        params.departments = [departmentSelect.value];
+    }
+
+    // Get status values - handle multiple selection
+    const statusSelect = document.getElementById('status');
+    if (statusSelect?.selectedOptions) {
+        const selectedStatus = Array.from(statusSelect.selectedOptions).map(opt => opt.value);
+        if (selectedStatus.length > 0) {
+            params.status = selectedStatus;
+        }
+    }
+
+    const dateRange = document.getElementById('dateRange')?.value;
+    if (dateRange && dateRange !== 'custom') {
+        const dates = calculateDatesFromRange(dateRange);
+        params.start_date = dates.startDate;
+        params.end_date = dates.endDate;
+    }
+    
+    return params;
+}
+
+async function handleExportFormat(event) {
+    const format = event.target.value;
+    if (format === 'html') return;
+    
+    const reportType = document.getElementById('reportType')?.value || 'attendance';
+    const params = getReportParameters();
+    const searchParams = new URLSearchParams();
+    
+    // Add all parameters
+    Object.entries(params).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+            value.forEach(v => searchParams.append(`${key}[]`, v));
+        } else {
+            searchParams.append(key, value);
+        }
+    });
+    
+    // Add export format and type
+    searchParams.append('format', format);
+    searchParams.append('type', reportType);
+    
+    try {
+        showLoadingState();
+        if (format === 'pdf') {
+            const response = await fetch(`/attendance/api/reports/export/?${searchParams.toString()}`);
+            if (!response.ok) throw new Error('Failed to generate PDF');
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${reportType}_report.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } else {
+            window.location.href = `/attendance/api/reports/export/?${searchParams.toString()}`;
+        }
+    } catch (error) {
+        console.error('Error exporting report:', error);
+        showError('Failed to export report. Please try again.');
+    } finally {
+        hideLoadingState();
+        event.target.value = 'html';
+    }
+}
+
 function showLoadingState() {
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) overlay.classList.add('active');
@@ -394,7 +518,10 @@ function viewEmployeeDetails(employeeId) {
 
 // Utility functions
 function formatDate(date) {
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function calculateDatesFromRange(range) {
