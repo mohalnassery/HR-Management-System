@@ -17,3 +17,6 @@ gunicorn==21.2.0
 whitenoise==6.6.0
 wia
 pywin32
+reportlab==4.0.4
+xhtml2pdf==0.2.11
+WeasyPrint==60.1

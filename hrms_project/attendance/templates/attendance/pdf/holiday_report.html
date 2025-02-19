@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Holiday Report</title>
+</head>
+<body>
+    <div class="report-header">
+        <h1 class="report-title">Holiday Report</h1>
+        <div class="report-subtitle">
+            {{ data.start_date|date:"F d, Y" }} - {{ data.end_date|date:"F d, Y" }}
+        </div>
+        <div class="report-meta">
+            Generated on: {{ generated_at|date:"F d, Y h:i A" }}
+        </div>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="summary-cards">
+        <div class="summary-card">
+            <h3>Total Holidays</h3>
+            <div class="value">{{ data.total_holidays }}</div>
+        </div>
+    </div>
+
+    <!-- Holiday Calendar -->
+    <div class="section">
+        <h2>Holiday Calendar</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Holiday Name</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for holiday in data.holidays %}
+                <tr>
+                    <td>{{ holiday.date|date:"l, F d, Y" }}</td>
+                    <td>{{ holiday.name }}</td>
+                    <td>{{ holiday.type|title }}</td>
+                    <td>{{ holiday.description|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Holiday Type Distribution -->
+    {% if data.holiday_type_stats %}
+    <div class="section">
+        <h2>Holiday Type Distribution</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stat in data.holiday_type_stats %}
+                <tr>
+                    <td>{{ stat.type|title }}</td>
+                    <td>{{ stat.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Month-wise Distribution -->
+    {% if data.monthly_distribution %}
+    <div class="section">
+        <h2>Monthly Distribution</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Month</th>
+                    <th>Number of Holidays</th>
+                    <th>Holidays</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for month in data.monthly_distribution %}
+                <tr>
+                    <td>{{ month.name }}</td>
+                    <td>{{ month.count }}</td>
+                    <td>
+                        <ul>
+                            {% for holiday in month.holidays %}
+                            <li>{{ holiday.date|date:"d" }} - {{ holiday.name }}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Optional Holiday Usage -->
+    {% if data.optional_holiday_usage %}
+    <div class="section">
+        <h2>Optional Holiday Usage</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Holiday Name</th>
+                    <th>Date</th>
+                    <th>Employees Availed</th>
+                    <th>Department Distribution</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for holiday in data.optional_holiday_usage %}
+                <tr>
+                    <td>{{ holiday.name }}</td>
+                    <td>{{ holiday.date|date:"F d, Y" }}</td>
+                    <td>{{ holiday.employees_availed }}</td>
+                    <td>
+                        <ul>
+                            {% for dept in holiday.department_stats %}
+                            <li>{{ dept.name }}: {{ dept.count }}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Notes Section -->
+    <div class="section">
+        <h2>Important Notes</h2>
+        <ul>
+            <li>Public holidays are mandatory for all employees.</li>
+            <li>Optional holidays can be availed by submitting a request in advance.</li>
+            <li>Employees working on holidays are eligible for compensatory off as per company policy.</li>
+        </ul>
+    </div>
+
+    <div class="footer">
+        <p>This is an automatically generated report. For any discrepancies, please contact HR department.</p>
+        <p>© {% now "Y" %} Your Company Name. All rights reserved.</p>
+    </div>
+
+    <style>
+        /* Additional styles specific to holiday report */
+        .section ul {
+            margin: 0;
+            padding-left: 1.2em;
+        }
+        
+        .section ul li {
+            margin: 0.2em 0;
+        }
+    </style>
+</body>
+</html>

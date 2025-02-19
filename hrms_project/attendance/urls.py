@@ -8,6 +8,7 @@ from .views import calendar_views
 from .views import leave_views
 from .views import holiday_views
 from .views import ramadan_views
+from .api import report_views
 
 app_name = 'attendance'
 
@@ -18,6 +19,7 @@ router.register(r'api/attendance_records', attendance_views.AttendanceRecordView
 router.register(r'api/attendance_logs', attendance_views.AttendanceLogListViewSet, basename='attendancelog')
 router.register(r'api/leaves', leave_views.LeaveViewSet, basename='leave') # Register LeaveViewSet
 router.register(r'api/holidays', holiday_views.HolidayViewSet, basename='holiday') # Register HolidayViewSet
+router.register(r'api/reports', report_views.ReportViewSet, basename='report') # Register ReportViewSet
 
 
 urlpatterns = [

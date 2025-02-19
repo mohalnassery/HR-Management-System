@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Leave Report</title>
+</head>
+<body>
+    <div class="report-header">
+        <h1 class="report-title">Leave Report</h1>
+        <div class="report-subtitle">
+            {{ data.start_date|date:"F d, Y" }} - {{ data.end_date|date:"F d, Y" }}
+        </div>
+        <div class="report-meta">
+            Generated on: {{ generated_at|date:"F d, Y h:i A" }}
+        </div>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="summary-cards">
+        <div class="summary-card total">
+            <h3>Total Leaves</h3>
+            <div class="value">{{ data.total_leaves }}</div>
+        </div>
+        <div class="summary-card approved">
+            <h3>Approved</h3>
+            <div class="value">{{ data.approved_leaves }}</div>
+        </div>
+        <div class="summary-card pending">
+            <h3>Pending</h3>
+            <div class="value">{{ data.pending_leaves }}</div>
+        </div>
+        <div class="summary-card rejected">
+            <h3>Rejected</h3>
+            <div class="value">{{ data.rejected_leaves }}</div>
+        </div>
+    </div>
+
+    <!-- Leave Type Statistics -->
+    {% if data.leave_type_stats %}
+    <div class="section">
+        <h2>Leave Type Distribution</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Leave Type</th>
+                    <th>Count</th>
+                    <th>Average Duration (Days)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for stat in data.leave_type_stats %}
+                <tr>
+                    <td>{{ stat.leave_type }}</td>
+                    <td>{{ stat.count }}</td>
+                    <td>{{ stat.avg_duration|floatformat:1 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Department Statistics -->
+    {% if data.department_stats %}
+    <div class="section">
+        <h2>Department-wise Leave Statistics</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Total Leaves</th>
+                    <th>Leave Types Breakdown</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dept in data.department_stats %}
+                <tr>
+                    <td>{{ dept.department }}</td>
+                    <td>{{ dept.total_leaves }}</td>
+                    <td>
+                        <ul>
+                            {% for type in dept.by_type %}
+                            <li>{{ type.leave_type }}: {{ type.count }}</li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Employee Leave Records -->
+    {% if data.employee_records %}
+    <div class="section">
+        <h2>Employee Leave Details</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th>Leave Type</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in data.employee_records %}
+                <tr>
+                    <td>{{ record.employee_name }}</td>
+                    <td>{{ record.department }}</td>
+                    <td>{{ record.leave_type }}</td>
+                    <td>{{ record.start_date|date:"M d, Y" }}</td>
+                    <td>{{ record.end_date|date:"M d, Y" }}</td>
+                    <td>{{ record.duration }} days</td>
+                    <td>{{ record.status|title }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Leave Balance Summary -->
+    {% if data.leave_balances %}
+    <div class="section">
+        <h2>Leave Balance Summary</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Total Employees</th>
+                    <th>Average Balance</th>
+                    <th>Low Balance Alert</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for balance in data.leave_balances %}
+                <tr>
+                    <td>{{ balance.department }}</td>
+                    <td>{{ balance.total_employees }}</td>
+                    <td>{{ balance.avg_balance|floatformat:1 }} days</td>
+                    <td>
+                        {% if balance.low_balance_count > 0 %}
+                        {{ balance.low_balance_count }} employees
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p>This is an automatically generated report. For any discrepancies, please contact HR department.</p>
+        <p>© {% now "Y" %} Your Company Name. All rights reserved.</p>
+    </div>
+</body>
+</html>

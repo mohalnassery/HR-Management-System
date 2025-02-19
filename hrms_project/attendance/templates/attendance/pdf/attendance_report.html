@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Attendance Report</title>
+</head>
+<body>
+    <div class="report-header">
+        <h1 class="report-title">Attendance Report</h1>
+        <div class="report-subtitle">
+            {{ data.start_date|date:"F d, Y" }} - {{ data.end_date|date:"F d, Y" }}
+        </div>
+        <div class="report-meta">
+            Generated on: {{ generated_at|date:"F d, Y h:i A" }}
+        </div>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="summary-cards">
+        <div class="summary-card present">
+            <h3>Present</h3>
+            <div class="value">{{ data.summary.present }}</div>
+        </div>
+        <div class="summary-card absent">
+            <h3>Absent</h3>
+            <div class="value">{{ data.summary.absent }}</div>
+        </div>
+        <div class="summary-card late">
+            <h3>Late</h3>
+            <div class="value">{{ data.summary.late }}</div>
+        </div>
+        <div class="summary-card leave">
+            <h3>On Leave</h3>
+            <div class="value">{{ data.summary.leave }}</div>
+        </div>
+    </div>
+
+    <!-- Department Statistics -->
+    {% if data.department_stats %}
+    <div class="section">
+        <h2>Department Statistics</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Late</th>
+                    <th>On Leave</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dept in data.department_stats %}
+                <tr>
+                    <td>{{ dept.department }}</td>
+                    <td>{{ dept.present }}</td>
+                    <td>{{ dept.absent }}</td>
+                    <td>{{ dept.late }}</td>
+                    <td>{{ dept.leave }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Detailed Employee Records -->
+    {% if data.employee_records %}
+    <div class="section">
+        <h2>Employee Details</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Employee ID</th>
+                    <th>Name</th>
+                    <th>Department</th>
+                    <th>Present Days</th>
+                    <th>Absent Days</th>
+                    <th>Late Days</th>
+                    <th>Leave Days</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in data.employee_records %}
+                <tr>
+                    <td>{{ record.id }}</td>
+                    <td>{{ record.name }}</td>
+                    <td>{{ record.department }}</td>
+                    <td>{{ record.present_days }}</td>
+                    <td>{{ record.absent_days }}</td>
+                    <td>{{ record.late_days }}</td>
+                    <td>{{ record.leave_days }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Daily Trend Data -->
+    {% if data.trend_data %}
+    <div class="section">
+        <h2>Daily Attendance Trend</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Late</th>
+                    <th>On Leave</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trend in data.trend_data %}
+                <tr>
+                    <td>{{ trend.date }}</td>
+                    <td>{{ trend.present }}</td>
+                    <td>{{ trend.absent }}</td>
+                    <td>{{ trend.late }}</td>
+                    <td>{{ trend.leave }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="footer">
+        <p>This is an automatically generated report. For any discrepancies, please contact HR department.</p>
+        <p>© {% now "Y" %} Your Company Name. All rights reserved.</p>
+    </div>
+</body>
+</html>

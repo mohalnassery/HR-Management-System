@@ -1,246 +1,257 @@
+// Constants
+const CHART_COLORS = {
+    present: 'rgb(40, 167, 69)',
+    absent: 'rgb(220, 53, 69)',
+    late: 'rgb(255, 193, 7)',
+    leave: 'rgb(23, 162, 184)'
+};
+
+// State management
+let attendanceTrendChart = null;
+let departmentChart = null;
+
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize datepickers
-    const startDateInput = document.getElementById('start_date');
-    const endDateInput = document.getElementById('end_date');
-    const departmentSelect = document.getElementById('department');
-    const statusSelect = document.getElementById('status');
-    const searchInput = document.getElementById('search');
-    const reportTable = document.getElementById('report-table');
-    const paginationContainer = document.getElementById('pagination');
-
-    // Initialize Select2 for department dropdown if it exists
-    if (departmentSelect) {
-        $(departmentSelect).select2({
-            placeholder: 'Select Department',
-            allowClear: true
-        });
-    }
-
-    // Function to format date for API
-    function formatDate(date) {
-        if (!date) return '';
-        return date;
-    }
-
-    // Function to load attendance logs
-    function loadAttendanceLogs(page = 1) {
-        const params = new URLSearchParams({
-            start_date: formatDate(startDateInput.value),
-            end_date: formatDate(endDateInput.value),
-            department: departmentSelect ? departmentSelect.value : '',
-            status: statusSelect ? statusSelect.value : '',
-            search: searchInput ? searchInput.value : '',
-            page: page
-        });
-
-        fetch(`/attendance/api/logs/?${params.toString()}`)
-            .then(response => response.json())
-            .then(data => {
-                updateTable(data.results);
-                updatePagination(data);
-            })
-            .catch(error => {
-                console.error('Error loading attendance logs:', error);
-                showError('Failed to load attendance logs');
-            });
-    }
-
-    // Function to update table with attendance data
-    function updateTable(logs) {
-        const tbody = reportTable.querySelector('tbody');
-        tbody.innerHTML = '';
-
-        logs.forEach(log => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${log.employee_number}</td>
-                <td>${log.employee_name}</td>
-                <td>${log.department}</td>
-                <td>${log.date}</td>
-                <td>${log.first_in || '-'}</td>
-                <td>${log.last_out || '-'}</td>
-                <td>
-                    <span class="badge ${getStatusBadgeClass(log.status)}">
-                        ${log.status}
-                    </span>
-                </td>
-                <td>${log.work_duration || '-'}</td>
-                <td>
-                    <button class="btn btn-sm btn-info view-details" data-id="${log.id}">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                </td>
-            `;
-            tbody.appendChild(row);
-        });
-
-        // Add click handlers for view details buttons
-        document.querySelectorAll('.view-details').forEach(button => {
-            button.addEventListener('click', () => viewDetails(button.dataset.id));
-        });
-    }
-
-    // Function to update pagination
-    function updatePagination(data) {
-        if (!paginationContainer) return;
-
-        const totalPages = Math.ceil(data.count / 10); // Assuming 10 items per page
-        let html = '';
-
-        if (totalPages > 1) {
-            html += `
-                <nav>
-                    <ul class="pagination justify-content-center">
-                        <li class="page-item ${data.previous ? '' : 'disabled'}">
-                            <a class="page-link" href="#" data-page="${data.current_page - 1}">Previous</a>
-                        </li>
-            `;
-
-            for (let i = 1; i <= totalPages; i++) {
-                html += `
-                    <li class="page-item ${i === data.current_page ? 'active' : ''}">
-                        <a class="page-link" href="#" data-page="${i}">${i}</a>
-                    </li>
-                `;
-            }
-
-            html += `
-                        <li class="page-item ${data.next ? '' : 'disabled'}">
-                            <a class="page-link" href="#" data-page="${data.current_page + 1}">Next</a>
-                        </li>
-                    </ul>
-                </nav>
-            `;
-        }
-
-        paginationContainer.innerHTML = html;
-
-        // Add click handlers for pagination
-        paginationContainer.querySelectorAll('.page-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (!link.parentElement.classList.contains('disabled')) {
-                    loadAttendanceLogs(parseInt(link.dataset.page));
-                }
-            });
-        });
-    }
-
-    // Function to get badge class based on status
-    function getStatusBadgeClass(status) {
-        const statusClasses = {
-            'Present': 'bg-success',
-            'Absent': 'bg-danger',
-            'Late': 'bg-warning',
-            'Leave': 'bg-info',
-            'Holiday': 'bg-primary'
-        };
-        return statusClasses[status] || 'bg-secondary';
-    }
-
-    // Function to view attendance details
-    function viewDetails(logId) {
-        fetch(`/attendance/api/logs/${logId}/`)
-            .then(response => response.json())
-            .then(data => {
-                const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
-                document.getElementById('detailsModalContent').innerHTML = `
-                    <div class="table-responsive">
-                        <table class="table">
-                            <tr>
-                                <th>Employee</th>
-                                <td>${data.employee_name} (${data.employee_number})</td>
-                            </tr>
-                            <tr>
-                                <th>Department</th>
-                                <td>${data.department}</td>
-                            </tr>
-                            <tr>
-                                <th>Date</th>
-                                <td>${data.date}</td>
-                            </tr>
-                            <tr>
-                                <th>Status</th>
-                                <td>
-                                    <span class="badge ${getStatusBadgeClass(data.status)}">
-                                        ${data.status}
-                                    </span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>First In</th>
-                                <td>${data.first_in || '-'}</td>
-                            </tr>
-                            <tr>
-                                <th>Last Out</th>
-                                <td>${data.last_out || '-'}</td>
-                            </tr>
-                            <tr>
-                                <th>Work Duration</th>
-                                <td>${data.work_duration || '-'}</td>
-                            </tr>
-                        </table>
-                    </div>
-                    ${data.raw_records ? `
-                        <h6 class="mt-3">Raw Records</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Time</th>
-                                        <th>Type</th>
-                                        <th>Source</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${data.raw_records.map(record => `
-                                        <tr>
-                                            <td>${record.time}</td>
-                                            <td>
-                                                <span class="badge ${record.type === 'IN' ? 'bg-success' : 'bg-danger'}">
-                                                    ${record.type}${record.label || ''}
-                                                </span>
-                                            </td>
-                                            <td>${record.source}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    ` : ''}
-                `;
-                modal.show();
-            })
-            .catch(error => {
-                console.error('Error loading attendance details:', error);
-                showError('Failed to load attendance details');
-            });
-    }
-
-    // Function to show error message
-    function showError(message) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-danger alert-dismissible fade show';
-        alertDiv.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        document.querySelector('.card-body').prepend(alertDiv);
-        
-        // Auto dismiss after 5 seconds
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 5000);
-    }
-
-    // Event listeners for filters
-    const filters = [startDateInput, endDateInput, departmentSelect, statusSelect, searchInput];
-    filters.forEach(filter => {
-        if (filter) {
-            filter.addEventListener('change', () => loadAttendanceLogs(1));
-        }
-    });
-
-    // Initial load
-    loadAttendanceLogs();
+    // Initialize event listeners
+    document.getElementById('generateReport').addEventListener('click', generateReport);
+    document.getElementById('dateRange').addEventListener('change', handleDateRangeChange);
+    document.getElementById('exportFormat').addEventListener('change', handleExportFormat);
+    document.getElementById('reportType').addEventListener('change', handleReportTypeChange);
+    
+    // Initialize date inputs with default values
+    setDefaultDates();
 });
+
+function setDefaultDates() {
+    const today = new Date();
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    
+    document.getElementById('startDate').value = formatDate(firstDayOfMonth);
+    document.getElementById('endDate').value = formatDate(today);
+}
+
+function handleDateRangeChange(event) {
+    const customDateRange = document.getElementById('customDateRange');
+    customDateRange.style.display = event.target.value === 'custom' ? 'block' : 'none';
+    
+    if (event.target.value !== 'custom') {
+        setDateRangeFromPreset(event.target.value);
+    }
+}
+
+function handleReportTypeChange(event) {
+    const reportType = event.target.value;
+    // Update available export formats based on report type
+    const exportFormat = document.getElementById('exportFormat');
+    exportFormat.innerHTML = `
+        <option value="html">Web View</option>
+        <option value="csv">CSV</option>
+        <option value="excel">Excel</option>
+        <option value="pdf">PDF</option>
+        ${reportType === 'attendance' ? '<option value="json">JSON</option>' : ''}
+    `;
+}
+
+function setDateRangeFromPreset(preset) {
+    const today = new Date();
+    let startDate = new Date();
+    
+    switch (preset) {
+        case 'today':
+            startDate = today;
+            break;
+        case 'week':
+            startDate = new Date(today.setDate(today.getDate() - 7));
+            break;
+        case 'month':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            break;
+    }
+    
+    document.getElementById('startDate').value = formatDate(startDate);
+    document.getElementById('endDate').value = formatDate(new Date());
+}
+
+async function generateReport() {
+    const params = getReportParameters();
+    showLoadingState();
+    
+    try {
+        const reportType = document.getElementById('reportType').value;
+        const response = await fetch(`/attendance/api/reports/${reportType}/?${new URLSearchParams(params)}`);
+        if (!response.ok) throw new Error('Failed to fetch report data');
+        
+        const data = await response.json();
+        updateReportUI(data, reportType);
+    } catch (error) {
+        console.error('Error generating report:', error);
+        showError('Failed to generate report. Please try again.');
+    } finally {
+        hideLoadingState();
+    }
+}
+
+function getReportParameters() {
+    const dateRange = document.getElementById('dateRange').value;
+    const params = {
+        departments: Array.from(document.getElementById('department').selectedOptions).map(opt => opt.value),
+        start_date: document.getElementById('startDate').value,
+        end_date: document.getElementById('endDate').value
+    };
+    
+    if (dateRange !== 'custom') {
+        const dates = calculateDatesFromRange(dateRange);
+        params.start_date = dates.startDate;
+        params.end_date = dates.endDate;
+    }
+    
+    // Add status filters if selected
+    const statusFilters = Array.from(document.getElementById('status').selectedOptions).map(opt => opt.value);
+    if (statusFilters.length > 0) {
+        params.status = statusFilters;
+    }
+    
+    return params;
+}
+
+async function handleExportFormat(event) {
+    const format = event.target.value;
+    if (format === 'html') return;
+    
+    const reportType = document.getElementById('reportType').value;
+    const params = {
+        ...getReportParameters(),
+        format: format,
+        type: reportType
+    };
+    
+    try {
+        showLoadingState();
+        if (format === 'pdf') {
+            // For PDF, we need to handle the response differently
+            const response = await fetch(`/attendance/api/reports/export/?${new URLSearchParams(params)}`);
+            if (!response.ok) throw new Error('Failed to generate PDF');
+            
+            // Create blob from response and download
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${reportType}_report.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } else {
+            // For other formats, use regular download
+            window.location.href = `/attendance/api/reports/export/?${new URLSearchParams(params)}`;
+        }
+    } catch (error) {
+        console.error('Error exporting report:', error);
+        showError('Failed to export report. Please try again.');
+    } finally {
+        hideLoadingState();
+        // Reset select to HTML view
+        event.target.value = 'html';
+    }
+}
+
+function updateReportUI(data, reportType) {
+    switch (reportType) {
+        case 'attendance':
+            updateAttendanceReport(data);
+            break;
+        case 'leave':
+            updateLeaveReport(data);
+            break;
+        case 'holiday':
+            updateHolidayReport(data);
+            break;
+    }
+}
+
+function updateAttendanceReport(data) {
+    // Update summary cards
+    updateSummaryCards(data.summary);
+    
+    // Update charts
+    updateAttendanceTrendChart(data.trend_data);
+    updateDepartmentChart(data.department_stats);
+    
+    // Update detailed report table
+    updateReportTable(data.employee_records);
+}
+
+function updateLeaveReport(data) {
+    // Update summary stats
+    document.getElementById('presentCount').textContent = data.total_leaves;
+    document.getElementById('absentCount').textContent = data.approved_leaves;
+    document.getElementById('lateCount').textContent = data.pending_leaves;
+    document.getElementById('leaveCount').textContent = data.rejected_leaves;
+    
+    // Update charts with leave type distribution
+    if (data.leave_type_stats) {
+        updateLeaveTypeChart(data.leave_type_stats);
+    }
+    
+    // Update detailed table
+    updateLeaveTable(data.employee_records);
+}
+
+function updateHolidayReport(data) {
+    // Update summary
+    document.getElementById('presentCount').textContent = data.total_holidays;
+    
+    // Update holiday calendar
+    updateHolidayCalendar(data.holidays);
+}
+
+// ... (keep existing chart and table update functions) ...
+
+function showLoadingState() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.add('active');
+}
+
+function hideLoadingState() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+function showError(message) {
+    const errorToast = document.getElementById('errorToast');
+    const errorMessage = document.getElementById('errorMessage');
+    if (errorToast && errorMessage) {
+        errorMessage.textContent = message;
+        const toast = new bootstrap.Toast(errorToast);
+        toast.show();
+    } else {
+        alert(message); // Fallback if toast elements don't exist
+    }
+}
+
+// Utility functions
+function formatDate(date) {
+    return date.toISOString().split('T')[0];
+}
+
+function calculateDatesFromRange(range) {
+    const today = new Date();
+    let startDate = new Date();
+    
+    switch (range) {
+        case 'today':
+            startDate = today;
+            break;
+        case 'week':
+            startDate = new Date(today.setDate(today.getDate() - 7));
+            break;
+        case 'month':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            break;
+    }
+    
+    return {
+        startDate: formatDate(startDate),
+        endDate: formatDate(new Date())
+    };
+}
