@@ -134,9 +134,9 @@ def leave_request_create(request):
     # Calculate balance percentages for progress bars
     if leave_balances:
         for balance in leave_balances:
-            total_allocation = balance.leave_type.default_days
+            total_allocation = balance.leave_type.days_allowed
             if total_allocation > 0:
-                balance.balance_percentage = (balance.balance_days / total_allocation) * 100
+                balance.balance_percentage = (balance.available_days / total_allocation) * 100
             else:
                 balance.balance_percentage = 0
     
