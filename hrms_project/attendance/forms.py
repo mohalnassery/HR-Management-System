@@ -1,8 +1,97 @@
 from django import forms
 from django.core.validators import FileExtensionValidator
+from typing import Dict, Any, Optional
+from datetime import date
 from .models import Holiday, Leave, LeaveType, LeaveDocument
 
-class HolidayForm(forms.ModelForm):
+class BaseForm(forms.Form):
+    """
+    Base form class that provides common functionality for all forms.
+    Automatically adds Bootstrap classes to form widgets.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._add_bootstrap_classes()
+    
+    def _add_bootstrap_classes(self):
+        """Add Bootstrap classes to form widgets based on their type"""
+        for field in self.fields.values():
+            widget = field.widget
+            if isinstance(widget, (forms.Select, forms.SelectMultiple)):
+                self._add_widget_class(widget, 'form-select')
+            elif isinstance(widget, forms.CheckboxInput):
+                self._add_widget_class(widget, 'form-check-input')
+            elif isinstance(widget, forms.FileInput):
+                self._add_widget_class(widget, 'form-control')
+            else:
+                self._add_widget_class(widget, 'form-control')
+    
+    @staticmethod
+    def _add_widget_class(widget: forms.Widget, class_name: str):
+        """Add a CSS class to a widget if it doesn't already have it"""
+        if 'class' in widget.attrs:
+            if class_name not in widget.attrs['class']:
+                widget.attrs['class'] += f' {class_name}'
+        else:
+            widget.attrs['class'] = class_name
+
+class BaseModelForm(forms.ModelForm, BaseForm):
+    """
+    Base model form class that combines ModelForm functionality with BaseForm.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._add_bootstrap_classes()
+
+class DateRangeValidationMixin:
+    """
+    Mixin to provide date range validation functionality.
+    Can be used with both forms and serializers.
+    """
+    
+    def validate_date_range(
+        self,
+        start_date: date,
+        end_date: date,
+        allow_single_day: bool = True,
+        allow_past_dates: bool = True,
+        max_days: Optional[int] = None
+    ) -> None:
+        """
+        Validate a date range according to specified constraints.
+        
+        Args:
+            start_date: The start date of the range
+            end_date: The end date of the range
+            allow_single_day: Whether the start and end date can be the same
+            allow_past_dates: Whether dates in the past are allowed
+            max_days: Maximum number of days allowed between start and end date
+            
+        Raises:
+            ValidationError: If the date range is invalid
+        """
+        if not start_date or not end_date:
+            return
+            
+        if start_date > end_date:
+            raise forms.ValidationError('End date must be after start date')
+            
+        if not allow_single_day and start_date == end_date:
+            raise forms.ValidationError('Start and end date cannot be the same')
+            
+        if not allow_past_dates and start_date < date.today():
+            raise forms.ValidationError('Past dates are not allowed')
+            
+        if max_days:
+            days_difference = (end_date - start_date).days + 1
+            if days_difference > max_days:
+                raise forms.ValidationError(
+                    f'Date range cannot exceed {max_days} days'
+                )
+
+class HolidayForm(BaseModelForm):
     class Meta:
         model = Holiday
         fields = [
@@ -18,14 +107,7 @@ class HolidayForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'rows': 3}),
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['name'].widget.attrs.update({'class': 'form-control'})
-        self.fields['date'].widget.attrs.update({'class': 'form-control'})
-        self.fields['holiday_type'].widget.attrs.update({'class': 'form-select'})
-        self.fields['description'].widget.attrs.update({'class': 'form-control'}) 
-
-class LeaveBalanceUploadForm(forms.Form):
+class LeaveBalanceUploadForm(BaseForm):
     csv_file = forms.FileField(
         label="CSV File",
         help_text="Upload a CSV file with employee_number and leave_balance columns."
@@ -41,25 +123,19 @@ class LeaveBalanceUploadForm(forms.Form):
         widget=forms.HiddenInput(),
     )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['csv_file'].widget.attrs.update({'class': 'form-control'})
-        self.fields['as_of_date'].widget.attrs.update({'class': 'form-control'})
-
-class LeaveRequestForm(forms.ModelForm):
+class LeaveRequestForm(BaseModelForm, DateRangeValidationMixin):
     duration_type = forms.ChoiceField(
         choices=[
             ('full_day', 'Full Day'),
             ('half_day', 'Half Day'),
         ],
         initial='full_day',
-        widget=forms.Select(attrs={'class': 'form-select'})
+        widget=forms.Select()  # Bootstrap class will be added automatically
     )
     
     document = forms.FileField(
         required=False,
         validators=[FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png'])],
-        widget=forms.ClearableFileInput(attrs={'class': 'form-control'}),
         help_text='Supported formats: PDF, JPG, JPEG, PNG'
     )
 
@@ -73,10 +149,9 @@ class LeaveRequestForm(forms.ModelForm):
             'reason'
         ]
         widgets = {
-            'leave_type': forms.Select(attrs={'class': 'form-select'}),
-            'start_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'end_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'reason': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'})
+            'start_date': forms.DateInput(attrs={'type': 'date'}),
+            'end_date': forms.DateInput(attrs={'type': 'date'}),
+            'reason': forms.Textarea(attrs={'rows': 3})
         }
 
     def clean(self):
@@ -86,9 +161,15 @@ class LeaveRequestForm(forms.ModelForm):
         duration_type = cleaned_data.get('duration_type')
 
         if start_date and end_date:
-            if start_date > end_date:
-                raise forms.ValidationError('End date must be after start date')
+            # Validate date range
+            self.validate_date_range(
+                start_date,
+                end_date,
+                allow_single_day=True,
+                allow_past_dates=True
+            )
 
+            # Additional validation for half-day leave
             if duration_type == 'half_day' and start_date != end_date:
                 raise forms.ValidationError('Half day leave must be for a single day')
 

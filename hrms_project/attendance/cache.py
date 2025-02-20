@@ -1,10 +1,10 @@
 from datetime import date, datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TypeVar, Generic, Union
 from django.core.cache import cache
 from django.db.models import QuerySet
 from django.conf import settings
 
-# Cache keys and timeouts
+# Cache configuration
 CACHE_KEYS = {
     'employee_shift': 'employee_shift_{}',  # Employee's current shift
     'ramadan_period': 'ramadan_period_{}',  # Active Ramadan period for date
@@ -23,131 +23,178 @@ CACHE_TIMEOUTS = {
     'attendance_metrics': 60 * 60 * 12,  # 12 hours
 }
 
-def get_employee_shift_cache_key(employee_id: int) -> str:
-    """Generate cache key for employee's current shift"""
-    return CACHE_KEYS['employee_shift'].format(employee_id)
+def generate_cache_key(key_name: str, *args) -> str:
+    """
+    Centralized cache key generation function.
+    
+    Args:
+        key_name: Name of the cache key template from CACHE_KEYS
+        *args: Arguments to format into the key template
+        
+    Returns:
+        Formatted cache key string
+    
+    Raises:
+        KeyError: If key_name is not found in CACHE_KEYS
+    """
+    if key_name not in CACHE_KEYS:
+        raise KeyError(f"Unknown cache key name: {key_name}")
+    
+    # Format date objects to ISO format
+    formatted_args = [
+        arg.isoformat() if isinstance(arg, date) else arg
+        for arg in args
+    ]
+    
+    return CACHE_KEYS[key_name].format(*formatted_args)
 
-def get_ramadan_period_cache_key(target_date: date) -> str:
-    """Generate cache key for Ramadan period"""
-    return CACHE_KEYS['ramadan_period'].format(target_date.isoformat())
+T = TypeVar('T')
 
-def get_department_shifts_cache_key(department_id: int) -> str:
-    """Generate cache key for department shifts"""
-    return CACHE_KEYS['department_shifts'].format(department_id)
-
-def get_employee_schedule_cache_key(employee_id: int, start_date: date, end_date: date) -> str:
-    """Generate cache key for employee schedule"""
-    return CACHE_KEYS['employee_schedule'].format(
-        employee_id,
-        start_date.isoformat(),
-        end_date.isoformat()
-    )
-
-def get_shift_statistics_cache_key(shift_id: int) -> str:
-    """Generate cache key for shift statistics"""
-    return CACHE_KEYS['shift_statistics'].format(shift_id)
-
-def get_attendance_metrics_cache_key(date_str: str, department_id: Optional[int] = None) -> str:
-    """Generate cache key for attendance metrics"""
-    return CACHE_KEYS['attendance_metrics'].format(date_str, department_id or 'all')
+class CacheManager(Generic[T]):
+    """
+    Base cache manager class providing generic cache operations.
+    
+    Type Parameters:
+        T: The type of data being cached
+    """
+    
+    def __init__(self, key_name: str, timeout_key: str):
+        """
+        Initialize cache manager with key configuration.
+        
+        Args:
+            key_name: Name of the cache key template from CACHE_KEYS
+            timeout_key: Name of the timeout from CACHE_TIMEOUTS
+        """
+        self.key_name = key_name
+        self.timeout = CACHE_TIMEOUTS[timeout_key]
+    
+    def get_key(self, *args) -> str:
+        """Generate cache key for given arguments"""
+        return generate_cache_key(self.key_name, *args)
+    
+    def get(self, *args) -> Optional[T]:
+        """Get cached data"""
+        key = self.get_key(*args)
+        return cache.get(key)
+    
+    def set(self, data: T, *args) -> None:
+        """Set cache data"""
+        key = self.get_key(*args)
+        cache.set(key, data, self.timeout)
+    
+    def clear(self, *args) -> None:
+        """Clear cached data"""
+        key = self.get_key(*args)
+        cache.delete(key)
+    
+    def clear_pattern(self, pattern: str) -> None:
+        """
+        Clear all cache keys matching a pattern.
+        Note: Implementation depends on cache backend capabilities.
+        Falls back to no-op if pattern deletion is not supported.
+        """
+        if hasattr(cache, 'delete_pattern'):
+            # For cache backends that support pattern deletion (e.g., Redis)
+            cache.delete_pattern(pattern)
 
 class ShiftCache:
     """Cache manager for shift-related data"""
     
-    @staticmethod
-    def get_employee_shift(employee_id: int) -> Optional[Dict[str, Any]]:
+    _employee_shift = CacheManager[Dict[str, Any]]('employee_shift', 'employee_shift')
+    _department_shifts = CacheManager[Dict[str, List[Dict[str, Any]]]]('department_shifts', 'department_shifts')
+    
+    @classmethod
+    def get_employee_shift(cls, employee_id: int) -> Optional[Dict[str, Any]]:
         """Get employee's current shift from cache"""
-        key = get_employee_shift_cache_key(employee_id)
-        return cache.get(key)
-
-    @staticmethod
-    def set_employee_shift(employee_id: int, shift_data: Dict[str, Any]) -> None:
+        return cls._employee_shift.get(employee_id)
+    
+    @classmethod
+    def set_employee_shift(cls, employee_id: int, shift_data: Dict[str, Any]) -> None:
         """Cache employee's current shift"""
-        key = get_employee_shift_cache_key(employee_id)
-        cache.set(key, shift_data, CACHE_TIMEOUTS['employee_shift'])
-
-    @staticmethod
-    def clear_employee_shift(employee_id: int) -> None:
+        cls._employee_shift.set(shift_data, employee_id)
+    
+    @classmethod
+    def clear_employee_shift(cls, employee_id: int) -> None:
         """Clear employee's shift cache"""
-        key = get_employee_shift_cache_key(employee_id)
-        cache.delete(key)
-
-    @staticmethod
-    def get_department_shifts(department_id: int) -> Optional[Dict[str, List[Dict[str, Any]]]]:
+        cls._employee_shift.clear(employee_id)
+    
+    @classmethod
+    def get_department_shifts(cls, department_id: int) -> Optional[Dict[str, List[Dict[str, Any]]]]:
         """Get department shifts from cache"""
-        key = get_department_shifts_cache_key(department_id)
-        return cache.get(key)
-
-    @staticmethod
-    def set_department_shifts(department_id: int, shifts_data: Dict[str, List[Dict[str, Any]]]) -> None:
+        return cls._department_shifts.get(department_id)
+    
+    @classmethod
+    def set_department_shifts(cls, department_id: int, shifts_data: Dict[str, List[Dict[str, Any]]]) -> None:
         """Cache department shifts"""
-        key = get_department_shifts_cache_key(department_id)
-        cache.set(key, shifts_data, CACHE_TIMEOUTS['department_shifts'])
-
-    @staticmethod
-    def clear_department_shifts(department_id: int) -> None:
+        cls._department_shifts.set(shifts_data, department_id)
+    
+    @classmethod
+    def clear_department_shifts(cls, department_id: int) -> None:
         """Clear department shifts cache"""
-        key = get_department_shifts_cache_key(department_id)
-        cache.delete(key)
+        cls._department_shifts.clear(department_id)
 
 class RamadanCache:
     """Cache manager for Ramadan period data"""
     
-    @staticmethod
-    def get_active_period(target_date: date) -> Optional[Dict[str, Any]]:
+    _period = CacheManager[Dict[str, Any]]('ramadan_period', 'ramadan_period')
+    
+    @classmethod
+    def get_active_period(cls, target_date: date) -> Optional[Dict[str, Any]]:
         """Get active Ramadan period from cache"""
-        key = get_ramadan_period_cache_key(target_date)
-        return cache.get(key)
-
-    @staticmethod
-    def set_active_period(target_date: date, period_data: Dict[str, Any]) -> None:
+        return cls._period.get(target_date)
+    
+    @classmethod
+    def set_active_period(cls, target_date: date, period_data: Dict[str, Any]) -> None:
         """Cache active Ramadan period"""
-        key = get_ramadan_period_cache_key(target_date)
-        cache.set(key, period_data, CACHE_TIMEOUTS['ramadan_period'])
-
-    @staticmethod
-    def clear_active_period(target_date: date) -> None:
+        cls._period.set(period_data, target_date)
+    
+    @classmethod
+    def clear_active_period(cls, target_date: date) -> None:
         """Clear Ramadan period cache"""
-        key = get_ramadan_period_cache_key(target_date)
-        cache.delete(key)
-
-    @staticmethod
-    def clear_all_periods() -> None:
-        """Clear all Ramadan period caches for the current year"""
-        current_date = date.today()
-        year_start = date(current_date.year, 1, 1)
-        year_end = date(current_date.year, 12, 31)
+        cls._period.clear(target_date)
+    
+    @classmethod
+    def clear_all_periods(cls) -> None:
+        """Clear all Ramadan period caches"""
+        # Try to use pattern deletion if supported
+        cls._period.clear_pattern('ramadan_period_*')
         
-        # Clear cache for entire year
-        current = year_start
-        while current <= year_end:
-            RamadanCache.clear_active_period(current)
-            current += timedelta(days=1)
+        # Fallback to iterative deletion if pattern deletion is not supported
+        if not hasattr(cache, 'delete_pattern'):
+            current_date = date.today()
+            year_start = date(current_date.year, 1, 1)
+            year_end = date(current_date.year, 12, 31)
+            
+            current = year_start
+            while current <= year_end:
+                cls.clear_active_period(current)
+                current += timedelta(days=1)
 
 class AttendanceMetricsCache:
     """Cache manager for attendance metrics"""
     
-    @staticmethod
-    def get_metrics(date_str: str, department_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    _metrics = CacheManager[Dict[str, Any]]('attendance_metrics', 'attendance_metrics')
+    
+    @classmethod
+    def get_metrics(cls, date_str: str, department_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Get attendance metrics from cache"""
-        key = get_attendance_metrics_cache_key(date_str, department_id)
-        return cache.get(key)
-
-    @staticmethod
+        return cls._metrics.get(date_str, department_id or 'all')
+    
+    @classmethod
     def set_metrics(
+        cls,
         date_str: str,
         metrics_data: Dict[str, Any],
         department_id: Optional[int] = None
     ) -> None:
         """Cache attendance metrics"""
-        key = get_attendance_metrics_cache_key(date_str, department_id)
-        cache.set(key, metrics_data, CACHE_TIMEOUTS['attendance_metrics'])
-
-    @staticmethod
-    def clear_metrics(date_str: str, department_id: Optional[int] = None) -> None:
+        cls._metrics.set(metrics_data, date_str, department_id or 'all')
+    
+    @classmethod
+    def clear_metrics(cls, date_str: str, department_id: Optional[int] = None) -> None:
         """Clear attendance metrics cache"""
-        key = get_attendance_metrics_cache_key(date_str, department_id)
-        cache.delete(key)
+        cls._metrics.clear(date_str, department_id or 'all')
 
 def invalidate_employee_caches(employee_id: int) -> None:
     """Invalidate all caches related to an employee"""
@@ -156,14 +203,11 @@ def invalidate_employee_caches(employee_id: int) -> None:
     
     # Clear schedule caches for recent dates
     today = date.today()
+    schedule_cache = CacheManager[Any]('employee_schedule', 'employee_schedule')
+    
     for days in range(-7, 30):  # Past week to next month
         target_date = today + timedelta(days=days)
-        key = get_employee_schedule_cache_key(
-            employee_id,
-            target_date,
-            target_date
-        )
-        cache.delete(key)
+        schedule_cache.clear(employee_id, target_date, target_date)
 
 def invalidate_department_caches(department_id: int) -> None:
     """Invalidate all caches related to a department"""

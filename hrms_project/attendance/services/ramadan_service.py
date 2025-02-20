@@ -1,16 +1,92 @@
 from datetime import date, datetime, timedelta
-from typing import Optional, Dict, Any, List
-
+from typing import Optional, Dict, Any, List, Tuple
 from django.db import transaction
 from django.utils import timezone
+from django.core.exceptions import ValidationError
 
 from ..models import RamadanPeriod
 
 class RamadanService:
+    """Service for handling Ramadan period operations"""
+
+    @staticmethod
+    def _validate_period(
+        start_date: date,
+        end_date: date,
+        year: int,
+        exclude_id: Optional[int] = None
+    ) -> Tuple[int, bool]:
+        """
+        Validate Ramadan period dates and check for overlaps.
+        
+        Args:
+            start_date: Proposed start date
+            end_date: Proposed end date
+            year: Year the period should be in
+            exclude_id: Optional ID to exclude from overlap check
+            
+        Returns:
+            Tuple of (duration_days, has_overlap)
+            
+        Raises:
+            ValueError: If dates are invalid
+        """
+        # Check year consistency
+        if start_date.year != year or end_date.year != year:
+            raise ValueError("Start and end dates must be within the specified year")
+            
+        # Check date order
+        if end_date < start_date:
+            raise ValueError("End date cannot be before start date")
+            
+        # Check duration (typical Ramadan is 29-30 days)
+        duration = (end_date - start_date).days + 1
+        if duration < 28 or duration > 31:
+            raise ValueError(f"Duration ({duration} days) seems invalid for Ramadan")
+            
+        # Check for overlaps
+        query = RamadanPeriod.objects.filter(
+            start_date__lte=end_date,
+            end_date__gte=start_date
+        )
+        if exclude_id is not None:
+            query = query.exclude(id=exclude_id)
+            
+        has_overlap = query.exists()
+        if has_overlap:
+            raise ValueError("This period overlaps with an existing Ramadan period")
+            
+        return duration, has_overlap
+
+    @staticmethod
+    def validate_period_dates(
+        start_date: date,
+        end_date: date,
+        year: int,
+        exclude_id: Optional[int] = None
+    ) -> bool:
+        """
+        Public method to validate Ramadan period dates.
+        
+        Args:
+            start_date: Proposed start date
+            end_date: Proposed end date
+            year: Year the period should be in
+            exclude_id: Optional ID to exclude from overlap check
+            
+        Returns:
+            True if dates are valid
+            
+        Raises:
+            ValueError: If validation fails
+        """
+        RamadanService._validate_period(start_date, end_date, year, exclude_id)
+        return True
+
     @staticmethod
     def get_active_period(date_to_check: Optional[date] = None) -> Optional[RamadanPeriod]:
         """
-        Get the active Ramadan period for a given date
+        Get the active Ramadan period for a given date.
         
         Args:
             date_to_check: The date to check (defaults to today)
@@ -30,7 +106,7 @@ class RamadanService:
     @staticmethod
     def create_period(year: int, start_date: date, end_date: date) -> RamadanPeriod:
         """
-        Create a new Ramadan period
+        Create a new Ramadan period.
         
         Args:
             year: The year of the Ramadan period
@@ -41,20 +117,10 @@ class RamadanService:
             The created RamadanPeriod instance
             
         Raises:
-            ValueError: If dates are invalid or period overlaps with existing ones
+            ValueError: If dates are invalid or period overlaps
         """
-        # Validate year matches dates
-        if (start_date.year != year or end_date.year != year):
-            raise ValueError("Start and end dates must be within the specified year")
-            
-        # Check for overlaps
-        overlapping = RamadanPeriod.objects.filter(
-            start_date__lte=end_date,
-            end_date__gte=start_date
-        ).exists()
-        
-        if overlapping:
-            raise ValueError("This period overlaps with an existing Ramadan period")
+        # Validate period
+        RamadanService._validate_period(start_date, end_date, year)
             
         return RamadanPeriod.objects.create(
             year=year,
@@ -73,7 +139,7 @@ class RamadanService:
         is_active: bool
     ) -> RamadanPeriod:
         """
-        Update an existing Ramadan period
+        Update an existing Ramadan period.
         
         Args:
             period_id: ID of the period to update
@@ -86,23 +152,11 @@ class RamadanService:
             The updated RamadanPeriod instance
             
         Raises:
-            ValueError: If dates are invalid or period overlaps with existing ones
+            ValueError: If dates are invalid or period overlaps
             RamadanPeriod.DoesNotExist: If period_id is invalid
         """
-        # Validate year matches dates
-        if (start_date.year != year or end_date.year != year):
-            raise ValueError("Start and end dates must be within the specified year")
-            
-        # Check for overlaps with other periods
-        overlapping = RamadanPeriod.objects.exclude(
-            id=period_id
-        ).filter(
-            start_date__lte=end_date,
-            end_date__gte=start_date
-        ).exists()
-        
-        if overlapping:
-            raise ValueError("This period overlaps with an existing Ramadan period")
+        # Validate period
+        RamadanService._validate_period(start_date, end_date, year, period_id)
             
         period = RamadanPeriod.objects.get(id=period_id)
         period.year = year
@@ -116,7 +170,7 @@ class RamadanService:
     @staticmethod
     def get_all_periods(include_inactive: bool = False) -> List[Dict[str, Any]]:
         """
-        Get all Ramadan periods with optional filtering
+        Get all Ramadan periods with optional filtering.
         
         Args:
             include_inactive: Whether to include inactive periods
@@ -143,7 +197,7 @@ class RamadanService:
         is_ramadan: bool = False
     ) -> float:
         """
-        Calculate adjusted working hours for Ramadan
+        Calculate adjusted working hours for Ramadan.
         
         Args:
             normal_hours: Regular working hours
@@ -161,7 +215,7 @@ class RamadanService:
     @staticmethod
     def get_ramadan_shift_timing(shift, date) -> Dict[str, Any]:
         """
-        Get Ramadan-adjusted shift timing if applicable
+        Get Ramadan-adjusted shift timing if applicable.
 
         Args:
             shift: The shift to get timings for
@@ -187,51 +241,3 @@ class RamadanService:
             'end_time': end_time,
             'is_ramadan': True
         }
-
-    @staticmethod
-    def validate_period_dates(
-        start_date: date,
-        end_date: date,
-        year: int,
-        exclude_id: Optional[int] = None
-    ) -> bool:
-        """
-        Validate Ramadan period dates
-        
-        Args:
-            start_date: Proposed start date
-            end_date: Proposed end date
-            year: Year the period should be in
-            exclude_id: Optional ID to exclude from overlap check
-            
-        Returns:
-            True if dates are valid, False otherwise
-            
-        Raises:
-            ValueError with specific error message if validation fails
-        """
-        # Check year consistency
-        if start_date.year != year or end_date.year != year:
-            raise ValueError("Start and end dates must be within the specified year")
-            
-        # Check date order
-        if end_date < start_date:
-            raise ValueError("End date cannot be before start date")
-            
-        # Check duration (typical Ramadan is 29-30 days)
-        duration = (end_date - start_date).days + 1
-        if duration < 28 or duration > 31:
-            raise ValueError(f"Duration ({duration} days) seems invalid for Ramadan")
-            
-        # Check for overlaps
-        query = RamadanPeriod.objects.filter(
-            start_date__lte=end_date,
-            end_date__gte=start_date
-        )
-        if exclude_id:
-            query = query.exclude(id=exclude_id)
-            
-        if query.exists():
-            raise ValueError("This period overlaps with an existing Ramadan period")
-            
-        return True

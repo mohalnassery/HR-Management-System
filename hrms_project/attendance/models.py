@@ -1,9 +1,10 @@
 from django.db import models
 from django.conf import settings
-from employees.models import Employee
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
+from employees.models import Employee
+from .config.shift_defaults import SHIFT_PRIORITIES, DEFAULT_SHIFTS
 
 class RamadanPeriod(models.Model):
     """Defines Ramadan periods for different years"""
@@ -41,12 +42,6 @@ class Shift(models.Model):
         ('OPEN', 'Open Shift'),
     ]
 
-    SHIFT_PRIORITIES = {
-        'NIGHT': 3,    # Highest priority
-        'OPEN': 2,     # Medium priority
-        'DEFAULT': 1,  # Lowest priority
-    }
-
     name = models.CharField(max_length=100)
     shift_type = models.CharField(max_length=10, choices=SHIFT_TYPES)
     start_time = models.TimeField()
@@ -69,41 +64,15 @@ class Shift(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     @property
-    def priority(self):
-        """Get the priority of this shift type"""
-        return self.SHIFT_PRIORITIES.get(self.shift_type, 0)
+    def priority(self) -> int:
+        """Get the priority of this shift type from configuration"""
+        return SHIFT_PRIORITIES.get(self.shift_type, 0)
 
     @classmethod
-    def get_default_shifts(cls):
-        """Return the default shift configurations"""
-        return [
-            {
-                'name': 'Default Shift',
-                'shift_type': 'DEFAULT',
-                'start_time': '07:00',
-                'end_time': '16:00',
-                'grace_period': 15,
-                'break_duration': 60,
-            },
-            {
-                'name': 'Night Shift',
-                'shift_type': 'NIGHT',
-                'start_time': '18:00',
-                'end_time': '03:00',
-                'grace_period': 15,
-                'break_duration': 60,
-            },
-            {
-                'name': 'Open Shift',
-                'shift_type': 'OPEN',
-                'start_time': '00:00',
-                'end_time': '23:59',
-                'grace_period': 30,
-                'break_duration': 60,
-            },
-        ]
+    def get_default_shifts(cls) -> list:
+        """Return the default shift configurations from settings"""
+        return DEFAULT_SHIFTS
 
     def __str__(self):
         return self.name

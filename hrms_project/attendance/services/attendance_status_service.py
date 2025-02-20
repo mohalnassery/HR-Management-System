@@ -1,14 +1,55 @@
 from datetime import datetime, timedelta
-from typing import Optional
-
+from typing import Optional, Dict, Any, Tuple
 from django.utils import timezone
-
-from ..models import Shift
+from ..models import Shift, DateSpecificShiftOverride
+from .shift_service import ShiftService
 from .ramadan_service import RamadanService
 
 class AttendanceStatusService:
+    """Service for handling attendance status calculations"""
+
     @staticmethod
-    def calculate_status(attendance_log):
+    def _get_shift_timings(
+        shift: Shift,
+        date: datetime.date,
+        is_muslim: bool = False
+    ) -> Dict[str, datetime.time]:
+        """
+        Get appropriate shift timings considering Ramadan and night shift overrides.
+        
+        Args:
+            shift: The shift to get timings for
+            date: The date to check
+            is_muslim: Whether the employee is Muslim (for Ramadan timing)
+            
+        Returns:
+            Dictionary containing start_time and end_time
+        """
+        # Check for Ramadan timing first for Muslim employees
+        if is_muslim:
+            ramadan_timing = RamadanService.get_ramadan_shift_timing(shift, date)
+            if ramadan_timing:
+                return ramadan_timing
+
+        # Get regular shift timing
+        shift_timing = ShiftService.get_shift_timing(shift, date)
+
+        # Check for night shift override
+        if shift.shift_type == 'NIGHT':
+            override = DateSpecificShiftOverride.objects.filter(
+                date=date,
+                shift_type='NIGHT'
+            ).first()
+            if override:
+                if override.override_start_time:
+                    shift_timing['start_time'] = override.override_start_time
+                if override.override_end_time:
+                    shift_timing['end_time'] = override.override_end_time
+
+        return shift_timing
+
+    @staticmethod
+    def calculate_status(attendance_log) -> str:
         """
         Calculate attendance status based on attendance log, considering:
         - Shift type-specific timings
@@ -33,24 +74,14 @@ class AttendanceStatusService:
                 return 'absent'  # No shift assigned and no default shift available
             attendance_log.shift = shift  # Update log with default shift
 
-        # Get shift timings using ShiftService
-        from .shift_service import ShiftService
-        shift_timing = ShiftService.get_shift_timing(shift, attendance_log.date)
+        # Get shift timings
+        shift_timing = AttendanceStatusService._get_shift_timings(
+            shift,
+            attendance_log.date,
+            attendance_log.employee.religion == "Muslim"
+        )
         shift_start_time = shift_timing['start_time']
         shift_end_time = shift_timing['end_time']
-
-        # Check for night shift override
-        if shift.shift_type == 'NIGHT':
-            from attendance.models import DateSpecificShiftOverride
-            override = DateSpecificShiftOverride.objects.filter(
-                date=attendance_log.date,
-                shift_type='NIGHT'
-            ).first()
-            if override:
-                if override.override_start_time:
-                    shift_start_time = override.override_start_time
-                if override.override_end_time:
-                    shift_end_time = override.override_end_time
 
         # Calculate lateness
         grace_minutes = shift.grace_period or 0
@@ -115,24 +146,11 @@ class AttendanceStatusService:
         if not shift:
             return 0
 
-        # First check for Ramadan timings if employee is Muslim
-        if attendance_log.employee.religion == "Muslim":
-            ramadan_timing = RamadanService.get_ramadan_shift_timing(shift, attendance_log.date)
-            if ramadan_timing:
-                shift_start_time = ramadan_timing['start_time']
-                shift_end_time = ramadan_timing['end_time']
-            else:
-                # Get regular shift timings if not in Ramadan period
-                from .shift_service import ShiftService
-                shift_timing = ShiftService.get_shift_timing(shift, attendance_log.date)
-                shift_start_time = shift_timing['start_time']
-                shift_end_time = shift_timing['end_time']
-        else:
-            # Non-Muslim employees use regular shift timings
-            from .shift_service import ShiftService
-            shift_timing = ShiftService.get_shift_timing(shift, attendance_log.date)
-            shift_start_time = shift_timing['start_time']
-            shift_end_time = shift_timing['end_time']
+        # Get appropriate shift timings
+        is_muslim = employee.religion == "Muslim"
+        shift_timing = AttendanceStatusService._get_shift_timings(shift, date, is_muslim)
+        shift_start_time = shift_timing['start_time']
+        shift_end_time = shift_timing['end_time']
 
         # Handle night shift spanning midnight
         if shift.shift_type == 'NIGHT' and shift_end_time < shift_start_time:
@@ -144,10 +162,9 @@ class AttendanceStatusService:
         duration = int((last_out - first_in).total_seconds() / 60)  # Convert to minutes
 
         # Check if employee is Muslim and date falls in Ramadan
-        ramadan_period = RamadanService.get_active_period(attendance_log.date)
-        is_muslim_employee = employee.religion == "Muslim"
+        ramadan_period = RamadanService.get_active_period(date)
 
-        if ramadan_period and is_muslim_employee:
+        if ramadan_period and is_muslim:
             if shift.ramadan_end_time:
                 # Use Ramadan-specific end time to calculate duration
                 expected_hours = (
@@ -172,9 +189,12 @@ class AttendanceStatusService:
         return max(duration, 0)  # Ensure non-negative duration
 
     @staticmethod
-    def update_attendance_status(attendance_log):
+    def update_attendance_status(attendance_log) -> str:
         """
         Update the attendance log with status, lateness, and work duration
+        
+        Returns:
+            str: The calculated status
         """
         # Calculate status (updates is_late and late_minutes)
         status = AttendanceStatusService.calculate_status(attendance_log)

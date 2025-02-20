@@ -1,21 +1,19 @@
 from django.db.models.signals import pre_save, post_save, pre_delete, post_delete
 from django.dispatch import receiver
-from django.core.cache import cache
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
 from datetime import datetime, timedelta
+from typing import List
 
-from .models import Shift, ShiftAssignment, RamadanPeriod, AttendanceLog
-from .services import ShiftService, RamadanService
-
-from django.core.exceptions import ObjectDoesNotExist
 from .models import (
-    AttendanceRecord, AttendanceLog, Leave, LeaveType, 
-    LeaveBalance, Holiday, Employee
+    Shift, ShiftAssignment, RamadanPeriod, AttendanceLog,
+    AttendanceRecord, Leave, LeaveType, LeaveBalance, Holiday, Employee
 )
-from .services import AttendanceStatusService
-from datetime import datetime, timedelta
+from .services import (
+    ShiftService, RamadanService, AttendanceStatusService
+)
+from .services.cache_invalidation_service import CacheInvalidationService
 
 @receiver(pre_save, sender=ShiftAssignment)
 def handle_shift_assignment_update(sender, instance, **kwargs):
@@ -31,9 +29,11 @@ def handle_shift_assignment_update(sender, instance, **kwargs):
                 is_active=True
             ).exclude(pk=instance.pk).update(is_active=False)
             
-        # Clear employee shift cache
-        cache_key = f'employee_shift_{instance.employee_id}'
-        cache.delete(cache_key)
+        # Clear caches
+        CacheInvalidationService.invalidate_shift_related_caches(
+            employee_ids=[instance.employee_id],
+            department_ids={instance.employee.department_id} if instance.employee.department_id else None
+        )
 
 @receiver(post_save, sender=ShiftAssignment)
 def handle_shift_assignment_create(sender, instance, created, **kwargs):
@@ -53,9 +53,11 @@ def handle_shift_assignment_create(sender, instance, created, **kwargs):
 @receiver(pre_delete, sender=ShiftAssignment)
 def handle_shift_assignment_delete(sender, instance, **kwargs):
     """Handle shift assignment deletion"""
-    # Clear employee shift cache
-    cache_key = f'employee_shift_{instance.employee_id}'
-    cache.delete(cache_key)
+    # Clear caches
+    CacheInvalidationService.invalidate_shift_related_caches(
+        employee_ids=[instance.employee_id],
+        department_ids={instance.employee.department_id} if instance.employee.department_id else None
+    )
 
 @receiver(pre_save, sender=RamadanPeriod)
 def validate_ramadan_period(sender, instance, **kwargs):
@@ -79,13 +81,11 @@ def validate_ramadan_period(sender, instance, **kwargs):
 @receiver(post_save, sender=RamadanPeriod)
 def handle_ramadan_period_change(sender, instance, created, **kwargs):
     """Handle Ramadan period changes"""
-    from .cache import RamadanCache
-    
-    # Clear cache for the period's date range
-    current_date = instance.start_date
-    while current_date <= instance.end_date:
-        RamadanCache.clear_active_period(current_date)
-        current_date += timedelta(days=1)
+    # Clear caches
+    CacheInvalidationService.invalidate_ramadan_related_caches(
+        start_date=instance.start_date,
+        end_date=instance.end_date
+    )
     
     if instance.is_active:
         # Deactivate other active periods in the same year
@@ -109,38 +109,30 @@ def validate_shift_timing(sender, instance, **kwargs):
 @receiver(post_save, sender=Shift)
 def handle_shift_changes(sender, instance, created, **kwargs):
     """Handle shift changes"""
-    # Clear shift statistics cache
-    cache_key = f'shift_statistics_{instance.id}'
-    cache.delete(cache_key)
-    
+    # Get affected employees
+    affected_employees = list(ShiftAssignment.objects.filter(
+        shift=instance,
+        is_active=True
+    ).values_list('employee_id', flat=True))
+
+    # Get affected departments
+    affected_departments = set(Employee.objects.filter(
+        id__in=affected_employees
+    ).values_list('department_id', flat=True))
+
+    # Clear caches
+    CacheInvalidationService.invalidate_shift_related_caches(
+        employee_ids=affected_employees,
+        shift_id=instance.id,
+        department_ids=affected_departments
+    )
+
     # If shift is deactivated, deactivate its assignments
     if not instance.is_active:
-        assignments = ShiftAssignment.objects.filter(
+        ShiftAssignment.objects.filter(
             shift=instance,
             is_active=True
-        )
-        
-        # Collect affected employee IDs before deactivating
-        affected_employees = list(assignments.values_list('employee_id', flat=True))
-        
-        # Deactivate assignments
-        assignments.update(is_active=False)
-        
-        # Clear cache for each affected employee
-        from .cache import invalidate_employee_caches
-        for employee_id in affected_employees:
-            invalidate_employee_caches(employee_id)
-    # Even if shift isn't deactivated, we need to invalidate caches for affected employees
-    else:
-        # Get all employees assigned to this shift and clear their caches
-        affected_employees = ShiftAssignment.objects.filter(
-            shift=instance,
-            is_active=True
-        ).values_list('employee_id', flat=True)
-        
-        from .cache import invalidate_employee_caches
-        for employee_id in affected_employees:
-            invalidate_employee_caches(employee_id)
+        ).update(is_active=False)
 
 @receiver(pre_save, sender=AttendanceLog)
 def calculate_attendance_status(sender, instance, **kwargs):

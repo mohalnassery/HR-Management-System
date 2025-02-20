@@ -1,13 +1,17 @@
 from datetime import datetime, date, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, TypeVar
 from django.db.models import Count, Q
 from django.core.cache import cache
 from django.utils import timezone
+from functools import wraps
 
 from ..models import (
     AttendanceLog, Leave, Holiday, LeaveType
 )
 from employees.models import Employee, Department
+from ..cache import generate_cache_key
+
+T = TypeVar('T', bound=Dict[str, Any])
 
 class ReportService:
     """Service class for generating various attendance reports"""
@@ -17,85 +21,295 @@ class ReportService:
     @classmethod
     def _get_cache_key(cls, report_type: str, **params) -> str:
         """Generate a cache key based on report type and parameters"""
-        # Convert datetime objects to strings to avoid cache key issues
-        processed_params = {}
-        for key, value in params.items():
-            if isinstance(value, (datetime, date)):
-                processed_params[key] = value.strftime('%Y-%m-%d')
-            else:
-                processed_params[key] = value
-                
-        param_str = "_".join(f"{k}:{v}" for k, v in sorted(processed_params.items()))
-        return f"report_{report_type}_{param_str}"
-    
+        return generate_cache_key(f'report_{report_type}', **params)
+
     @classmethod
-    def get_attendance_report(cls, start_date: datetime, end_date: datetime,
-                            departments: List[int] = None,
-                            employees: List[int] = None,
-                            status: List[str] = None) -> Dict[str, Any]:
+    def _generate_report(
+        cls,
+        report_type: str,
+        data_generator: Callable[..., T],
+        params: Dict[str, Any]
+    ) -> T:
         """
-        Generate attendance report for the given parameters
+        Base report generation function with caching.
+        
+        Args:
+            report_type: Type of report being generated
+            data_generator: Function that generates the report data
+            params: Parameters for report generation
+            
+        Returns:
+            Generated report data
         """
         # Check cache first
-        cache_key = cls._get_cache_key(
-            'attendance',
-            departments=departments,
-            employees=employees,
-            end_date=end_date,
-            start_date=start_date,
-            status=status
-        )
-        
+        cache_key = cls._get_cache_key(report_type, **params)
         cached_data = cache.get(cache_key)
         if cached_data:
             return cached_data
-            
+
+        # Generate report data
+        report_data = data_generator(**params)
+
+        # Add common fields
+        report_data.update({
+            'start_date': params['start_date'],
+            'end_date': params['end_date'],
+            'generated_at': timezone.now()
+        })
+
+        # Cache the report
+        cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
+        return report_data
+
+    @classmethod
+    def _generate_attendance_data(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        departments: Optional[List[int]] = None,
+        employees: Optional[List[int]] = None,
+        status: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Generate attendance report data"""
         # Build base query for employees
         base_query = Employee.objects.all()
-        
-        # Apply filters
         if departments:
             base_query = base_query.filter(department_id__in=departments)
         if employees:
             base_query = base_query.filter(id__in=employees)
-            
-        # Check for holidays in the date range
+
+        # Get holidays
         holidays = Holiday.objects.filter(
             date__range=[start_date, end_date],
             is_active=True
         )
         holiday_dates = set(h.date for h in holidays)
-            
-        # Get attendance records for the date range
+
+        # Get attendance logs
         attendance_logs = AttendanceLog.objects.filter(
             date__range=[start_date, end_date]
         )
-        
-        # Split logs into holiday and non-holiday
         holiday_logs = attendance_logs.filter(date__in=holiday_dates)
         non_holiday_logs = attendance_logs.exclude(date__in=holiday_dates)
-        
-        # Calculate summary statistics
-        # For non-holiday dates, count all statuses
-        present_count = non_holiday_logs.filter(
-            first_in_time__isnull=False,
-            is_late=False
-        ).count()
-        
+
+        # Calculate statistics
+        present_count = (
+            non_holiday_logs.filter(first_in_time__isnull=False, is_late=False).count() +
+            holiday_logs.filter(first_in_time__isnull=False).count()
+        )
         late_count = non_holiday_logs.filter(is_late=True).count()
         absent_count = non_holiday_logs.filter(first_in_time__isnull=True).count()
-        
-        # For holidays, only count people who came to work
-        holiday_present_count = holiday_logs.filter(first_in_time__isnull=False).count()
-        present_count += holiday_present_count
-        
         leave_count = Leave.objects.filter(
             Q(start_date__lte=end_date) & 
             Q(end_date__gte=start_date) &
             Q(status='approved')
         ).count()
+
+        # Generate trend data
+        trend_data = cls._generate_trend_data(
+            start_date, end_date, attendance_logs, holidays, holiday_dates
+        )
+
+        # Generate department statistics
+        department_stats = cls._generate_department_stats(
+            holiday_logs, non_holiday_logs, start_date, end_date
+        )
+
+        # Generate employee records
+        employee_records = cls._generate_employee_records(
+            base_query, holiday_logs, non_holiday_logs, start_date, end_date
+        )
+
+        return {
+            'summary': {
+                'present': present_count,
+                'absent': absent_count,
+                'late': late_count,
+                'leave': leave_count
+            },
+            'trend_data': trend_data,
+            'department_stats': department_stats,
+            'employee_records': employee_records,
+            'holidays': [
+                {
+                    'date': h.date.strftime('%Y-%m-%d'),
+                    'name': h.name,
+                    'description': h.description if hasattr(h, 'description') else ''
+                }
+                for h in holidays
+            ]
+        }
+
+    @classmethod
+    def _generate_leave_data(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        departments: Optional[List[int]] = None,
+        employees: Optional[List[int]] = None,
+        leave_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Generate leave report data"""
+        # Build base query
+        leaves = Leave.objects.filter(
+            Q(start_date__lte=end_date) & 
+            Q(end_date__gte=start_date)
+        )
         
-        # Get daily trend data
+        if departments:
+            leaves = leaves.filter(employee__department_id__in=departments)
+        if employees:
+            leaves = leaves.filter(employee_id__in=employees)
+        if leave_types:
+            leaves = leaves.filter(leave_type__name__in=leave_types)
+
+        # Calculate statistics
+        total_leaves = leaves.count()
+        approved_leaves = leaves.filter(status='approved').count()
+        pending_leaves = leaves.filter(status='pending').count()
+        rejected_leaves = leaves.filter(status='rejected').count()
+
+        # Generate leave type statistics
+        leave_type_stats = cls._generate_leave_type_stats(leaves)
+
+        # Generate department statistics
+        department_stats = cls._generate_leave_department_stats(leaves)
+
+        # Generate employee records
+        employee_records = [
+            {
+                'employee_name': f"{leave.employee.first_name} {leave.employee.last_name}",
+                'department': leave.employee.department.name if leave.employee.department else '-',
+                'leave_type': leave.leave_type.name,
+                'start_date': leave.start_date,
+                'end_date': leave.end_date,
+                'duration': (leave.end_date - leave.start_date).days + 1,
+                'status': leave.status
+            }
+            for leave in leaves
+        ]
+
+        return {
+            'total_leaves': total_leaves,
+            'approved_leaves': approved_leaves,
+            'pending_leaves': pending_leaves,
+            'rejected_leaves': rejected_leaves,
+            'leave_type_stats': leave_type_stats,
+            'department_stats': department_stats,
+            'employee_records': employee_records
+        }
+
+    @classmethod
+    def _generate_holiday_data(
+        cls,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Dict[str, Any]:
+        """Generate holiday report data"""
+        holidays = Holiday.objects.filter(
+            date__range=[start_date, end_date],
+            is_active=True
+        ).order_by('date')
+
+        # Generate monthly distribution
+        months = {}
+        for holiday in holidays:
+            month = holiday.date.strftime('%B %Y')
+            if month not in months:
+                months[month] = {
+                    'name': month,
+                    'count': 0,
+                    'holidays': []
+                }
+            months[month]['count'] += 1
+            months[month]['holidays'].append({
+                'date': holiday.date,
+                'name': holiday.name
+            })
+
+        return {
+            'total_holidays': holidays.count(),
+            'holidays': [
+                {
+                    'date': h.date,
+                    'name': h.name,
+                    'description': h.description if hasattr(h, 'description') else ''
+                }
+                for h in holidays
+            ],
+            'monthly_distribution': list(months.values())
+        }
+
+    @classmethod
+    def get_attendance_report(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        departments: Optional[List[int]] = None,
+        employees: Optional[List[int]] = None,
+        status: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Generate attendance report for the given parameters"""
+        return cls._generate_report(
+            'attendance',
+            cls._generate_attendance_data,
+            {
+                'start_date': start_date,
+                'end_date': end_date,
+                'departments': departments,
+                'employees': employees,
+                'status': status
+            }
+        )
+
+    @classmethod
+    def get_leave_report(
+        cls,
+        start_date: datetime,
+        end_date: datetime,
+        departments: Optional[List[int]] = None,
+        employees: Optional[List[int]] = None,
+        leave_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Generate leave report for the given parameters"""
+        return cls._generate_report(
+            'leave',
+            cls._generate_leave_data,
+            {
+                'start_date': start_date,
+                'end_date': end_date,
+                'departments': departments,
+                'employees': employees,
+                'leave_types': leave_types
+            }
+        )
+
+    @classmethod
+    def get_holiday_report(
+        cls,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Dict[str, Any]:
+        """Generate holiday report for the given date range"""
+        return cls._generate_report(
+            'holiday',
+            cls._generate_holiday_data,
+            {
+                'start_date': start_date,
+                'end_date': end_date
+            }
+        )
+
+    # Helper methods for generating report components
+    @staticmethod
+    def _generate_trend_data(
+        start_date: datetime,
+        end_date: datetime,
+        attendance_logs: Any,
+        holidays: Any,
+        holiday_dates: set
+    ) -> List[Dict[str, Any]]:
+        """Generate daily trend data"""
         trend_data = []
         current_date = start_date
         while current_date <= end_date:
@@ -104,11 +318,9 @@ class ReportService:
             holiday_obj = holidays.filter(date=current_date).first() if is_holiday else None
             
             if is_holiday:
-                # On holidays, only count present employees
-                present = day_logs.filter(first_in_time__isnull=False).count()
                 trend_data.append({
                     'date': current_date.strftime('%Y-%m-%d'),
-                    'present': present,
+                    'present': day_logs.filter(first_in_time__isnull=False).count(),
                     'absent': 0,  # Don't count absences on holidays
                     'late': 0,    # Don't count late on holidays
                     'leave': Leave.objects.filter(
@@ -120,7 +332,6 @@ class ReportService:
                     'holiday_name': holiday_obj.name if holiday_obj else 'Holiday'
                 })
             else:
-                # Normal day statistics
                 trend_data.append({
                     'date': current_date.strftime('%Y-%m-%d'),
                     'present': day_logs.filter(first_in_time__isnull=False, is_late=False).count(),
@@ -135,8 +346,16 @@ class ReportService:
                     'holiday_name': None
                 })
             current_date += timedelta(days=1)
-            
-        # Get department statistics
+        return trend_data
+
+    @staticmethod
+    def _generate_department_stats(
+        holiday_logs: Any,
+        non_holiday_logs: Any,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """Generate department statistics"""
         department_stats = []
         for dept in Department.objects.all():
             dept_holiday_logs = holiday_logs.filter(employee__department=dept)
@@ -157,8 +376,17 @@ class ReportService:
                     Q(status='approved')
                 ).count()
             })
-            
-        # Get employee records
+        return department_stats
+
+    @staticmethod
+    def _generate_employee_records(
+        base_query: Any,
+        holiday_logs: Any,
+        non_holiday_logs: Any,
+        start_date: datetime,
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """Generate employee records"""
         employee_records = []
         for emp in base_query:
             emp_holiday_logs = holiday_logs.filter(employee=emp)
@@ -181,78 +409,11 @@ class ReportService:
                     Q(status='approved')
                 ).count()
             })
-            
-        # Prepare report data
-        report_data = {
-            'summary': {
-                'present': present_count,
-                'absent': absent_count,
-                'late': late_count,
-                'leave': leave_count
-            },
-            'trend_data': trend_data,
-            'department_stats': department_stats,
-            'employee_records': employee_records,
-            'start_date': start_date,
-            'end_date': end_date,
-            'generated_at': timezone.now(),
-            'holidays': [
-                {
-                    'date': h.date.strftime('%Y-%m-%d'),
-                    'name': h.name,
-                    'description': h.description if hasattr(h, 'description') else ''
-                }
-                for h in holidays
-            ]
-        }
-        
-        # Cache the report
-        cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
-        
-        return report_data
-    
-    @classmethod
-    def get_leave_report(cls, start_date: datetime, end_date: datetime,
-                        departments: List[int] = None,
-                        employees: List[int] = None,
-                        leave_types: List[str] = None) -> Dict[str, Any]:
-        """
-        Generate leave report for the given parameters
-        """
-        # Check cache first
-        cache_key = cls._get_cache_key(
-            'leave',
-            departments=departments,
-            employees=employees,
-            end_date=end_date,
-            start_date=start_date,
-            leave_types=leave_types
-        )
-        
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return cached_data
-            
-        # Build base query
-        leaves = Leave.objects.filter(
-            Q(start_date__lte=end_date) & 
-            Q(end_date__gte=start_date)
-        )
-        
-        if departments:
-            leaves = leaves.filter(employee__department_id__in=departments)
-        if employees:
-            leaves = leaves.filter(employee_id__in=employees)
-        if leave_types:
-            leaves = leaves.filter(leave_type__name__in=leave_types)
-            
-        # Calculate statistics
-        total_leaves = leaves.count()
-        approved_leaves = leaves.filter(status='approved').count()
-        pending_leaves = leaves.filter(status='pending').count()
-        rejected_leaves = leaves.filter(status='rejected').count()
-        
-        # Get leave type statistics
+        return employee_records
+
+    @staticmethod
+    def _generate_leave_type_stats(leaves: Any) -> List[Dict[str, Any]]:
+        """Generate leave type statistics"""
         leave_type_stats = []
         for lt in LeaveType.objects.all():
             lt_leaves = leaves.filter(leave_type=lt)
@@ -263,8 +424,11 @@ class ReportService:
                     'count': lt_leaves.count(),
                     'avg_duration': total_days / lt_leaves.count() if lt_leaves.count() > 0 else 0
                 })
-        
-        # Get department statistics
+        return leave_type_stats
+
+    @staticmethod
+    def _generate_leave_department_stats(leaves: Any) -> List[Dict[str, Any]]:
+        """Generate department-wise leave statistics"""
         department_stats = []
         for dept in Department.objects.all():
             dept_leaves = leaves.filter(employee__department=dept)
@@ -281,95 +445,4 @@ class ReportService:
                         if dept_leaves.filter(leave_type=lt).exists()
                     ]
                 })
-        
-        # Get employee records
-        employee_records = []
-        for leave in leaves:
-            employee_records.append({
-                'employee_name': f"{leave.employee.first_name} {leave.employee.last_name}",
-                'department': leave.employee.department.name if leave.employee.department else '-',
-                'leave_type': leave.leave_type.name,
-                'start_date': leave.start_date,
-                'end_date': leave.end_date,
-                'duration': (leave.end_date - leave.start_date).days + 1,
-                'status': leave.status
-            })
-        
-        report_data = {
-            'total_leaves': total_leaves,
-            'approved_leaves': approved_leaves,
-            'pending_leaves': pending_leaves,
-            'rejected_leaves': rejected_leaves,
-            'leave_type_stats': leave_type_stats,
-            'department_stats': department_stats,
-            'employee_records': employee_records,
-            'start_date': start_date,
-            'end_date': end_date,
-            'generated_at': timezone.now()
-        }
-        
-        # Cache the report
-        cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
-        
-        return report_data
-    
-    @classmethod
-    def get_holiday_report(cls, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
-        """
-        Generate holiday report for the given date range
-        """
-        # Check cache first
-        cache_key = cls._get_cache_key(
-            'holiday',
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return cached_data
-            
-        # Get holidays
-        holidays = Holiday.objects.filter(
-            date__range=[start_date, end_date],
-            is_active=True
-        ).order_by('date')
-        
-        # Monthly distribution
-        months = {}
-        for holiday in holidays:
-            month = holiday.date.strftime('%B %Y')
-            if month not in months:
-                months[month] = {
-                    'name': month,
-                    'count': 0,
-                    'holidays': []
-                }
-            months[month]['count'] += 1
-            months[month]['holidays'].append({
-                'date': holiday.date,
-                'name': holiday.name
-            })
-            
-        monthly_distribution = list(months.values())
-        
-        report_data = {
-            'total_holidays': holidays.count(),
-            'holidays': [
-                {
-                    'date': h.date,
-                    'name': h.name,
-                    'description': h.description if hasattr(h, 'description') else ''
-                }
-                for h in holidays
-            ],
-            'monthly_distribution': monthly_distribution,
-            'start_date': start_date,
-            'end_date': end_date,
-            'generated_at': timezone.now()
-        }
-        
-        # Cache the report
-        cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
-        
-        return report_data
+        return department_stats

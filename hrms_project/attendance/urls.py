@@ -77,10 +77,12 @@ urlpatterns = [
     path('api/search_employees/', views.search_employees, name='search_employees'),
     path('api/attendance_details/', views.attendance_details, name='attendance_details'),
     path('api/employee/<int:employee_id>/shifts/', shifts_views.get_employee_shifts, name='get_employee_shifts'),
+    path('api/logs/', attendance_views.AttendanceLogListViewSet.as_view({'get': 'list'}), name='attendance_log_list'),
     path('api/shift_assignment_calendar_events/', shifts_views.shift_assignment_calendar_events, name='shift_assignment_calendar_events'),
     path('api/shift-assignments/quick/', views.quick_shift_assignment, name='quick_shift_assignment'),
     path('api/shift-assignments/<int:pk>/', views.shift_assignment_detail, name='shift_assignment_detail'),
     path('get_department_employees/', views.get_department_employees, name='get_department_employees'),
+    path('api/records/upload_excel/', attendance_views.AttendanceRecordViewSet.as_view({'post': 'upload_excel'}), name='upload_excel'),
     
     # Ramadan Period URLs
     path('ramadan_periods/', ramadan_views.RamadanPeriodListView.as_view(), name='ramadan_periods'),

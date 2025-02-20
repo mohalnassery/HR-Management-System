@@ -8,6 +8,49 @@ from .models import (
     AttendanceLog, Leave, LeaveType, Holiday, DateSpecificShiftOverride
 )
 
+def get_colored_display(value, display_value, color_map):
+    """
+    Utility function to generate color-coded HTML display.
+    
+    Args:
+        value: The value to look up in the color map
+        display_value: The text to display
+        color_map: Dictionary mapping values to colors
+        
+    Returns:
+        format_html string with colored span
+    """
+    color = color_map.get(value, 'gray')
+    return format_html(
+        '<span style="color: {};">{}</span>',
+        color,
+        display_value
+    )
+
+class EmployeeLinkedModelAdmin(admin.ModelAdmin):
+    """
+    Base admin class for models that have an employee relationship.
+    Provides common employee link display functionality.
+    """
+    def employee_link(self, obj):
+        url = reverse('admin:employees_employee_change', args=[obj.employee.id])
+        return format_html('<a href="{}">{}</a>', url, obj.employee)
+    employee_link.short_description = 'Employee'
+
+class PeriodDisplayMixin:
+    """
+    Mixin that provides period display functionality for models with start_date and end_date.
+    """
+    def period_display(self, obj):
+        start = obj.start_date.strftime('%b %d, %Y')
+        if hasattr(obj, 'end_date') and obj.end_date:
+            end = obj.end_date.strftime('%b %d, %Y')
+            if getattr(obj, 'is_permanent', False):
+                return f"From {start} (Permanent)"
+            return f"{start} - {end}"
+        return f"From {start}"
+    period_display.short_description = 'Period'
+
 @admin.register(DateSpecificShiftOverride)
 class DateSpecificShiftOverrideAdmin(admin.ModelAdmin):
     list_display = ('date', 'shift_type', 'override_start_time', 'override_end_time')
@@ -28,11 +71,10 @@ class ShiftAdmin(admin.ModelAdmin):
             'NIGHT': 'purple',
             'OPEN': 'blue'
         }
-        color = shift_colors.get(obj.shift_type, 'gray')
-        return format_html(
-            '<span style="color: {};">{}</span>',
-            color,
-            obj.get_shift_type_display()
+        return get_colored_display(
+            obj.shift_type,
+            obj.get_shift_type_display(),
+            shift_colors
         )
     shift_type_display.short_description = 'Type'
     
@@ -61,28 +103,17 @@ class ShiftAdmin(admin.ModelAdmin):
     break_display.short_description = 'Break/Grace'
 
 @admin.register(ShiftAssignment)
-class ShiftAssignmentAdmin(admin.ModelAdmin):
+class ShiftAssignmentAdmin(EmployeeLinkedModelAdmin, PeriodDisplayMixin):
     list_display = ('employee_link', 'shift_link', 'period_display', 'is_active', 'created_by', 'created_at')
     list_filter = ('is_active', 'shift', 'created_at')
     search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_number', 'shift__name')
     ordering = ('-created_at',)
     raw_id_fields = ('employee', 'shift')
     
-    def employee_link(self, obj):
-        url = reverse('admin:employees_employee_change', args=[obj.employee.id])
-        return format_html('<a href="{}">{}</a>', url, obj.employee)
-    employee_link.short_description = 'Employee'
-    
     def shift_link(self, obj):
         url = reverse('admin:attendance_shift_change', args=[obj.shift.id])
         return format_html('<a href="{}">{}</a>', url, obj.shift.name)
     shift_link.short_description = 'Shift'
-    
-    def period_display(self, obj):
-        if obj.end_date:
-            return f"{obj.start_date.strftime('%b %d, %Y')} - {obj.end_date.strftime('%b %d, %Y')}"
-        return f"From {obj.start_date.strftime('%b %d, %Y')} (Permanent)"
-    period_display.short_description = 'Period'
 
 @admin.register(RamadanPeriod)
 class RamadanPeriodAdmin(admin.ModelAdmin):
@@ -99,18 +130,13 @@ class RamadanPeriodAdmin(admin.ModelAdmin):
     duration_display.short_description = 'Duration'
 
 @admin.register(AttendanceLog)
-class AttendanceLogAdmin(admin.ModelAdmin):
+class AttendanceLogAdmin(EmployeeLinkedModelAdmin):
     list_display = ('employee_link', 'date', 'time_display', 'status_display', 'source')
     list_filter = ('date', 'source', 'status', 'is_active')  
     search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_number')
     date_hierarchy = 'date'
     ordering = ('-date', 'employee__first_name')
     raw_id_fields = ('employee',)
-
-    def employee_link(self, obj):
-        url = reverse('admin:employees_employee_change', args=[obj.employee.id])
-        return format_html('<a href="{}">{}</a>', url, obj.employee)
-    employee_link.short_description = 'Employee'
 
     def time_display(self, obj):
         if obj.first_in_time and obj.last_out_time:
@@ -126,16 +152,15 @@ class AttendanceLogAdmin(admin.ModelAdmin):
             'leave': 'blue',
             'holiday': 'purple'
         }
-        color = status_colors.get(obj.status, 'gray')
-        return format_html(
-            '<span style="color: {};">{}</span>',
-            color,
-            obj.get_status_display()
+        return get_colored_display(
+            obj.status,
+            obj.get_status_display(),
+            status_colors
         )
     status_display.short_description = 'Status'
 
 @admin.register(AttendanceRecord)
-class AttendanceRecordAdmin(admin.ModelAdmin):
+class AttendanceRecordAdmin(EmployeeLinkedModelAdmin):
     list_display = ('employee_link', 'timestamp', 'event_point', 'device_name')  
     list_filter = ('event_point', 'timestamp')  
     search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_number', 'device_name')
@@ -143,28 +168,14 @@ class AttendanceRecordAdmin(admin.ModelAdmin):
     ordering = ('-timestamp',)
     raw_id_fields = ('employee',)
 
-    def employee_link(self, obj):
-        url = reverse('admin:employees_employee_change', args=[obj.employee.id])
-        return format_html('<a href="{}">{}</a>', url, obj.employee)
-    employee_link.short_description = 'Employee'
-
 @admin.register(Leave)
-class LeaveAdmin(admin.ModelAdmin):
+class LeaveAdmin(EmployeeLinkedModelAdmin, PeriodDisplayMixin):
     list_display = ('employee_link', 'leave_type', 'period_display', 'duration', 'status', 'created_at')  
     list_filter = ('status', 'leave_type', 'created_at')
     search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_number')
     date_hierarchy = 'start_date'
     ordering = ('-created_at',)
     raw_id_fields = ('employee',)
-
-    def employee_link(self, obj):
-        url = reverse('admin:employees_employee_change', args=[obj.employee.id])
-        return format_html('<a href="{}">{}</a>', url, obj.employee)
-    employee_link.short_description = 'Employee'
-
-    def period_display(self, obj):
-        return f"{obj.start_date.strftime('%b %d, %Y')} - {obj.end_date.strftime('%b %d, %Y')}"
-    period_display.short_description = 'Period'
 
 @admin.register(LeaveType)
 class LeaveTypeAdmin(admin.ModelAdmin):
