@@ -5,6 +5,18 @@ from django.db import transaction
 from django.db.models import Q
 from datetime import datetime, timedelta
 from typing import List
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Try to import cache, but don't fail if it's not configured
+try:
+    from django.core.cache import cache
+    logger.info("Successfully imported cache in signals")
+except ImportError:
+    logger.warning("Failed to import cache in signals, continuing without caching")
+    cache = None
 
 from .models import (
     Shift, ShiftAssignment, RamadanPeriod, AttendanceLog,
@@ -47,8 +59,13 @@ def handle_shift_assignment_create(sender, instance, created, **kwargs):
             ).exclude(pk=instance.pk).update(is_active=False)
     
     # Clear employee shift cache
-    cache_key = f'employee_shift_{instance.employee_id}'
-    cache.delete(cache_key)
+    if cache:
+        try:
+            cache_key = f'employee_shift_{instance.employee_id}'
+            cache.delete(cache_key)
+            logger.debug(f"Successfully cleared cache for key: {cache_key}")
+        except Exception as e:
+            logger.error(f"Error clearing cache: {str(e)}")
 
 @receiver(pre_delete, sender=ShiftAssignment)
 def handle_shift_assignment_delete(sender, instance, **kwargs):

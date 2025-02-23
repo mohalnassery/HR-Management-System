@@ -14,6 +14,18 @@ from django.views.decorators.http import require_http_methods
 from django.utils.dateparse import parse_date
 from calendar import monthrange
 from django.db import transaction
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Try to import cache, but don't fail if it's not configured
+try:
+    from django.core.cache import cache
+    logger.info("Successfully imported cache")
+except ImportError:
+    logger.warning("Failed to import cache, continuing without caching")
+    cache = None
 
 from ..serializers import ShiftSerializer
 from ..models import Shift, ShiftAssignment, DateSpecificShiftOverride
@@ -175,24 +187,52 @@ def shift_assignment_create(request):
     """View for creating a new shift assignment"""
     if request.method == 'POST':
         # Get comma-separated employee IDs and split them
-        employee_ids = request.POST.get('employee[]', '').split(',')
-        if not employee_ids or not employee_ids[0]:  # Check if the list is empty or contains only empty string
+        employee_ids = request.POST.getlist('employee[]', [])
+        logger.debug(f"Received employee_ids: {employee_ids}")
+        
+        if not employee_ids:  # Check if the list is empty
             messages.error(request, 'Please select at least one employee.')
             return redirect('attendance:shift_assignment_create')
+
         shift_id = request.POST.get('shift')
+        if not shift_id:
+            messages.error(request, 'Please select a shift.')
+            return redirect('attendance:shift_assignment_create')
+
         start_date = request.POST.get('start_date')
+        if not start_date:
+            messages.error(request, 'Please provide a start date.')
+            return redirect('attendance:shift_assignment_create')
+
         end_date = request.POST.get('end_date') or None
         is_active = request.POST.get('is_active') == 'on'
+        
+        logger.info(f"Creating shift assignments - Shift: {shift_id}, Start: {start_date}, End: {end_date}, Active: {is_active}")
 
         try:
             with transaction.atomic():
                 created_count = 0
                 for employee_id in employee_ids:
+                    # Skip empty employee IDs
+                    if not employee_id:
+                        logger.warning(f"Skipping empty employee_id")
+                        continue
+
+                    # Validate employee exists
+                    try:
+                        employee = Employee.objects.get(id=employee_id)
+                        logger.debug(f"Found employee: {employee.get_full_name()}")
+                    except Employee.DoesNotExist:
+                        logger.error(f"Employee with ID {employee_id} does not exist")
+                        messages.error(request, f'Employee with ID {employee_id} does not exist.')
+                        continue
+
                     # Deactivate any existing active assignments for this employee
-                    ShiftAssignment.objects.filter(
+                    deactivated = ShiftAssignment.objects.filter(
                         employee_id=employee_id,
                         is_active=True
                     ).update(is_active=False)
+                    logger.debug(f"Deactivated {deactivated} existing assignments for employee {employee_id}")
 
                     # Create new assignment
                     ShiftAssignment.objects.create(
@@ -204,17 +244,40 @@ def shift_assignment_create(request):
                         created_by=request.user
                     )
                     created_count += 1
+                    logger.debug(f"Created new assignment for employee {employee_id}")
 
-                messages.success(request, f'{created_count} Shift assignments created successfully.')
-                return redirect('attendance:shift_assignment_list')
+                if created_count > 0:
+                    success_msg = f'{created_count} Shift assignment{"s" if created_count > 1 else ""} created successfully.'
+                    logger.info(success_msg)
+                    messages.success(request, success_msg)
+                    
+                    # Clear any cached shift assignments
+                    for employee_id in employee_ids:
+                        if employee_id:
+                            cache_key = f'employee_shifts_{employee_id}'
+                            logger.debug(f"Attempting to clear cache for key: {cache_key}")
+                            if cache:
+                                try:
+                                    cache.delete(cache_key)
+                                    logger.debug(f"Successfully cleared cache for key: {cache_key}")
+                                except Exception as cache_error:
+                                    logger.error(f"Error clearing cache for key {cache_key}: {str(cache_error)}")
+                    
+                    return redirect('attendance:shift_assignment_list')
+                else:
+                    warning_msg = 'No shift assignments were created. Please check your selections.'
+                    logger.warning(warning_msg)
+                    messages.warning(request, warning_msg)
 
         except Exception as e:
-            messages.error(request, f'Error assigning shift: {str(e)}')
+            error_msg = f'Error assigning shift: {str(e)}'
+            logger.error(error_msg, exc_info=True)
+            messages.error(request, error_msg)
 
+    # Get active employees and shifts
     employees = Employee.objects.filter(is_active=True).select_related('department')
     shifts = Shift.objects.filter(is_active=True)
-    # Get unique departments from the employees
-    departments = list({emp.department for emp in employees if emp.department})
+    departments = Department.objects.all()
 
     return render(request, 'attendance/shifts/assignment_form.html', {
         'employees': employees,
@@ -593,7 +656,7 @@ def shift_assignment_detail(request, pk):
             if 'end_date' in request.data:
                 assignment.end_date = request.data['end_date']
                 assignment.save()
-            
+
             return Response({'success': True})
         except Exception as e:
             return Response({
