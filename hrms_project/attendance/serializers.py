@@ -106,10 +106,17 @@ class AttendanceLogSerializer(serializers.ModelSerializer, EmployeeNameMixin, St
     employee_id = serializers.SerializerMethodField()
     personnel_id = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    employee_name = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
 
     class Meta:
         model = AttendanceLog
-        fields = '__all__'
+        fields = [
+            'id', 'employee_id', 'employee_name', 'personnel_id',
+            'date', 'first_in_time', 'last_out_time',
+            'shift_name', 'status', 'is_late', 'source',
+            'department'
+        ]
 
     def get_shift_name(self, obj: AttendanceLog) -> Optional[str]:
         return obj.shift.name if obj.shift else None
@@ -122,6 +129,12 @@ class AttendanceLogSerializer(serializers.ModelSerializer, EmployeeNameMixin, St
         
     def get_status(self, obj: AttendanceLog) -> Optional[str]:
         return self.determine_status(obj)
+
+    def get_department(self, obj: AttendanceLog) -> Optional[str]:
+        """Get department name through employee relationship"""
+        if obj.employee and obj.employee.department:
+            return obj.employee.department.name
+        return None
 
 class AttendanceEditSerializer(serializers.ModelSerializer, UserNameMixin):
     edited_by_name = serializers.SerializerMethodField()

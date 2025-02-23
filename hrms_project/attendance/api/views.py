@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from ..models import ShiftAssignment
 from datetime import datetime
+import dateutil.parser
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -20,15 +21,22 @@ def shift_assignments(request):
 
     # Apply filters
     if start:
-        start_date = datetime.strptime(start, '%Y-%m-%d').date()
-        queryset = queryset.filter(start_date__gte=start_date)
+        try:
+            start_date = dateutil.parser.parse(start).date()
+            queryset = queryset.filter(start_date__gte=start_date)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid start date format'}, status=400)
+            
     if end:
-        end_date = datetime.strptime(end, '%Y-%m-%d').date()
-        queryset = queryset.filter(
-            start_date__lte=end_date
-        ).exclude(
-            end_date__lt=start_date
-        )
+        try:
+            end_date = dateutil.parser.parse(end).date()
+            queryset = queryset.filter(
+                start_date__lte=end_date
+            ).exclude(
+                end_date__lt=start_date
+            )
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid end date format'}, status=400)
     if department:
         queryset = queryset.filter(employee__department_id=department)
     if shift_type:
