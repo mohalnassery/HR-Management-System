@@ -12,6 +12,7 @@ urlpatterns = [
     path('performance/', include('performance.urls')),
     # API URLs
     path('api-auth/', include('rest_framework.urls')),
+    path('api/attendance/', include('attendance.api.urls')),
 ]
 
 # Serve media files in development

@@ -246,17 +246,41 @@
 let currentPersonnelId = '{{ personnel_id }}';
 let currentDate = '{{ date }}';
 
-function loadAttendanceDetails() {
-    // Format the date as YYYY-MM-DD for the API
-    let formattedDate;
-    if (currentDate.includes('/')) {
-        // If date is in MM/DD/YYYY format
-        const dateParts = currentDate.split('/');
-        formattedDate = `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}`;
-    } else {
-        // If date is already in YYYY-MM-DD format
-        formattedDate = currentDate;
+function formatDateForAPI(dateStr) {
+    // Try different date formats and convert to YYYY-MM-DD
+    const date = new Date(dateStr);
+    if (isNaN(date)) {
+        // If standard parsing fails, try custom parsing
+        const formats = [
+            { regex: /^(\d{4})-(\d{2})-(\d{2})$/, parts: [1, 2, 3] },  // YYYY-MM-DD
+            { regex: /^(\d{1,2})\/?(\d{1,2})\/?(\d{4})$/, parts: [3, 1, 2] },  // MM/DD/YYYY or M/D/YYYY
+            { regex: /^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})$/, parts: null }  // MMM DD, YYYY
+        ];
+
+        for (const format of formats) {
+            const match = dateStr.match(format.regex);
+            if (match) {
+                if (format.parts) {
+                    const [_, ...parts] = match;
+                    const [year, month, day] = format.parts.map(i => parts[i-1]);
+                    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+                } else {
+                    // Handle MMM DD, YYYY format
+                    const date = new Date(dateStr);
+                    if (!isNaN(date)) {
+                        return date.toISOString().split('T')[0];
+                    }
+                }
+            }
+        }
+        console.error('Unable to parse date:', dateStr);
+        return dateStr; // Return original if all parsing fails
     }
+    return date.toISOString().split('T')[0];
+}
+
+function loadAttendanceDetails() {
+    const formattedDate = formatDateForAPI(currentDate);
     console.log('Formatted Date:', formattedDate);
     console.log('Personnel ID:', currentPersonnelId);
     console.log('Current Date:', currentDate);
@@ -324,8 +348,7 @@ function loadAttendanceDetails() {
         });
 }
 
-// Load attendance details when page loads
-document.addEventListener('DOMContentLoaded', loadAttendanceDetails);
+// We don't need to load attendance details on page load since Django already provides the data
 
 function editLog(recordId) {
     fetch(`/attendance/api/records/${recordId}/`)

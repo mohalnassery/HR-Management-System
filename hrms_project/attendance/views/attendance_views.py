@@ -661,13 +661,23 @@ def attendance_detail_api(request):
         if not personnel_id or not date_str:
             return Response({'error': 'Missing required parameters'}, status=400)
 
-        try:
-            date_obj = datetime.strptime(date_str.strip(), '%b %d, %Y').date()
-        except ValueError:
-            return Response({'error': 'Invalid date format'}, status=400)
+        # Try different date formats
+        date_obj = None
+        for date_format in ['%b %d, %Y', '%Y-%m-%d']:
+            try:
+                date_obj = datetime.strptime(date_str.strip(), date_format).date()
+                break
+            except ValueError:
+                continue
+        
+        if not date_obj:
+            return Response({'error': 'Invalid date format. Expected YYYY-MM-DD or MMM DD, YYYY'}, status=400)
 
         employee = Employee.objects.get(employee_number=personnel_id)
         log = AttendanceLog.objects.select_related('employee').get(employee=employee, date=date_obj)
+        # Calculate total hours from minutes
+        total_hours = f"{log.total_work_minutes // 60}h {log.total_work_minutes % 60}m" if log.total_work_minutes else "0h 0m"
+
         data = {
             'id': log.id,
             'employee_name': log.employee.get_full_name(),
@@ -675,25 +685,33 @@ def attendance_detail_api(request):
             'department': log.employee.department.name if log.employee.department else None,
             'designation': log.employee.designation,
             'date': log.date,
-            'records': [
-                {
-                    'id': log.id,
-                    'timestamp': log.first_in_time.isoformat() if log.first_in_time else None,
-                    'event_point': 'IN',
-                    'source': log.source,
-                    'device_name': log.device
-                }
-            ]
+            'stats': {
+                'status': log.status,
+                'total_hours': total_hours,
+                'first_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else '-',
+                'last_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else '-'
+            },
+            'raw_records': []
         }
+
+        # Add in time if exists
+        if log.first_in_time:
+            data['raw_records'].append({
+                'id': log.id,
+                'time': log.first_in_time.strftime('%I:%M %p'),
+                'event_point': 'IN',
+                'description': 'First In',
+                'device': log.source
+            })
 
         # Add out time if exists
         if log.last_out_time:
-            data['records'].append({
+            data['raw_records'].append({
                 'id': log.id,
-                'timestamp': log.last_out_time.isoformat(),
+                'time': log.last_out_time.strftime('%I:%M %p'),
                 'event_point': 'OUT',
-                'source': log.source,
-                'device_name': log.device
+                'description': 'Last Out',
+                'device': log.source
             })
 
         return Response(data)

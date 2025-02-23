@@ -28,6 +28,7 @@ urlpatterns = [
     # Report URLs
     path('attendance_report/', attendance_views.attendance_report, name='attendance_report'),
     path('attendance_detail/', attendance_views.attendance_detail_view, name='attendance_detail'),
+    path('api/details/', attendance_views.attendance_detail_api, name='attendance_detail_api'),
     path('api/reports/export/', report_views.ReportViewSet.as_view({'get': 'export'}), name='report-export'),
     
     # Attendance URLs
