@@ -339,23 +339,14 @@ document.addEventListener('DOMContentLoaded', function() {
         let detailsHtml = '<dl class="row mb-0">';
         
         // Common fields
-        if (details.employee) {
+        if (details.type === 'attendance') {
             detailsHtml += `
                 <dt class="col-sm-4">Employee</dt>
                 <dd class="col-sm-8">${details.employee}</dd>
-            `;
-        }
-        
-        if (details.department) {
-            detailsHtml += `
-                <dt class="col-sm-4">Department</dt>
-                <dd class="col-sm-8">${details.department}</dd>
-            `;
-        }
-        
-        // Attendance specific fields
-        if (details.type === 'attendance') {
-            detailsHtml += `
+                ${details.department ? `
+                    <dt class="col-sm-4">Department</dt>
+                    <dd class="col-sm-8">${details.department}</dd>
+                ` : ''}
                 <dt class="col-sm-4">Status</dt>
                 <dd class="col-sm-8">
                     <span class="badge bg-${details.status_color}">${details.status}</span>
@@ -364,50 +355,47 @@ document.addEventListener('DOMContentLoaded', function() {
                 <dd class="col-sm-8">${details.time_in || '-'}</dd>
                 <dt class="col-sm-4">Time Out</dt>
                 <dd class="col-sm-8">${details.time_out || '-'}</dd>
-            `;
-            
-            if (details.status === 'Late') {
-                detailsHtml += `
+                ${details.work_hours ? `
+                    <dt class="col-sm-4">Work Hours</dt>
+                    <dd class="col-sm-8">${details.work_hours}</dd>
+                ` : ''}
+                ${details.late_by ? `
                     <dt class="col-sm-4">Late By</dt>
                     <dd class="col-sm-8">${details.late_by}</dd>
-                `;
-            }
-        }
-        
-        // Leave specific fields
-        if (details.type === 'leave') {
-            detailsHtml += `
-                <dt class="col-sm-4">Leave Type</dt>
-                <dd class="col-sm-8">${details.leave_type}</dd>
-                <dt class="col-sm-4">Duration</dt>
-                <dd class="col-sm-8">${details.duration} days</dd>
-                <dt class="col-sm-4">Status</dt>
-                <dd class="col-sm-8">
-                    <span class="badge bg-${details.status_color}">${details.status}</span>
-                </dd>
+                ` : ''}
             `;
-            
-            if (details.reason) {
-                detailsHtml += `
-                    <dt class="col-sm-4">Reason</dt>
-                    <dd class="col-sm-8">${details.reason}</dd>
-                `;
-            }
-        }
-        
-        // Holiday specific fields
-        if (details.type === 'holiday') {
+
+            // Add View Details button
+            detailsHtml += `
+                <div class="text-end mt-3">
+                    <a href="/attendance/attendance_detail/?date=${event.startStr}&employee_id=${details.employee_id}" 
+                       class="btn btn-primary btn-sm">
+                        View Full Details
+                    </a>
+                </div>
+            `;
+        } else if (details.type === 'holiday') {
             detailsHtml += `
                 <dt class="col-sm-4">Holiday Type</dt>
-                <dd class="col-sm-8">${details.holiday_type}</dd>
-            `;
-            
-            if (details.description) {
-                detailsHtml += `
+                <dd class="col-sm-8">${details.holiday_type.replace('_', ' ').toLowerCase()
+                    .split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ')}</dd>
+                ${details.description ? `
                     <dt class="col-sm-4">Description</dt>
                     <dd class="col-sm-8">${details.description}</dd>
-                `;
-            }
+                ` : ''}
+            `;
+
+            // Add View Holiday Details button if you have a holiday details page
+            detailsHtml += `
+                <div class="text-end mt-3">
+                    <a href="/attendance/holidays/${event.id.split('_')[1]}" 
+                       class="btn btn-primary btn-sm">
+                        View Holiday Details
+                    </a>
+                </div>
+            `;
         }
         
         detailsHtml += '</dl>';

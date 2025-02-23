@@ -77,7 +77,13 @@ def calendar_events(request):
                 'start': holiday.date.isoformat(),
                 'end': holiday.date.isoformat(),
                 'color': '#6f42c1',  # purple for holidays
-                'allDay': True
+                'allDay': True,
+                'extendedProps': {
+                    'type': 'holiday',
+                    'holiday_type': holiday.holiday_type,
+                    'description': holiday.description,
+                    'tooltip': f"{holiday.name} - {holiday.description if holiday.description else ''}"
+                }
             })
 
         # Build query for attendance logs
@@ -89,7 +95,23 @@ def calendar_events(request):
 
         logs = AttendanceLog.objects.filter(query).select_related('employee')
 
-        # Add attendance events
+        def calculate_late_by(log):
+            if not log.first_in_time or not log.shift:
+                return None
+            shift_start = log.shift.start_time
+            first_in = log.first_in_time
+            if first_in > shift_start:
+                late_by = datetime.combine(log.date, first_in) - datetime.combine(log.date, shift_start)
+                return str(late_by)
+            return None
+
+        def calculate_work_hours(log):
+            if not log.first_in_time or not log.last_out_time:
+                return None
+            work_time = datetime.combine(log.date, log.last_out_time) - datetime.combine(log.date, log.first_in_time)
+            return str(work_time)
+
+        attendance_events = []
         for log in logs:
             # Skip weekends (Friday) unless there's attendance
             if log.date.weekday() == 4:  # Friday is 4 in Python's weekday() (0 = Monday)
@@ -110,19 +132,31 @@ def calendar_events(request):
             else:
                 continue  # Skip other statuses like holiday since we handle them separately
 
-            events.append({
+            event = {
                 'id': f'attendance_{log.id}',
                 'title': f"{log.employee.get_full_name()} - {status}",
                 'start': log.date.isoformat(),
                 'end': log.date.isoformat(),
                 'color': color,
                 'extendedProps': {
+                    'type': 'attendance',
                     'employee_id': log.employee.id,
+                    'employee': log.employee.get_full_name(),
+                    'department': log.employee.department.name if log.employee.department else None,
                     'status': status,
-                    'in_time': log.first_in_time.strftime('%H:%M') if log.first_in_time else None,
-                    'out_time': log.last_out_time.strftime('%H:%M') if log.last_out_time else None
+                    'status_color': color.replace('#', ''),
+                    'time_in': log.first_in_time.strftime('%I:%M %p') if log.first_in_time else None,
+                    'time_out': log.last_out_time.strftime('%I:%M %p') if log.last_out_time else None,
+                    'late_by': calculate_late_by(log),
+                    'work_hours': calculate_work_hours(log),
+                    'tooltip': f"{log.employee.get_full_name()} - {status}\n" +
+                             f"In: {log.first_in_time.strftime('%I:%M %p') if log.first_in_time else 'N/A'}\n" +
+                             f"Out: {log.last_out_time.strftime('%I:%M %p') if log.last_out_time else 'N/A'}"
                 }
-            })
+            }
+            attendance_events.append(event)
+
+        events.extend(attendance_events)
 
         return Response(events)
     except (ValueError, TypeError) as e:
