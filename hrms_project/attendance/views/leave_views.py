@@ -401,10 +401,6 @@ def leave_balance(request):
         'selected_employee': selected_employee
     }
 
-    #save context to txt file
-    with open('context.txt', 'w') as f:
-        f.write(str(context))
-
     return render(request, 'attendance/leave_balance.html', context)
 
 
