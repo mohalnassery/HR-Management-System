@@ -20,6 +20,33 @@
     border-radius: 4px;
     margin-bottom: 8px;
 }
+/* Progress bar styles */
+.progress {
+    height: 5px !important;
+    background-color: #e9ecef;
+    border-radius: 0.25rem;
+    margin-top: 0.5rem;
+}
+.progress-bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    transition: width 0.6s ease;
+}
+/* Progress bar color variants */
+.progress-bar-annual {
+    background-color: #28a745 !important;
+}
+.progress-bar-sick {
+    background-color: #17a2b8 !important;
+}
+.progress-bar-other {
+    background-color: #ffc107 !important;
+}
 </style>
 {% endblock %}
 
@@ -90,9 +117,14 @@
                             <h3 class="mb-0">{{ balance.balance_days }}</h3>
                             <small class="text-muted">days remaining</small>
                         </div>
-                        <div class="progress mt-2" style="height: 5px;">
-                            <div class="progress-bar {% if balance.leave_type.code == 'annual' %}bg-success{% elif balance.leave_type.code == 'sick' %}bg-info{% else %}bg-warning{% endif %}" 
-                                 style="width: {{ balance.balance_percentage }}%"></div>
+                        <div class="progress mt-2">
+                            <div class="progress-bar {% if balance.leave_type.code == 'annual' %}progress-bar-annual{% elif balance.leave_type.code == 'sick' %}progress-bar-sick{% else %}progress-bar-other{% endif %}" 
+                                 role="progressbar"
+                                 style="width: {{ balance.balance_percentage }}%"
+                                 aria-valuenow="{{ balance.balance_percentage }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -101,7 +133,7 @@
         </div>
 
         <!-- Leave Request Form -->
-        <form method="post" enctype="multipart/form-data">
+        <form method="post" enctype="multipart/form-data" id="leaveRequestForm">
             {% if selected_employee %}
             <input type="hidden" name="employee" value="{{ selected_employee.id }}">
             {% endif %}
@@ -111,7 +143,7 @@
                     {{ form.leave_type|as_crispy_field }}
                 </div>
                 <div class="col-md-6">
-                    {{ form.duration_type|as_crispy_field }}
+                    {{ form.leave_sub_type|as_crispy_field }}
                 </div>
             </div>
             <div class="row">
@@ -171,6 +203,62 @@
         // Handle department change
         $('#department').change(function() {
             $('#employeeSelectForm').submit();
+        });
+
+        // Get the sub-type container
+        const subTypeContainer = $('#id_leave_sub_type').closest('.form-group');
+        
+        // Initially hide the sub-type field if no leave type is selected
+        if (!$('#id_leave_type').val()) {
+            subTypeContainer.hide();
+        }
+
+        // Handle leave type change
+        $('#id_leave_type').change(function() {
+            const leaveTypeId = $(this).val();
+            const subTypeField = $('#id_leave_sub_type');
+            
+            // Hide sub-type field if no leave type selected
+            if (!leaveTypeId) {
+                subTypeContainer.hide();
+                subTypeField.prop('required', false);
+                return;
+            }
+
+            // Submit form to get updated sub-types
+            const form = $('#leaveRequestForm');
+            const formData = new FormData(form[0]);
+            formData.append('update_sub_types', 'true');
+
+            $.ajax({
+                url: form.attr('action'),
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.sub_type_choices) {
+                        subTypeField.empty();
+                        
+    
+                        // Add the choices from the response
+                        response.sub_type_choices.forEach(function(choice) {
+                            subTypeField.append($('<option></option>')
+                                .val(choice[0])
+                                .text(choice[1]));
+                        });
+                        
+                        // Show/hide sub-type field based on choices
+                        if (response.sub_type_choices.length > 1) {  // More than just the empty option
+                            subTypeContainer.show();
+                            subTypeField.prop('required', true);
+                        } else {
+                            subTypeContainer.hide();
+                            subTypeField.prop('required', false);
+                        }
+                    }
+                }
+            });
         });
     });
 

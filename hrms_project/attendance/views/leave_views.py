@@ -10,6 +10,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.http import JsonResponse
 
 from ..models import (
     Leave, LeaveType, LeaveBalance, LeaveBeginningBalance,
@@ -72,6 +73,17 @@ def leave_request_create(request):
             return redirect('attendance:leave_request_list')
     
     if request.method == 'POST':
+        # Handle AJAX request for updating sub-types
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' and request.POST.get('update_sub_types'):
+            form = LeaveRequestForm(request.POST)
+            leave_type_id = request.POST.get('leave_type')
+            if leave_type_id:
+                form.set_sub_type_choices(leave_type_id)
+                return JsonResponse({
+                    'sub_type_choices': form.fields['leave_sub_type'].choices
+                })
+            return JsonResponse({'sub_type_choices': []})
+
         if not employee:
             messages.error(request, "Please select an employee first.")
             return redirect('attendance:leave_request_create')
@@ -82,10 +94,22 @@ def leave_request_create(request):
             leave_request.employee = employee
             leave_request.status = 'pending'
             
-            # Calculate duration based on start and end dates
+            # Calculate duration based on start and end dates and leave type
             duration = (leave_request.end_date - leave_request.start_date).days + 1
-            if form.cleaned_data['duration_type'] == 'half_day':
-                duration = 0.5
+            
+            # Adjust duration based on leave sub-type
+            leave_sub_type = form.cleaned_data.get('leave_sub_type')
+            if leave_sub_type:
+                if leave_sub_type in ['half_day', 'morning', 'afternoon']:
+                    duration = 0.5
+                elif '_' in leave_sub_type:
+                    # Extract days from sub-type code (e.g., '3_days' -> 3)
+                    try:
+                        days = int(leave_sub_type.split('_')[0])
+                        duration = days
+                    except (ValueError, IndexError):
+                        pass
+            
             leave_request.duration = duration
             
             # Check if employee has sufficient balance

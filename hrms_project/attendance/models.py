@@ -466,6 +466,11 @@ class Leave(models.Model):
     )
     
     # Request details
+    leave_sub_type = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text='Sub-type or specific category of the leave'
+    )
     start_date = models.DateField()
     end_date = models.DateField()
     duration = models.DecimalField(

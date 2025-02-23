@@ -124,13 +124,11 @@ class LeaveBalanceUploadForm(BaseForm):
     )
 
 class LeaveRequestForm(BaseModelForm, DateRangeValidationMixin):
-    duration_type = forms.ChoiceField(
-        choices=[
-            ('full_day', 'Full Day'),
-            ('half_day', 'Half Day'),
-        ],
-        initial='full_day',
-        widget=forms.Select()  # Bootstrap class will be added automatically
+    leave_sub_type = forms.ChoiceField(
+        choices=[],  # Will be populated dynamically
+        required=False,
+        label='Leave Sub Type',  # Give it a default label
+        widget=forms.Select()
     )
     
     document = forms.FileField(
@@ -143,7 +141,7 @@ class LeaveRequestForm(BaseModelForm, DateRangeValidationMixin):
         model = Leave
         fields = [
             'leave_type',
-            'duration_type',
+            'leave_sub_type',
             'start_date',
             'end_date',
             'reason'
@@ -154,11 +152,78 @@ class LeaveRequestForm(BaseModelForm, DateRangeValidationMixin):
             'reason': forms.Textarea(attrs={'rows': 3})
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        leave_type = self.data.get('leave_type') if self.data else None
+        
+        # Initialize with empty choices
+        self.fields['leave_sub_type'].choices = [('', 'Select type')]
+        
+        # Set initial choices based on leave type
+        if leave_type:
+            self.set_sub_type_choices(leave_type)
+
+    def set_sub_type_choices(self, leave_type_id):
+        """Set sub-type choices based on leave type"""
+        try:
+            leave_type = LeaveType.objects.get(id=leave_type_id)
+            choices = [('', 'Select type')]  # Always include the empty choice
+            
+            if leave_type.code == 'ANNUAL':
+                choices.extend([
+                    ('full_day', 'Full Day'),
+                    ('half_day', 'Half Day'),
+                ])
+            elif leave_type.code == 'HALF':
+                choices.extend([
+                    ('morning', 'Morning'),
+                    ('afternoon', 'Afternoon'),
+                ])
+            elif leave_type.code == 'MATERNITY':
+                choices.extend([
+                    ('paid_60', '60 days (Full Pay)'),
+                    ('unpaid_15', 'Additional 15 days (Unpaid)'),
+                ])
+            elif leave_type.code == 'DEATH':
+                choices.extend([
+                    ('spouse_30', 'Woman\'s Husband (30 days)'),
+                    ('spouse_3', 'Man\'s Wife (3 days)'),
+                    ('first_degree', 'First Degree Relative (3 days)'),
+                    ('second_degree', 'Second Degree Spouse Relative (3 days)'),
+                ])
+            elif leave_type.code == 'SICK':
+                choices.extend([
+                    ('tier1', 'First 15 days - Full Pay'),
+                    ('tier2', 'Next 20 days - Half Pay'),
+                    ('tier3', 'Next 20 days - Unpaid'),
+                ])
+            elif leave_type.code == 'MARRIAGE':
+                choices.extend([('3_days', '3 days')])
+            elif leave_type.code == 'PATERNITY':
+                choices.extend([('1_day', '1 day')])
+            elif leave_type.code == 'HAJJ':
+                choices.extend([('14_days', '14 days (Full Pay)')])
+            elif leave_type.code == 'IDDAH':
+                choices.extend([
+                    ('paid_30', '1 month (Full Pay)'),
+                    ('unpaid_100', '3 months and 10 Days (Unpaid)'),
+                ])
+                
+            self.fields['leave_sub_type'].choices = choices
+            self.fields['leave_sub_type'].required = len(choices) > 1  # Required if there are choices other than the empty option
+            self.fields['leave_sub_type'].label = f'{leave_type.name} Type' if len(choices) > 1 else ''
+                
+        except LeaveType.DoesNotExist:
+            self.fields['leave_sub_type'].choices = [('', 'Select type')]
+            self.fields['leave_sub_type'].required = False
+            self.fields['leave_sub_type'].label = ''
+
     def clean(self):
         cleaned_data = super().clean()
         start_date = cleaned_data.get('start_date')
         end_date = cleaned_data.get('end_date')
-        duration_type = cleaned_data.get('duration_type')
+        leave_type = cleaned_data.get('leave_type')
+        leave_sub_type = cleaned_data.get('leave_sub_type')
 
         if start_date and end_date:
             # Validate date range
@@ -170,7 +235,11 @@ class LeaveRequestForm(BaseModelForm, DateRangeValidationMixin):
             )
 
             # Additional validation for half-day leave
-            if duration_type == 'half_day' and start_date != end_date:
+            if leave_sub_type in ['half_day', 'morning', 'afternoon'] and start_date != end_date:
                 raise forms.ValidationError('Half day leave must be for a single day')
+
+            # Validate leave sub-type is provided when required
+            if leave_type and leave_type.code in ['ANNUAL', 'HALF', 'MATERNITY', 'DEATH', 'SICK', 'MARRIAGE', 'PATERNITY', 'HAJJ', 'IDDAH'] and not leave_sub_type:
+                raise forms.ValidationError('Please select the leave sub-type')
 
         return cleaned_data
