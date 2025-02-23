@@ -47,6 +47,42 @@
 .progress-bar-other {
     background-color: #ffc107 !important;
 }
+
+/* Validation feedback styles */
+.validation-feedback {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid transparent;
+}
+.validation-feedback.is-valid {
+    color: #28a745;
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+}
+.validation-feedback.is-invalid {
+    color: #dc3545;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+.validation-feedback.is-loading {
+    color: #17a2b8;
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+}
+.submit-status {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    border: 1px solid #dee2e6;
+    background-color: #f8f9fa;
+}
+.submit-status.disabled {
+    border-left: 4px solid #dc3545;
+}
+.submit-status.enabled {
+    border-left: 4px solid #28a745;
+}
 </style>
 {% endblock %}
 
@@ -164,6 +200,13 @@
                     {{ form.document|as_crispy_field }}
                 </div>
             </div>
+            <!-- Add validation message area -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="validation-feedback"></div>
+                    <div class="submit-status"></div>
+                </div>
+            </div>
             <div class="row mt-3">
                 <div class="col-12">
                     <button type="submit" class="btn btn-primary">
@@ -205,16 +248,157 @@
             $('#employeeSelectForm').submit();
         });
 
-        // Get the sub-type container
-        const subTypeContainer = $('#id_leave_sub_type').closest('.form-group');
+        // Get form elements
+        const leaveTypeSelect = $('#id_leave_type');
+        const subTypeSelect = $('#id_leave_sub_type');
+        const startDateInput = $('#id_start_date');
+        const endDateInput = $('#id_end_date');
+        const subTypeContainer = subTypeSelect.closest('.form-group');
+        const validationFeedback = $('<div class="validation-feedback"></div>');
         
+        // Add validation feedback container after sub-type field
+        subTypeContainer.after(validationFeedback);
+        
+        // Function to validate leave request
+        function validateLeaveRequest() {
+            const leaveType = $('#id_leave_type').val();
+            const leaveSubType = $('#id_leave_sub_type').val();
+            const startDate = $('#id_start_date').val();
+            const endDate = $('#id_end_date').val();
+            const employeeId = $('input[name="employee"]').val();
+
+            // Clear previous validation messages
+            validationFeedback.removeClass('is-valid is-invalid').empty();
+            $('.submit-status').removeClass('enabled disabled').empty();
+
+            if (!leaveType || !startDate || !endDate) {
+                showValidationMessage('Please fill in all required fields', false);
+                return;
+            }
+
+            // Show loading state
+            validationFeedback
+                .removeClass('is-valid is-invalid')
+                .addClass('is-loading')
+                .html('<i class="fas fa-spinner fa-spin"></i> Validating...');
+
+            // Prepare request data
+            const requestData = {
+                leave_type: leaveType,
+                leave_sub_type: leaveSubType,
+                start_date: startDate,
+                end_date: endDate
+            };
+
+            if (employeeId) {
+                requestData.employee = employeeId;
+            }
+
+            $.ajax({
+                url: '/api/attendance/validate-leave-request/',
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+                },
+                data: requestData,
+                success: function(response) {
+                    let validationDetails = [];
+                    const submitBtn = $('button[type="submit"]');
+                    
+                    if (!response.is_valid) {
+                        // Build validation details for invalid request
+                        if (response.data.allowed_duration !== undefined) {
+                            validationDetails.push(
+                                `Allowed duration: ${response.data.allowed_duration} days`,
+                                `Requested duration: ${response.data.requested_duration} days`
+                            );
+                        }
+                        if (response.data.min_duration !== undefined) {
+                            validationDetails.push(
+                                `Minimum duration: ${response.data.min_duration} days`,
+                                `Requested duration: ${response.data.requested_duration} days`
+                            );
+                        }
+                        if (response.data.available_balance !== undefined) {
+                            validationDetails.push(
+                                `Available balance: ${response.data.available_balance} days`,
+                                `Requested duration: ${response.data.requested_duration} days`
+                            );
+                        }
+                        
+                        // Show validation message
+                        showValidationMessage(response.message, false, validationDetails);
+                        
+                        // Update submit status
+                        $('.submit-status')
+                            .addClass('disabled')
+                            .html(`<strong>Cannot submit:</strong> ${response.message}`);
+                            
+                        submitBtn.prop('disabled', true);
+                    } else {
+                        // Build validation details for valid request
+                        if (response.data.available_balance !== undefined) {
+                            validationDetails.push(
+                                `Available balance: ${response.data.available_balance} days`,
+                                `Requesting: ${response.data.requested_duration} days`,
+                                `Remaining after request: ${response.data.available_balance - response.data.requested_duration} days`
+                            );
+                        }
+                        if (response.data.is_paid !== undefined) {
+                            validationDetails.push(
+                                response.data.is_paid ? 'This is a paid leave' : 'This is an unpaid leave'
+                            );
+                        }
+                        if (response.data.tier) {
+                            validationDetails.push(`Using ${response.data.tier}`);
+                        }
+                        
+                        // Show validation message
+                        showValidationMessage(response.message, true, validationDetails);
+                        
+                        // Update submit status
+                        $('.submit-status')
+                            .addClass('enabled')
+                            .html('<strong>Ready to submit:</strong> All validations passed');
+                            
+                        submitBtn.prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    showValidationMessage('Error validating request. Please try again.', false);
+                    $('.submit-status')
+                        .addClass('disabled')
+                        .html('<strong>Cannot submit:</strong> Validation error occurred');
+                    $('button[type="submit"]').prop('disabled', true);
+                }
+            });
+        }
+
+        // Helper function to show validation message
+        function showValidationMessage(message, isValid, details = []) {
+            validationFeedback
+                .removeClass('is-loading')
+                .addClass(isValid ? 'is-valid' : 'is-invalid');
+            
+            let html = `<strong>${message}</strong>`;
+            if (details.length > 0) {
+                html += '<ul class="mb-0 mt-2">';
+                details.forEach(detail => {
+                    html += `<li>${detail}</li>`;
+                });
+                html += '</ul>';
+            }
+            
+            validationFeedback.html(html);
+        }
+
         // Initially hide the sub-type field if no leave type is selected
-        if (!$('#id_leave_type').val()) {
+        if (!leaveTypeSelect.val()) {
             subTypeContainer.hide();
         }
 
         // Handle leave type change
-        $('#id_leave_type').change(function() {
+        leaveTypeSelect.change(function() {
             const leaveTypeId = $(this).val();
             const subTypeField = $('#id_leave_sub_type');
             
@@ -222,6 +406,7 @@
             if (!leaveTypeId) {
                 subTypeContainer.hide();
                 subTypeField.prop('required', false);
+                validationFeedback.hide();
                 return;
             }
 
@@ -240,7 +425,6 @@
                     if (response.sub_type_choices) {
                         subTypeField.empty();
                         
-    
                         // Add the choices from the response
                         response.sub_type_choices.forEach(function(choice) {
                             subTypeField.append($('<option></option>')
@@ -256,10 +440,19 @@
                             subTypeContainer.hide();
                             subTypeField.prop('required', false);
                         }
+                        
+                        // Validate the request
+                        validateLeaveRequest();
                     }
                 }
             });
         });
+        
+        // Trigger validation on input changes
+        leaveTypeSelect.change(validateLeaveRequest);
+        subTypeSelect.change(validateLeaveRequest);
+        startDateInput.change(validateLeaveRequest);
+        endDateInput.change(validateLeaveRequest);
     });
 
     // Initialize date inputs

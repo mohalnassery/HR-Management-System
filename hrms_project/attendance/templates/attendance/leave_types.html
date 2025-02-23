@@ -1,6 +1,26 @@
 {% extends 'attendance/base.html' %}
 {% load static %}
 
+{% block extra_css %}
+<style>
+.tier-config {
+    background-color: #f8f9fa;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+.tier-config:not(:last-child) {
+    border-bottom: 1px solid #dee2e6;
+}
+.validation-rules {
+    background-color: #e9ecef;
+    border-radius: 0.25rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+</style>
+{% endblock %}
+
 {% block attendance_content %}
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -21,6 +41,7 @@
                         <th>Name</th>
                         <th>Code</th>
                         <th>Category</th>
+                        <th>Balance Type</th>
                         <th>Days Allowed</th>
                         <th>Paid</th>
                         <th>Document Required</th>
@@ -35,6 +56,17 @@
                         <td><code>{{ leave_type.code }}</code></td>
                         <td>
                             <span class="badge bg-info">{{ leave_type.category }}</span>
+                        </td>
+                        <td>
+                            {% if leave_type.balance_calculation == 'TIERED' %}
+                            <span class="badge bg-warning">Tiered</span>
+                            {% elif leave_type.balance_calculation == 'SHARED' %}
+                            <span class="badge bg-info">Shared</span>
+                            {% elif leave_type.balance_calculation == 'FIXED' %}
+                            <span class="badge bg-success">Fixed</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Accrual</span>
+                            {% endif %}
                         </td>
                         <td>{{ leave_type.days_allowed }}</td>
                         <td>
@@ -69,11 +101,13 @@
                                         data-name="{{ leave_type.name }}"
                                         data-code="{{ leave_type.code }}"
                                         data-category="{{ leave_type.category }}"
+                                        data-balance-calculation="{{ leave_type.balance_calculation }}"
                                         data-days="{{ leave_type.days_allowed }}"
                                         data-paid="{{ leave_type.is_paid|yesno:'true,false' }}"
                                         data-document="{{ leave_type.requires_document|yesno:'true,false' }}"
                                         data-gender="{{ leave_type.gender_specific }}"
                                         data-description="{{ leave_type.description }}"
+                                        data-validation-rules="{{ leave_type.validation_rules|safe }}"
                                         data-bs-toggle="modal" 
                                         data-bs-target="#editLeaveTypeModal">
                                     <i class="fas fa-edit"></i>
@@ -94,7 +128,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center">No leave types found</td>
+                        <td colspan="9" class="text-center">No leave types found</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -103,141 +137,154 @@
     </div>
 </div>
 
-<!-- Add Leave Type Modal -->
-<div class="modal fade" id="addLeaveTypeModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- Add/Edit Leave Type Modal (Combined) -->
+<div class="modal fade" id="leaveTypeModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Leave Type</h5>
+                <h5 class="modal-title">Add/Edit Leave Type</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form id="addLeaveTypeForm" method="POST">
+            <form id="leaveTypeForm" method="POST">
                 {% csrf_token %}
+                <input type="hidden" id="leave_type_id" name="id">
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="name" name="name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="code" class="form-label">Code</label>
-                        <input type="text" class="form-control" id="code" name="code" required>
-                        <div class="form-text">Unique identifier for this leave type (e.g., ANNUAL, SICK)</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="category" class="form-label">Category</label>
-                        <select class="form-select" id="category" name="category" required>
-                            <option value="REGULAR">Regular</option>
-                            <option value="MEDICAL">Medical</option>
-                            <option value="SPECIAL">Special</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="days_allowed" class="form-label">Days Allowed</label>
-                        <input type="number" class="form-control" id="days_allowed" name="days_allowed" required min="0">
-                    </div>
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="is_paid" name="is_paid" checked>
-                            <label class="form-check-label" for="is_paid">
-                                Paid Leave
-                            </label>
+                    <div class="row">
+                        <!-- Basic Information -->
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Basic Information</h6>
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Name</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="code" class="form-label">Code</label>
+                                <input type="text" class="form-control" id="code" name="code" required>
+                                <div class="form-text">Unique identifier (e.g., ANNUAL, SICK)</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="category" class="form-label">Category</label>
+                                <select class="form-select" id="category" name="category" required>
+                                    <option value="REGULAR">Regular</option>
+                                    <option value="MEDICAL">Medical</option>
+                                    <option value="SPECIAL">Special</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="balance_calculation" class="form-label">Balance Calculation</label>
+                                <select class="form-select" id="balance_calculation" name="balance_calculation" required>
+                                    <option value="FIXED">Fixed Allowance</option>
+                                    <option value="ACCRUAL">Monthly Accrual</option>
+                                    <option value="TIERED">Tiered System</option>
+                                    <option value="SHARED">Shared Balance</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Additional Settings -->
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Additional Settings</h6>
+                            <div class="mb-3">
+                                <label for="days_allowed" class="form-label">Days Allowed</label>
+                                <input type="number" class="form-control" id="days_allowed" name="days_allowed" required min="0" step="0.5">
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="is_paid" name="is_paid" checked>
+                                    <label class="form-check-label" for="is_paid">Paid Leave</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="requires_document" name="requires_document">
+                                    <label class="form-check-label" for="requires_document">Requires Document</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="gender_specific" class="form-label">Gender Specific</label>
+                                <select class="form-select" id="gender_specific" name="gender_specific" required>
+                                    <option value="A">All</option>
+                                    <option value="M">Male Only</option>
+                                    <option value="F">Female Only</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="requires_document" name="requires_document">
-                            <label class="form-check-label" for="requires_document">
-                                Requires Supporting Document
-                            </label>
+
+                    <!-- Tier Configuration (for Sick Leave) -->
+                    <div id="tierConfig" class="mt-4" style="display: none;">
+                        <h6 class="mb-3">Tier Configuration</h6>
+                        <div id="tiers">
+                            <div class="tier-config">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <label class="form-label">Tier Name</label>
+                                        <input type="text" class="form-control" name="tier_name[]" value="Full Pay">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Days Allowed</label>
+                                        <input type="number" class="form-control" name="tier_days[]" value="15">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Pay Percentage</label>
+                                        <input type="number" class="form-control" name="tier_percentage[]" value="100">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Additional tiers will be added dynamically -->
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="addTier">
+                            <i class="fas fa-plus"></i> Add Tier
+                        </button>
+                    </div>
+
+                    <!-- Shared Balance Configuration -->
+                    <div id="sharedBalanceConfig" class="mt-4" style="display: none;">
+                        <h6 class="mb-3">Shared Balance Configuration</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Share Balance With</label>
+                            <select class="form-select" name="shared_balance_with">
+                                <option value="">Select Leave Type</option>
+                                {% for lt in leave_types %}
+                                <option value="{{ lt.id }}">{{ lt.name }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="gender_specific" class="form-label">Gender Specific</label>
-                        <select class="form-select" id="gender_specific" name="gender_specific" required>
-                            <option value="A">All</option>
-                            <option value="M">Male Only</option>
-                            <option value="F">Female Only</option>
-                        </select>
+
+                    <!-- Validation Rules -->
+                    <div class="validation-rules mt-4">
+                        <h6 class="mb-3">Validation Rules</h6>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_one_time" name="is_one_time">
+                                <label class="form-check-label" for="is_one_time">
+                                    One-time Leave (can only be taken once during employment)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="has_fixed_duration" name="has_fixed_duration">
+                                <label class="form-check-label" for="has_fixed_duration">
+                                    Fixed Duration Leave
+                                </label>
+                            </div>
+                            <div id="fixedDurationConfig" class="mt-2" style="display: none;">
+                                <input type="number" class="form-control" name="fixed_duration" placeholder="Number of days">
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
+
+                    <!-- Description -->
+                    <div class="mb-3 mt-4">
                         <label for="description" class="form-label">Description</label>
                         <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Leave Type</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Leave Type Modal -->
-<div class="modal fade" id="editLeaveTypeModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Leave Type</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="editLeaveTypeForm" method="POST">
-                {% csrf_token %}
-                <input type="hidden" id="edit_id" name="id">
-                <div class="modal-body">
-                    <!-- Same fields as Add Modal -->
-                    <div class="mb-3">
-                        <label for="edit_name" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="edit_name" name="name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit_code" class="form-label">Code</label>
-                        <input type="text" class="form-control" id="edit_code" name="code" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit_category" class="form-label">Category</label>
-                        <select class="form-select" id="edit_category" name="category" required>
-                            <option value="REGULAR">Regular</option>
-                            <option value="MEDICAL">Medical</option>
-                            <option value="SPECIAL">Special</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit_days_allowed" class="form-label">Days Allowed</label>
-                        <input type="number" class="form-control" id="edit_days_allowed" name="days_allowed" required min="0">
-                    </div>
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="edit_is_paid" name="is_paid">
-                            <label class="form-check-label" for="edit_is_paid">
-                                Paid Leave
-                            </label>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="edit_requires_document" name="requires_document">
-                            <label class="form-check-label" for="edit_requires_document">
-                                Requires Supporting Document
-                            </label>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit_gender_specific" class="form-label">Gender Specific</label>
-                        <select class="form-select" id="edit_gender_specific" name="gender_specific" required>
-                            <option value="A">All</option>
-                            <option value="M">Male Only</option>
-                            <option value="F">Female Only</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit_description" class="form-label">Description</label>
-                        <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="submit" class="btn btn-primary">Save Leave Type</button>
                 </div>
             </form>
         </div>
@@ -271,5 +318,87 @@
 {% endblock %}
 
 {% block extra_js %}
-{{ block.super }}
+<script>
+$(document).ready(function() {
+    // Handle balance calculation type change
+    $('#balance_calculation').change(function() {
+        const value = $(this).val();
+        
+        // Show/hide tier configuration
+        $('#tierConfig').toggle(value === 'TIERED');
+        
+        // Show/hide shared balance configuration
+        $('#sharedBalanceConfig').toggle(value === 'SHARED');
+    });
+    
+    // Handle fixed duration checkbox
+    $('#has_fixed_duration').change(function() {
+        $('#fixedDurationConfig').toggle(this.checked);
+    });
+    
+    // Add tier button
+    $('#addTier').click(function() {
+        const tierHtml = `
+            <div class="tier-config">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Tier Name</label>
+                        <input type="text" class="form-control" name="tier_name[]">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Days Allowed</label>
+                        <input type="number" class="form-control" name="tier_days[]">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Pay Percentage</label>
+                        <input type="number" class="form-control" name="tier_percentage[]">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button type="button" class="btn btn-outline-danger btn-sm d-block remove-tier">
+                            <i class="fas fa-trash"></i> Remove
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        $('#tiers').append(tierHtml);
+    });
+    
+    // Remove tier button
+    $(document).on('click', '.remove-tier', function() {
+        $(this).closest('.tier-config').remove();
+    });
+    
+    // Edit leave type button
+    $('.edit-leave-type').click(function() {
+        const data = $(this).data();
+        
+        // Populate form fields
+        $('#leave_type_id').val(data.id);
+        $('#name').val(data.name);
+        $('#code').val(data.code);
+        $('#category').val(data.category);
+        $('#balance_calculation').val(data.balanceCalculation).trigger('change');
+        $('#days_allowed').val(data.days);
+        $('#is_paid').prop('checked', data.paid === 'true');
+        $('#requires_document').prop('checked', data.document === 'true');
+        $('#gender_specific').val(data.gender);
+        $('#description').val(data.description);
+        
+        // Parse and populate validation rules
+        if (data.validationRules) {
+            const rules = JSON.parse(data.validationRules);
+            $('#is_one_time').prop('checked', rules.is_one_time);
+            $('#has_fixed_duration').prop('checked', rules.has_fixed_duration).trigger('change');
+            if (rules.has_fixed_duration) {
+                $('input[name="fixed_duration"]').val(rules.fixed_duration);
+            }
+        }
+        
+        // Show modal
+        $('#leaveTypeModal').modal('show');
+    });
+});
+</script>
 {% endblock %}

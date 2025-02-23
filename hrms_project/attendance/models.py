@@ -294,6 +294,13 @@ class LeaveType(models.Model):
         ('MEDICAL', 'Medical Leave'),
     ]
     
+    BALANCE_CALCULATION_CHOICES = [
+        ('FIXED', 'Fixed Allowance'),
+        ('ACCRUAL', 'Monthly Accrual'),
+        ('TIERED', 'Tiered System'),
+        ('SHARED', 'Shared Balance'),
+    ]
+    
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=20, unique=True)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
@@ -307,6 +314,27 @@ class LeaveType(models.Model):
         max_length=1, 
         choices=[('M', 'Male Only'), ('F', 'Female Only'), ('A', 'All')],
         default='A'
+    )
+    
+    # Balance calculation settings
+    balance_calculation = models.CharField(
+        max_length=20,
+        choices=BALANCE_CALCULATION_CHOICES,
+        default='FIXED',
+        help_text="How the leave balance is calculated"
+    )
+    shared_balance_with = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='shared_leave_types',
+        help_text="For shared balance types, reference the main leave type"
+    )
+    validation_rules = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="JSON field for storing leave type specific validation rules"
     )
     
     # Accrual settings
@@ -602,3 +630,41 @@ class Holiday(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.date})"
+
+class LeaveBalanceTier(models.Model):
+    """Track tiered leave balances (e.g., sick leave tiers)"""
+    balance = models.ForeignKey(
+        LeaveBalance,
+        on_delete=models.CASCADE,
+        related_name='tiers'
+    )
+    tier_number = models.PositiveIntegerField()
+    tier_name = models.CharField(max_length=50)
+    days_allowed = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        help_text="Number of days allowed in this tier"
+    )
+    days_used = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=0,
+        help_text="Number of days used from this tier"
+    )
+    pay_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        help_text="Percentage of salary paid for this tier"
+    )
+    
+    class Meta:
+        unique_together = ['balance', 'tier_number']
+        ordering = ['tier_number']
+        
+    def __str__(self):
+        return f"{self.balance} - {self.tier_name} ({self.tier_number})"
+        
+    @property
+    def days_remaining(self):
+        """Calculate remaining days in this tier"""
+        return self.days_allowed - self.days_used
