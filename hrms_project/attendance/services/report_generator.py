@@ -5,8 +5,10 @@ import xlsxwriter
 from django.http import HttpResponse
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist
 
 from .pdf_service import PDFReportService
+from .report_service import ReportService
 
 class BaseReportGenerator:
     """Base class for report generation with common functionality"""
@@ -106,8 +108,12 @@ class AttendanceReportGenerator(BaseReportGenerator):
         super().__init__('attendance')
 
     def _gather_data(self, **params) -> Dict:
-        from .report_service import ReportService
-        return ReportService.get_attendance_report(**params)
+        try:
+            return ReportService.get_attendance_report(**params)
+        except ObjectDoesNotExist as e:
+            raise ValidationError(f"Data not found: {str(e)}")
+        except Exception as e:
+            raise ValidationError(f"Error generating attendance report: {str(e)}")
 
     def _write_csv(self, writer: csv.writer, data: Dict):
         # Write summary
@@ -165,8 +171,12 @@ class LeaveReportGenerator(BaseReportGenerator):
         super().__init__('leave')
 
     def _gather_data(self, **params) -> Dict:
-        from .report_service import ReportService
-        return ReportService.get_leave_report(**params)
+        try:
+            return ReportService.get_leave_report(**params)
+        except ObjectDoesNotExist as e:
+            raise ValidationError(f"Data not found: {str(e)}")
+        except Exception as e:
+            raise ValidationError(f"Error generating leave report: {str(e)}")
 
     def _write_csv(self, writer: csv.writer, data: Dict):
         writer.writerow(['Leave Type Statistics'])
@@ -196,8 +206,12 @@ class HolidayReportGenerator(BaseReportGenerator):
         super().__init__('holiday')
 
     def _gather_data(self, **params) -> Dict:
-        from .report_service import ReportService
-        return ReportService.get_holiday_report(**params)
+        try:
+            return ReportService.get_holiday_report(**params)
+        except ObjectDoesNotExist as e:
+            raise ValidationError(f"Data not found: {str(e)}")
+        except Exception as e:
+            raise ValidationError(f"Error generating holiday report: {str(e)}")
 
     def _write_csv(self, writer: csv.writer, data: Dict):
         writer.writerow(['Date', 'Name', 'Description', 'Type'])

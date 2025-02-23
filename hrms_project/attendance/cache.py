@@ -12,6 +12,9 @@ CACHE_KEYS = {
     'employee_schedule': 'employee_schedule_{}_{}_{}',  # Employee's schedule for date range
     'shift_statistics': 'shift_statistics_{}',  # Statistics for shift
     'attendance_metrics': 'attendance_metrics_{}_{}',  # Daily attendance metrics
+    'report_attendance': 'report_attendance_{}',  # Attendance report
+    'report_leave': 'report_leave_{}',  # Leave report
+    'report_holiday': 'report_holiday_{}',  # Holiday report
 }
 
 CACHE_TIMEOUTS = {
@@ -21,6 +24,9 @@ CACHE_TIMEOUTS = {
     'employee_schedule': 60 * 15,  # 15 minutes
     'shift_statistics': 60 * 60,  # 1 hour
     'attendance_metrics': 60 * 60 * 12,  # 12 hours
+    'report_attendance': 60 * 60,  # 1 hour
+    'report_leave': 60 * 60,  # 1 hour
+    'report_holiday': 60 * 60 * 24,  # 24 hours
 }
 
 def generate_cache_key(key_name: str, *args) -> str:

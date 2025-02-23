@@ -4,9 +4,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from typing import List
+import logging
 
 from ..utils.validation import RequestValidator
 from ..services.report_generator import ReportGeneratorFactory
+
+logger = logging.getLogger('attendance')
 
 class ReportViewSet(viewsets.ViewSet):
     """ViewSet for handling report generation and exports"""
@@ -30,23 +33,41 @@ class ReportViewSet(viewsets.ViewSet):
             export_format: Optional export format
         """
         try:
-            # Validate parameters
-            params = RequestValidator.validate_report_params(
-                request_params,
-                optional_params
+            logger.debug(f"Handling report request - Type: {report_type}, Params: {request_params}")
+            
+            # Validate date range first
+            validated_dates = RequestValidator.validate_date_range(
+                request_params.get('start_date'),
+                request_params.get('end_date')
             )
+            logger.debug(f"Validated dates: {validated_dates}")
+            
+            # Validate optional parameters
+            params = {
+                'start_date': validated_dates['start_date'],
+                'end_date': validated_dates['end_date']
+            }
+            
+            # Add optional parameters if present
+            for param in optional_params:
+                param_value = RequestValidator.validate_list_param(request_params, param)
+                if param_value:
+                    params[param] = param_value
+            logger.debug(f"Final params after validation: {params}")
             
             # Create report generator
             generator = ReportGeneratorFactory.create(report_type)
             
-            # Generate report in requested format
-            if export_format:
-                return generator.generate(export_format, **params)
-            return generator.generate('json', **params)
+            # Generate report in requested format (default to json)
+            format = export_format if export_format else 'json'
+            logger.debug(f"Generating report in {format} format")
+            return generator.generate(format, **params)
             
         except ValidationError as e:
+            logger.error(f"Validation error: {str(e)}")
             return Response({"error": str(e)}, status=400)
         except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
             return Response(
                 {"error": f"Unexpected error: {str(e)}"}, 
                 status=500
@@ -55,6 +76,7 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def attendance(self, request):
         """Generate attendance report"""
+        logger.debug("Generating attendance report")
         return self._handle_report_request(
             'attendance',
             request.query_params,
@@ -64,6 +86,7 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def leave(self, request):
         """Generate leave report"""
+        logger.debug("Generating leave report")
         return self._handle_report_request(
             'leave',
             request.query_params,
@@ -73,6 +96,7 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get']) 
     def holiday(self, request):
         """Generate holiday report"""
+        logger.debug("Generating holiday report")
         return self._handle_report_request(
             'holiday',
             request.query_params,
@@ -82,6 +106,7 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def export(self, request):
         """Export report in specified format"""
+        logger.debug("Exporting report")
         try:
             report_type = request.query_params.get('type', 'attendance')
             export_format = request.query_params.get('format', 'csv')
@@ -100,8 +125,10 @@ class ReportViewSet(viewsets.ViewSet):
             )
             
         except ValidationError as e:
+            logger.error(f"Validation error: {str(e)}")
             return Response({"error": str(e)}, status=400)
         except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
             return Response(
                 {"error": f"Unexpected error: {str(e)}"}, 
                 status=500

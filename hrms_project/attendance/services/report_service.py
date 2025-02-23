@@ -4,12 +4,15 @@ from django.db.models import Count, Q
 from django.core.cache import cache
 from django.utils import timezone
 from functools import wraps
+import logging
 
 from ..models import (
     AttendanceLog, Leave, Holiday, LeaveType
 )
 from employees.models import Employee, Department
 from ..cache import generate_cache_key
+
+logger = logging.getLogger('attendance')
 
 T = TypeVar('T', bound=Dict[str, Any])
 
@@ -21,7 +24,16 @@ class ReportService:
     @classmethod
     def _get_cache_key(cls, report_type: str, **params) -> str:
         """Generate a cache key based on report type and parameters"""
-        return generate_cache_key(f'report_{report_type}', **params)
+        # Convert params to a sorted tuple of values for consistent cache keys
+        param_values = []
+        for key in sorted(params.keys()):
+            value = params[key]
+            if isinstance(value, (list, tuple)):
+                # Sort lists/tuples for consistent cache keys
+                value = tuple(sorted(value))
+            param_values.append(value)
+        
+        return generate_cache_key(f'report_{report_type}', *param_values)
 
     @classmethod
     def _generate_report(
@@ -41,25 +53,34 @@ class ReportService:
         Returns:
             Generated report data
         """
-        # Check cache first
-        cache_key = cls._get_cache_key(report_type, **params)
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            return cached_data
+        logger.debug(f"Generating {report_type} report with params: {params}")
+        
+        try:
+            # Check cache first
+            cache_key = cls._get_cache_key(report_type, **params)
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                logger.debug("Returning cached report data")
+                return cached_data
 
-        # Generate report data
-        report_data = data_generator(**params)
+            # Generate report data
+            report_data = data_generator(**params)
+            logger.debug("Successfully generated report data")
 
-        # Add common fields
-        report_data.update({
-            'start_date': params['start_date'],
-            'end_date': params['end_date'],
-            'generated_at': timezone.now()
-        })
+            # Add common fields
+            report_data.update({
+                'start_date': params['start_date'],
+                'end_date': params['end_date'],
+                'generated_at': timezone.now()
+            })
 
-        # Cache the report
-        cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
-        return report_data
+            # Cache the report
+            cache.set(cache_key, report_data, cls.CACHE_TIMEOUT)
+            return report_data
+            
+        except Exception as e:
+            logger.error(f"Error generating report data: {str(e)}")
+            raise
 
     @classmethod
     def _generate_attendance_data(
@@ -71,6 +92,10 @@ class ReportService:
         status: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Generate attendance report data"""
+        # Convert datetime to date for database queries
+        start_date = start_date.date()
+        end_date = end_date.date()
+        
         # Build base query for employees
         base_query = Employee.objects.all()
         if departments:
@@ -150,6 +175,10 @@ class ReportService:
         leave_types: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Generate leave report data"""
+        # Convert datetime to date for database queries
+        start_date = start_date.date()
+        end_date = end_date.date()
+        
         # Build base query
         leaves = Leave.objects.filter(
             Q(start_date__lte=end_date) & 
@@ -206,6 +235,10 @@ class ReportService:
         end_date: datetime
     ) -> Dict[str, Any]:
         """Generate holiday report data"""
+        # Convert datetime to date for database queries
+        start_date = start_date.date()
+        end_date = end_date.date()
+        
         holidays = Holiday.objects.filter(
             date__range=[start_date, end_date],
             is_active=True
