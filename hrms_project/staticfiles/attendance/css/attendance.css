@@ -1,0 +1,271 @@
+/* Attendance Calendar */
+.calendar-container {
+    margin: 20px 0;
+    padding: 20px;
+    border-radius: 8px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.calendar-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.calendar-nav {
+    display: flex;
+    gap: 10px;
+}
+
+.calendar {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.calendar th {
+    padding: 10px;
+    text-align: center;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.calendar td {
+    width: 14.28%;
+    padding: 0;
+    border: 1px solid #dee2e6;
+    position: relative;
+}
+
+.calendar td > div {
+    min-height: 100px;
+    padding: 10px;
+}
+
+.calendar .date-number {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 50%;
+}
+
+/* Calendar Status Classes */
+.calendar td.weekend {
+    background-color: #f8f9fa;
+}
+
+.calendar td.today .date-number {
+    background-color: #007bff;
+    color: white;
+}
+
+.calendar td.present {
+    background-color: #d4edda;
+}
+
+.calendar td.absent {
+    background-color: #f8d7da;
+}
+
+.calendar td.late {
+    background-color: #fff3cd;
+}
+
+.calendar td.leave {
+    background-color: #cce5ff;
+}
+
+.calendar td.holiday {
+    background-color: #e2e3e5;
+}
+
+/* Attendance Status Badges */
+.status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+/* Leave Request Form */
+.leave-request-form {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.leave-balance-summary {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.leave-balance-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.leave-balance-item:last-child {
+    border-bottom: none;
+}
+
+/* Attendance Log Details */
+.attendance-detail {
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.time-log {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    margin: 5px 0;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.time-log .time {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.time-log .source {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+/* Monthly Summary */
+.attendance-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+
+.attendance-summary > div {
+    padding: 10px;
+    background-color: white;
+    border-radius: 4px;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.attendance-summary .present { color: #28a745; }
+.attendance-summary .late { color: #ffc107; }
+.attendance-summary .absent { color: #dc3545; }
+.attendance-summary .leave { color: #17a2b8; }
+.attendance-summary .holiday { color: #6c757d; }
+
+/* Holiday List */
+.holiday-list {
+    list-style: none;
+    padding: 0;
+}
+
+.holiday-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin: 10px 0;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.holiday-date {
+    font-weight: bold;
+    color: #495057;
+}
+
+.holiday-name {
+    flex-grow: 1;
+    margin: 0 15px;
+}
+
+/* Leave Request List */
+.leave-request-list {
+    list-style: none;
+    padding: 0;
+}
+
+.leave-request-item {
+    padding: 15px;
+    margin: 10px 0;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.leave-request-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.leave-request-dates {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+/* Status Colors */
+.status-pending { color: #ffc107; }
+.status-approved { color: #28a745; }
+.status-rejected { color: #dc3545; }
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .calendar td > div {
+        min-height: 60px;
+    }
+    
+    .attendance-summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .leave-request-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .leave-request-dates {
+        margin-top: 5px;
+    }
+}
+
+@media (max-width: 576px) {
+    .calendar-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .attendance-summary {
+        grid-template-columns: 1fr;
+    }
+}

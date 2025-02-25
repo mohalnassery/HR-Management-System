@@ -1,0 +1,64 @@
+.calendar-grid {
+    display: grid;
+    gap: 1px;
+    background: #eee;
+    border: 1px solid #ddd;
+}
+
+.calendar-header {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    background: #f8f9fa;
+    padding: 10px 0;
+    text-align: center;
+    font-weight: bold;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+
+.calendar-day {
+    background: white;
+    padding: 10px;
+    min-height: 100px;
+    border: 1px solid #eee;
+}
+
+.calendar-day:hover {
+    background: #f8f9fa;
+    cursor: pointer;
+}
+
+.other-month {
+    background: #f8f9fa;
+    color: #aaa;
+}
+
+.shift-time {
+    font-size: 0.8em;
+    margin: 2px 0;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.shift-default {
+    background: #cfe2ff;
+    color: #084298;
+}
+
+.shift-open {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.shift-night {
+    background: #e2e3e5;
+    color: #41464b;
+}
+
+.shift-override {
+    background: #fff3cd;
+    color: #664d03;
+} 

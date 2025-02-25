@@ -318,8 +318,7 @@ def process_leave_request(sender, instance, created, **kwargs):
                     employee=instance.employee,
                     date=current_date,
                     status='leave',
-                    source='leave',
-                    leave=instance
+                    source='leave'
                 )
             current_date += timedelta(days=1)
 

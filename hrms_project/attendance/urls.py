@@ -50,6 +50,10 @@ urlpatterns = [
     path('leave_request_detail/<int:pk>/', leave_views.leave_request_detail, name='leave_request_detail'),
     path('leave_balance/', leave_views.leave_balance, name='leave_balance'),
     path('leave_types/', leave_views.leave_types, name='leave_types'),
+    path('api/leaves/<int:pk>/approve/', leave_views.leave_request_action, {'action': 'approve'}, name='leave_request_approve'),
+    path('api/leaves/<int:pk>/reject/', leave_views.leave_request_action, {'action': 'reject'}, name='leave_request_reject'),
+    path('api/leaves/<int:pk>/cancel/', leave_views.leave_request_action, {'action': 'cancel'}, name='leave_request_cancel'),
+    path('api/leaves/<int:pk>/delete/', leave_views.leave_request_action, {'action': 'delete'}, name='leave_request_delete'),
     
     # Holiday Management URLs
     path('holiday_list/', holiday_views.holiday_list, name='holiday_list'),

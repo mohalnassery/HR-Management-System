@@ -11,11 +11,13 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 
 from ..models import (
     Leave, LeaveType, LeaveBalance, LeaveBeginningBalance,
     AttendanceLog, Holiday, LeaveDocument  # Add these imports
 )
+from ..services.leave_rule_service import LeaveRuleService
 from ..serializers import LeaveSerializer
 from ..forms import LeaveBalanceUploadForm, LeaveRequestForm
 from employees.models import Employee, Department  # Add Department here
@@ -23,7 +25,62 @@ from employees.models import Employee, Department  # Add Department here
 @login_required
 def leave_request_list(request):
     """Display leave requests list page"""
-    return render(request, 'attendance/leave_request_list.html')
+    # Initialize query
+    leave_requests = Leave.objects.select_related(
+        'employee',
+        'employee__department',
+        'leave_type'
+    ).filter(is_active=True)
+    
+    # For non-staff users, only show their own requests
+    if not request.user.is_staff:
+        leave_requests = leave_requests.filter(employee=request.user.employee)
+    
+    # Apply filters if provided
+    status = request.GET.get('status')
+    leave_type = request.GET.get('leave_type')
+    department = request.GET.get('department')
+    employee = request.GET.get('employee')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    
+    if status:
+        leave_requests = leave_requests.filter(status=status)
+    if leave_type:
+        leave_requests = leave_requests.filter(leave_type__code=leave_type)
+    if department and request.user.is_staff:
+        leave_requests = leave_requests.filter(employee__department_id=department)
+    if employee and request.user.is_staff:
+        leave_requests = leave_requests.filter(employee_id=employee)
+    if start_date:
+        leave_requests = leave_requests.filter(start_date__gte=start_date)
+    if end_date:
+        leave_requests = leave_requests.filter(end_date__lte=end_date)
+    
+    # Order by most recent first
+    leave_requests = leave_requests.order_by('-created_at')
+    
+    # Get leave types and departments for filters
+    leave_types = LeaveType.objects.filter(is_active=True)
+    departments = Department.objects.all() if request.user.is_staff else []
+    
+    # Get employees for filter (only for staff users)
+    employees = []
+    if request.user.is_staff:
+        employees_query = Employee.objects.all()
+        if department:
+            employees_query = employees_query.filter(department_id=department)
+        employees = employees_query.order_by('first_name', 'last_name')
+    
+    context = {
+        'leave_requests': leave_requests,
+        'leave_types': leave_types,
+        'departments': departments,
+        'employees': employees,
+        'selected_employee': employee,  # Pass selected employee ID for maintaining filter state
+    }
+    
+    return render(request, 'attendance/leave_request_list.html', context)
 
 @login_required
 def leave_request_create(request):
@@ -112,20 +169,17 @@ def leave_request_create(request):
             
             leave_request.duration = duration
             
-            # Check if employee has sufficient balance
-            try:
-                balance = leave_balances.get(leave_type=leave_request.leave_type)
-                if balance.balance_days < duration:
-                    messages.error(request, f'Insufficient {leave_request.leave_type.name} balance. Available: {balance.balance_days} days')
-                    return render(request, 'attendance/leave_request_form.html', {
-                        'form': form,
-                        'leave_balances': leave_balances,
-                        'departments': departments,
-                        'employees': employees,
-                        'selected_employee': employee
-                    })
-            except LeaveBalance.DoesNotExist:
-                messages.error(request, f'No balance found for {leave_request.leave_type.name}')
+            # Validate leave request using LeaveRuleService
+            is_valid, message, data = LeaveRuleService.validate_leave_request(
+                employee=employee,
+                leave_type=leave_request.leave_type,
+                sub_type=leave_sub_type,
+                start_date=leave_request.start_date,
+                end_date=leave_request.end_date
+            )
+            
+            if not is_valid:
+                messages.error(request, message)
                 return render(request, 'attendance/leave_request_form.html', {
                     'form': form,
                     'leave_balances': leave_balances,
@@ -175,8 +229,55 @@ def leave_request_create(request):
 @login_required
 def leave_request_detail(request, pk):
     """Display leave request details page"""
-    leave = get_object_or_404(Leave, pk=pk)
-    return render(request, 'attendance/leave_request_detail.html', {'leave': leave})
+    leave = get_object_or_404(Leave.objects.select_related(
+        'employee',
+        'employee__department',
+        'leave_type',
+        'approved_by'
+    ), pk=pk)
+    
+    # Get similar leaves (same type, same employee)
+    similar_leaves = Leave.objects.filter(
+        employee=leave.employee,
+        leave_type=leave.leave_type,
+        is_active=True
+    ).exclude(
+        pk=pk  # Exclude current leave
+    ).select_related(
+        'employee',
+        'leave_type'
+    ).order_by('-created_at')
+    
+    # Get leave balances
+    balances = {
+        'annual': {'remaining': 0},
+        'sick': {'remaining': 0},
+        'permission': {'remaining': 0}
+    }
+    
+    try:
+        leave_balances = LeaveBalance.objects.filter(
+            employee=leave.employee,
+            is_active=True
+        ).select_related('leave_type')
+        
+        for balance in leave_balances:
+            if balance.leave_type.code == 'ANNUAL':
+                balances['annual']['remaining'] = balance.available_days
+            elif balance.leave_type.code == 'SICK':
+                balances['sick']['remaining'] = balance.available_days
+            elif balance.leave_type.code == 'PERMISSION':
+                balances['permission']['remaining'] = balance.available_days
+    except LeaveBalance.DoesNotExist:
+        pass
+    
+    context = {
+        'leave': leave,
+        'similar_leaves': similar_leaves,
+        'balance': balances
+    }
+    
+    return render(request, 'attendance/leave_request_detail.html', context)
 
 
 @login_required
@@ -450,3 +551,45 @@ class LeaveViewSet(viewsets.ModelViewSet):
         if status_param:
             queryset = queryset.filter(status=status_param)
         return queryset
+
+@login_required
+@require_POST
+def leave_request_action(request, pk, action):
+    """Handle leave request actions (approve, reject, cancel, delete)"""
+    if action not in ['approve', 'reject', 'cancel', 'delete']:
+        return JsonResponse({'error': 'Invalid action'}, status=400)
+        
+    try:
+        leave = Leave.objects.get(pk=pk, is_active=True)
+        
+        # Check permissions
+        if action in ['approve', 'reject', 'delete']:
+            if not request.user.is_staff:
+                return JsonResponse({'error': 'Permission denied'}, status=403)
+        elif action == 'cancel':
+            if leave.employee.user != request.user and not request.user.is_staff:
+                return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+        if action == 'delete':
+            leave.is_active = False
+            leave.save()
+        else:
+            # Update leave status
+            if action == 'approve':
+                leave.status = 'approved'
+                leave.approved_by = request.user
+                leave.approved_at = timezone.now()
+            elif action == 'reject':
+                leave.status = 'rejected'
+                leave.rejected_by = request.user
+                leave.rejected_at = timezone.now()
+            else:  # cancel
+                leave.status = 'cancelled'
+                leave.cancelled_at = timezone.now()
+                
+            leave.save()
+            
+        return JsonResponse({'status': 'success'})
+        
+    except Leave.DoesNotExist:
+        return JsonResponse({'error': 'Leave request not found'}, status=404)
