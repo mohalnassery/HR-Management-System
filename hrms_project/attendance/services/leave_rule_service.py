@@ -37,6 +37,10 @@ class LeaveRuleService:
             - str: Message explaining the validation result
             - dict: Additional data (e.g., available balance)
         """
+        # Ensure end date is never less than start date
+        if end_date < start_date:
+            end_date = start_date
+            
         # Get the appropriate validator based on leave type
         validator = cls._get_validator(leave_type.code)
         return validator(employee, leave_type, sub_type, start_date, end_date)
@@ -536,6 +540,10 @@ class LeaveRuleService:
     @staticmethod
     def _calculate_leave_duration(start_date: date, end_date: date) -> Decimal:
         """Calculate leave duration excluding holidays"""
+        # Ensure end date is never less than start date
+        if end_date < start_date:
+            end_date = start_date
+            
         duration = (end_date - start_date).days + 1
         
         # Subtract holidays

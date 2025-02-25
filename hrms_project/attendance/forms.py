@@ -226,6 +226,14 @@ class LeaveRequestForm(BaseModelForm, DateRangeValidationMixin):
         leave_sub_type = cleaned_data.get('leave_sub_type')
 
         if start_date and end_date:
+            # Ensure end date is never less than start date
+            if end_date < start_date:
+                # Automatically adjust end date to match start date
+                cleaned_data['end_date'] = start_date
+                end_date = start_date
+                # Add a message to the form to inform the user
+                self.add_error('end_date', 'End date cannot be earlier than start date. It has been adjusted automatically.')
+            
             # Validate date range
             self.validate_date_range(
                 start_date,

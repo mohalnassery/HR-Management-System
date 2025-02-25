@@ -190,6 +190,19 @@
                     {{ form.end_date|as_crispy_field }}
                 </div>
             </div>
+            <!-- Add total days display -->
+            <div class="row mb-3">
+                <div class="col-12">
+                    <div class="card bg-light">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-calendar-day"></i> Total Days:</span>
+                                <span id="totalDaysDisplay" class="fw-bold">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="row">
                 <div class="col-12">
                     {{ form.reason|as_crispy_field }}
@@ -254,10 +267,53 @@
         const startDateInput = $('#id_start_date');
         const endDateInput = $('#id_end_date');
         const subTypeContainer = subTypeSelect.closest('.form-group');
-        const validationFeedback = $('<div class="validation-feedback"></div>');
+        const validationFeedback = $('.validation-feedback');
+        const totalDaysDisplay = $('#totalDaysDisplay');
         
-        // Add validation feedback container after sub-type field
-        subTypeContainer.after(validationFeedback);
+        // Function to calculate total days
+        function calculateTotalDays() {
+            const startDate = startDateInput.val();
+            const endDate = endDateInput.val();
+            const leaveType = leaveTypeSelect.val();
+            const subType = subTypeSelect.val();
+            
+            if (!startDate || !endDate) {
+                totalDaysDisplay.text('-');
+                return;
+            }
+            
+            // Calculate days between dates
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            // Ensure end date is not before start date
+            if (end < start) {
+                endDateInput.val(startDate);
+                end.setTime(start.getTime());
+            }
+            
+            const diffTime = Math.abs(end - start);
+            let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end dates
+            
+            // Adjust for half-day or other special sub-types
+            if (subType) {
+                if (subType === 'half_day' || subType === 'morning' || subType === 'afternoon') {
+                    diffDays = 0.5;
+                } else if (subType.includes('_days')) {
+                    // Extract days from sub-type code (e.g., '3_days' -> 3)
+                    try {
+                        const days = parseInt(subType.split('_')[0]);
+                        if (!isNaN(days)) {
+                            diffDays = days;
+                        }
+                    } catch (e) {
+                        console.error('Error parsing days from sub-type:', e);
+                    }
+                }
+            }
+            
+            totalDaysDisplay.text(diffDays.toString() + (diffDays === 1 ? ' day' : ' days'));
+        }
         
         // Function to validate leave request
         function validateLeaveRequest() {
@@ -266,6 +322,9 @@
             const startDate = $('#id_start_date').val();
             const endDate = $('#id_end_date').val();
             const employeeId = $('input[name="employee"]').val();
+
+            // Calculate total days
+            calculateTotalDays();
 
             // Clear previous validation messages
             validationFeedback.removeClass('is-valid is-invalid').empty();
@@ -407,6 +466,7 @@
                 subTypeContainer.hide();
                 subTypeField.prop('required', false);
                 validationFeedback.hide();
+                calculateTotalDays(); // Update total days when leave type changes
                 return;
             }
 
@@ -441,6 +501,9 @@
                             subTypeField.prop('required', false);
                         }
                         
+                        // Calculate total days after sub-type is updated
+                        calculateTotalDays();
+                        
                         // Validate the request
                         validateLeaveRequest();
                     }
@@ -450,9 +513,21 @@
         
         // Trigger validation on input changes
         leaveTypeSelect.change(validateLeaveRequest);
-        subTypeSelect.change(validateLeaveRequest);
-        startDateInput.change(validateLeaveRequest);
-        endDateInput.change(validateLeaveRequest);
+        subTypeSelect.change(function() {
+            calculateTotalDays(); // Update total days when sub-type changes
+            validateLeaveRequest();
+        });
+        startDateInput.change(function() {
+            calculateTotalDays(); // Update total days when start date changes
+            validateLeaveRequest();
+        });
+        endDateInput.change(function() {
+            calculateTotalDays(); // Update total days when end date changes
+            validateLeaveRequest();
+        });
+        
+        // Calculate total days on initial load
+        calculateTotalDays();
     });
 
     // Initialize date inputs
@@ -469,6 +544,26 @@
             endDateInput.min = this.value;
             if (endDateInput.value && endDateInput.value < this.value) {
                 endDateInput.value = this.value;
+                // Trigger change event to update calculations
+                $(endDateInput).trigger('change');
+            }
+        });
+        
+        // Ensure end date is never less than start date
+        endDateInput.addEventListener('change', function() {
+            if (startDateInput.value && this.value < startDateInput.value) {
+                this.value = startDateInput.value;
+                // Show a brief message to the user
+                const $feedback = $('<div class="alert alert-warning alert-dismissible fade show mt-2" role="alert">')
+                    .text('End date cannot be earlier than start date. It has been adjusted automatically.')
+                    .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                
+                $(this).parent().append($feedback);
+                
+                // Remove the message after 5 seconds
+                setTimeout(function() {
+                    $feedback.alert('close');
+                }, 5000);
             }
         });
     }

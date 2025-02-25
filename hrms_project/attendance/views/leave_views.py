@@ -151,6 +151,10 @@ def leave_request_create(request):
             leave_request.employee = employee
             leave_request.status = 'pending'
             
+            # Ensure end date is never less than start date
+            if leave_request.end_date < leave_request.start_date:
+                leave_request.end_date = leave_request.start_date
+            
             # Calculate duration based on start and end dates and leave type
             duration = (leave_request.end_date - leave_request.start_date).days + 1
             
