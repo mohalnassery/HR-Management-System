@@ -10,12 +10,20 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Module-level flag to track if we've already logged the cache import message
+_cache_import_logged = False
+
 # Try to import cache, but don't fail if it's not configured
 try:
     from django.core.cache import cache
-    logger.info("Successfully imported cache in signals")
+    # Only log once
+    if not _cache_import_logged:
+        logger.info("Successfully imported cache in signals")
+        _cache_import_logged = True
 except ImportError:
-    logger.warning("Failed to import cache in signals, continuing without caching")
+    if not _cache_import_logged:
+        logger.warning("Failed to import cache in signals, continuing without caching")
+        _cache_import_logged = True
     cache = None
 
 from .models import (
