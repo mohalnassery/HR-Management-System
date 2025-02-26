@@ -141,19 +141,36 @@ class LeaveRuleService:
             # Calculate accrued leave
             accrued_days = total_working_days * daily_rate
             
-            # Get used days from balance
+            # Get leave balance
             balance = LeaveBalance.objects.filter(
                 employee=employee,
                 leave_type=leave_type,
                 is_active=True
             ).first()
             
+            # Get used days from balance
             used_days = balance.used_days if balance else Decimal('0')
             pending_days = balance.pending_days if balance else Decimal('0')
             
             # Calculate total and remaining days
             total_days = Decimal(initial_balance) + accrued_days
             remaining_days = total_days - used_days - pending_days
+            
+            # Add pending days for this request if it's not already approved
+            # This ensures that if a user has a pending request, they can't submit another one that would exceed their balance
+            pending_leave_days = Decimal('0')
+            pending_leaves = Leave.objects.filter(
+                employee=employee,
+                leave_type=leave_type,
+                status='pending',
+                is_active=True
+            ).exclude(start_date=start_date, end_date=end_date)  # Exclude current request if editing
+            
+            for leave in pending_leaves:
+                pending_leave_days += leave.duration
+            
+            # Subtract pending days from remaining days
+            remaining_days -= pending_leave_days
             
             # Check if sufficient balance
             if remaining_days < duration:
@@ -162,7 +179,7 @@ class LeaveRuleService:
                     'requested_duration': duration,
                     'total_days': total_days,
                     'used_days': used_days,
-                    'pending_days': pending_days,
+                    'pending_days': pending_days + pending_leave_days,
                     'accrued_days': accrued_days
                 }
                 
@@ -171,7 +188,7 @@ class LeaveRuleService:
                 'requested_duration': duration,
                 'total_days': total_days,
                 'used_days': used_days,
-                'pending_days': pending_days,
+                'pending_days': pending_days + pending_leave_days,
                 'accrued_days': accrued_days,
                 'is_paid': True
             }

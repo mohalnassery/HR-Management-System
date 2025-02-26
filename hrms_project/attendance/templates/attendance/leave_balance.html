@@ -145,8 +145,12 @@
                                 <strong>{{ balance.used_days|floatformat:2 }}</strong>
                             </div>
                             <div class="col">
-                                <small class="text-muted d-block">Remaining</small>
-                                <strong>{{ balance.remaining_days|floatformat:2 }}</strong>
+                                <small class="text-muted d-block">Pending</small>
+                                <strong>{{ balance.pending_days|floatformat:2 }}</strong>
+                            </div>
+                            <div class="col">
+                                <small class="text-muted d-block">Available</small>
+                                <strong>{{ balance.available_days|floatformat:2 }}</strong>
                             </div>
                         </div>
                         {% if balance.leave_type.description %}

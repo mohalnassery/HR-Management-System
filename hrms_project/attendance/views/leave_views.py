@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from ..models import (
     Leave, LeaveType, LeaveBalance, LeaveBeginningBalance,
-    AttendanceLog, Holiday, LeaveDocument  # Add these imports
+    AttendanceLog, Holiday, LeaveDocument, LeaveActivity  # Add LeaveActivity to imports
 )
 from ..services.leave_rule_service import LeaveRuleService
 from ..serializers import LeaveSerializer
@@ -200,6 +200,14 @@ def leave_request_create(request):
             
             leave_request.save()
             
+            # Create activity record for leave creation
+            LeaveActivity.objects.create(
+                leave=leave_request,
+                actor=request.user,
+                action='create',
+                details=f"Leave request created by {request.user.get_full_name()}"
+            )
+            
             # Handle document upload if provided
             if form.cleaned_data.get('document'):
                 LeaveDocument.objects.create(
@@ -214,11 +222,104 @@ def leave_request_create(request):
         form = LeaveRequestForm()
     
     # Calculate balance percentages for progress bars
-    if leave_balances:
+    if leave_balances and employee:
         for balance in leave_balances:
-            total_allocation = balance.leave_type.days_allowed
-            if total_allocation > 0:
-                balance.balance_percentage = (balance.available_days / total_allocation) * 100
+            # Get the leave type
+            leave_type = balance.leave_type
+            
+            # For annual leave types, calculate the balance more accurately
+            if leave_type.code in ['ANNUAL', 'HALF']:
+                # Get beginning balance
+                beginning_balance = LeaveBeginningBalance.objects.filter(
+                    employee=employee,
+                    leave_type=leave_type
+                ).order_by('-as_of_date').first()
+                
+                initial_balance = beginning_balance.balance_days if beginning_balance else 0
+                
+                # Get beginning date (try join_date first, then beginning balance, then default to Jan 1st)
+                if beginning_balance:
+                    start_date = beginning_balance.as_of_date
+                else:
+                    # Try to get join_date if it exists
+                    try:
+                        if hasattr(employee, 'join_date') and employee.join_date:
+                            start_date = employee.join_date
+                        else:
+                            # Default to January 1st of current year if no join_date
+                            current_year = date.today().year
+                            start_date = date(current_year, 1, 1)
+                    except AttributeError:
+                        # Default to January 1st of current year if join_date field doesn't exist
+                        current_year = date.today().year
+                        start_date = date(current_year, 1, 1)
+                
+                end_date = date.today()
+                
+                try:
+                    # Get holidays for the period once
+                    holiday_dates = set(Holiday.objects.filter(
+                        date__range=[start_date, end_date]
+                    ).values_list('date', flat=True))
+                    
+                    # Get attendance logs for the period
+                    attendance_logs = set(AttendanceLog.objects.filter(
+                        employee=employee,
+                        date__range=[start_date, end_date],
+                        status='present'  # Only count present days
+                    ).values_list('date', flat=True))
+                    
+                    # Count Fridays that should be included
+                    friday_count = 0
+                    current_date = start_date
+                    while current_date <= end_date:
+                        if current_date.weekday() == 4:  # Friday
+                            thursday = current_date - timedelta(days=1)
+                            saturday = current_date + timedelta(days=1)
+                            
+                            # Check if Thursday or Saturday was attended or was a holiday
+                            thursday_attended = thursday in attendance_logs or thursday in holiday_dates
+                            saturday_attended = saturday in attendance_logs or saturday in holiday_dates
+                            
+                            if thursday_attended or saturday_attended:
+                                friday_count += 1
+                        
+                        current_date += timedelta(days=1)
+                    
+                    # Calculate total working days including valid Fridays and holidays
+                    total_working_days = Decimal(len(attendance_logs) + friday_count + len(holiday_dates))
+                    
+                    # Calculate monthly rate (2.5 days per month, assuming 30 working days per month)
+                    daily_rate = Decimal('2.5') / Decimal('30')
+                    
+                    # Calculate accrued leave
+                    accrued_days = total_working_days * daily_rate
+                    
+                    # Get used days from the balance
+                    used_days = balance.used_days
+                    pending_days = balance.pending_days
+                    
+                    # Calculate total and remaining days
+                    total_days = Decimal(initial_balance) + accrued_days
+                    remaining_days = total_days - used_days - pending_days
+                    
+                    # Update the balance object with calculated values
+                    balance.total_days = total_days
+                    balance.remaining_days = remaining_days
+                    
+                except Exception as e:
+                    print(f"Error in leave calculation: {str(e)}")
+                    # If there's an error in calculation, use the available_days property
+                    balance.remaining_days = balance.available_days
+                    total_days = balance.total_days
+            else:
+                # For all other leave types, use the available_days property
+                balance.remaining_days = balance.available_days
+                total_days = balance.total_days
+            
+            # Calculate percentage for progress bar
+            if total_days > 0:
+                balance.balance_percentage = (balance.remaining_days / total_days) * 100
             else:
                 balance.balance_percentage = 0
     
@@ -575,6 +676,10 @@ def leave_request_action(request, pk, action):
                 return JsonResponse({'error': 'Permission denied'}, status=403)
         
         if action == 'delete':
+            # Delete all associated leave activities
+            LeaveActivity.objects.filter(leave=leave).delete()
+            
+            # Mark leave as inactive
             leave.is_active = False
             leave.save()
         else:
@@ -592,6 +697,14 @@ def leave_request_action(request, pk, action):
                 leave.cancelled_at = timezone.now()
                 
             leave.save()
+            
+            # Create activity record for this action
+            LeaveActivity.objects.create(
+                leave=leave,
+                actor=request.user,
+                action=action,
+                details=f"Leave request {action}ed by {request.user.get_full_name()}"
+            )
             
         return JsonResponse({'status': 'success'})
         

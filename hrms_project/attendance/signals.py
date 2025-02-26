@@ -28,7 +28,7 @@ except ImportError:
 
 from .models import (
     Shift, ShiftAssignment, RamadanPeriod, AttendanceLog,
-    AttendanceRecord, Leave, LeaveType, LeaveBalance, Holiday, Employee
+    AttendanceRecord, Leave, LeaveType, LeaveBalance, Holiday, Employee, LeaveActivity
 )
 from .services import (
     ShiftService, RamadanService, AttendanceStatusService
@@ -312,7 +312,90 @@ def process_leave_request(sender, instance, created, **kwargs):
     if not instance.is_active:
         return
 
-    if instance.status == 'approved':
+    # For newly created pending leaves, update pending_days in balance
+    if created and instance.status == 'pending':
+        try:
+            balance = LeaveBalance.objects.get(
+                employee=instance.employee,
+                leave_type=instance.leave_type,
+                is_active=True
+            )
+            balance.pending_days += instance.duration
+            balance.save()
+        except LeaveBalance.DoesNotExist:
+            pass
+
+    # Create activity for status changes if not a new leave
+    if not created:
+        # Get the previous state of the leave
+        try:
+            old_instance = Leave.objects.get(pk=instance.pk)
+            # If status has changed, create an activity
+            if old_instance.status != instance.status:
+                action = instance.status
+                actor = None
+                
+                # Try to determine the actor based on the status
+                if instance.status == 'approved' and instance.approved_by:
+                    actor = instance.approved_by
+                elif instance.status == 'rejected' and hasattr(instance, 'rejected_by') and instance.rejected_by:
+                    actor = instance.rejected_by
+                
+                # Create the activity
+                LeaveActivity.objects.create(
+                    leave=instance,
+                    actor=actor,
+                    action=action,
+                    details=f"Leave request {action}"
+                )
+                
+                # If status changed from pending to approved, update leave balance
+                if old_instance.status != 'approved' and instance.status == 'approved':
+                    # Update leave balance for newly approved leave
+                    try:
+                        balance = LeaveBalance.objects.get(
+                            employee=instance.employee,
+                            leave_type=instance.leave_type,
+                            is_active=True
+                        )
+                        balance.used_days += instance.duration
+                        balance.pending_days = max(0, balance.pending_days - instance.duration)  # Remove from pending if was pending
+                        balance.save()
+                    except LeaveBalance.DoesNotExist:
+                        pass
+                
+                # If status changed from pending to rejected or cancelled, update pending_days
+                elif old_instance.status == 'pending' and instance.status in ['rejected', 'cancelled']:
+                    # Update pending days
+                    try:
+                        balance = LeaveBalance.objects.get(
+                            employee=instance.employee,
+                            leave_type=instance.leave_type,
+                            is_active=True
+                        )
+                        balance.pending_days = max(0, balance.pending_days - instance.duration)  # Ensure we don't go negative
+                        balance.save()
+                    except LeaveBalance.DoesNotExist:
+                        pass
+                
+                # If status changed from approved to rejected or cancelled, restore leave balance
+                elif old_instance.status == 'approved' and instance.status in ['rejected', 'cancelled']:
+                    # Restore leave balance
+                    try:
+                        balance = LeaveBalance.objects.get(
+                            employee=instance.employee,
+                            leave_type=instance.leave_type,
+                            is_active=True
+                        )
+                        balance.used_days = max(0, balance.used_days - instance.duration)  # Ensure we don't go negative
+                        balance.save()
+                    except LeaveBalance.DoesNotExist:
+                        pass
+        except Leave.DoesNotExist:
+            pass  # This shouldn't happen, but just in case
+
+    # For newly created approved leaves or leaves that were just approved
+    if created and instance.status == 'approved':
         # Create attendance logs for leave days
         current_date = instance.start_date
         while current_date <= instance.end_date:
@@ -326,11 +409,12 @@ def process_leave_request(sender, instance, created, **kwargs):
                     employee=instance.employee,
                     date=current_date,
                     status='leave',
-                    source='leave'
+                    source='leave',
+                    leave=instance
                 )
             current_date += timedelta(days=1)
 
-        # Update leave balance
+        # Update leave balance for newly created approved leave
         try:
             balance = LeaveBalance.objects.get(
                 employee=instance.employee,
@@ -357,6 +441,9 @@ def cleanup_leave_request(sender, instance, **kwargs):
         is_active=True
     ).delete()
 
+    # Delete leave activities associated with this leave
+    LeaveActivity.objects.filter(leave=instance).delete()
+
     # Restore leave balance if was approved
     if instance.status == 'approved':
         try:
@@ -366,6 +453,18 @@ def cleanup_leave_request(sender, instance, **kwargs):
                 is_active=True
             )
             balance.used_days = max(0, balance.used_days - instance.duration)  # Ensure we don't go negative
+            balance.save()
+        except LeaveBalance.DoesNotExist:
+            pass
+    # Update pending_days if the leave was pending
+    elif instance.status == 'pending':
+        try:
+            balance = LeaveBalance.objects.get(
+                employee=instance.employee,
+                leave_type=instance.leave_type,
+                is_active=True
+            )
+            balance.pending_days = max(0, balance.pending_days - instance.duration)  # Ensure we don't go negative
             balance.save()
         except LeaveBalance.DoesNotExist:
             pass

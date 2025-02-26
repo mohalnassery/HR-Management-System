@@ -150,8 +150,8 @@
                     <div class="card-body">
                         <h6 class="card-title">{{ balance.leave_type.name }} Balance</h6>
                         <div class="d-flex justify-content-between align-items-center">
-                            <h3 class="mb-0">{{ balance.remaining_days }}</h3>
-                            <small class="text-muted">days remaining</small>
+                            <h3 class="mb-0">{{ balance.available_days }}</h3>
+                            <small class="text-muted">days available</small>
                         </div>
                         <div class="progress mt-2">
                             <div class="progress-bar {% if balance.leave_type.code == 'ANNUAL' %}progress-bar-annual{% elif balance.leave_type.code == 'SICK' %}progress-bar-sick{% else %}progress-bar-other{% endif %}" 
@@ -400,7 +400,7 @@
                             validationDetails.push(
                                 `Available balance: ${response.data.available_balance} days`,
                                 `Requesting: ${response.data.requested_duration} days`,
-                                `Remaining after request: ${response.data.available_balance - response.data.requested_duration} days`
+                                `Available after request: ${response.data.available_balance - response.data.requested_duration} days`
                             );
                         }
                         if (response.data.is_paid !== undefined) {
