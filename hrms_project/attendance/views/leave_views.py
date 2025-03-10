@@ -254,74 +254,21 @@ def leave_request_create(request):
                         current_year = date.today().year
                         start_date = date(current_year, 1, 1)
                 
-                end_date = date.today()
-                
-                try:
-                    # Get holidays for the period once
-                    holiday_dates = set(Holiday.objects.filter(
-                        date__range=[start_date, end_date]
-                    ).values_list('date', flat=True))
-                    
-                    # Get attendance logs for the period
-                    attendance_logs = set(AttendanceLog.objects.filter(
-                        employee=employee,
-                        date__range=[start_date, end_date],
-                        status='present'  # Only count present days
-                    ).values_list('date', flat=True))
-                    
-                    # Count Fridays that should be included
-                    friday_count = 0
-                    current_date = start_date
-                    while current_date <= end_date:
-                        if current_date.weekday() == 4:  # Friday
-                            thursday = current_date - timedelta(days=1)
-                            saturday = current_date + timedelta(days=1)
-                            
-                            # Check if Thursday or Saturday was attended or was a holiday
-                            thursday_attended = thursday in attendance_logs or thursday in holiday_dates
-                            saturday_attended = saturday in attendance_logs or saturday in holiday_dates
-                            
-                            if thursday_attended or saturday_attended:
-                                friday_count += 1
-                        
-                        current_date += timedelta(days=1)
-                    
-                    # Calculate total working days including valid Fridays and holidays
-                    total_working_days = Decimal(len(attendance_logs) + friday_count + len(holiday_dates))
-                    
-                    # Calculate monthly rate (2.5 days per month, assuming 30 working days per month)
-                    daily_rate = Decimal('2.5') / Decimal('30')
-                    
-                    # Calculate accrued leave
-                    accrued_days = total_working_days * daily_rate
-                    
-                    # Get used days from the balance
-                    used_days = balance.used_days
-                    pending_days = balance.pending_days
-                    
-                    # Calculate total and remaining days
-                    total_days = Decimal(initial_balance) + accrued_days
-                    remaining_days = total_days - used_days - pending_days
-                    
-                    # Update the balance object with calculated values
-                    balance.total_days = total_days
-                    balance.remaining_days = remaining_days
-                    
-                except Exception as e:
-                    print(f"Error in leave calculation: {str(e)}")
-                    # If there's an error in calculation, use the available_days property
-                    balance.remaining_days = balance.available_days
-                    total_days = balance.total_days
+                # Calculate balance percentage based on used and pending days
+                if balance.total_days > 0:
+                    used_percentage = (balance.used_days / balance.total_days) * 100
+                    pending_percentage = (balance.pending_days / balance.total_days) * 100
+                    balance.balance_percentage = min(100, used_percentage + pending_percentage)
+                else:
+                    balance.balance_percentage = 0
             else:
-                # For all other leave types, use the available_days property
-                balance.remaining_days = balance.available_days
-                total_days = balance.total_days
-            
-            # Calculate percentage for progress bar
-            if total_days > 0:
-                balance.balance_percentage = (balance.remaining_days / total_days) * 100
-            else:
-                balance.balance_percentage = 0
+                # For other leave types, use a simpler calculation
+                if balance.total_days > 0:
+                    used_percentage = (balance.used_days / balance.total_days) * 100
+                    pending_percentage = (balance.pending_days / balance.total_days) * 100
+                    balance.balance_percentage = min(100, used_percentage + pending_percentage)
+                else:
+                    balance.balance_percentage = 0
     
     return render(request, 'attendance/leave_request_form.html', {
         'form': form,
@@ -585,12 +532,25 @@ def leave_balance(request):
                     # Calculate accrued leave
                     accrued_days = total_working_days * daily_rate
                     
-                    # Get used days
+                    # Get used days and pending days
                     used_days = leave_balance.used_days if leave_balance else Decimal('0')
+                    pending_days = leave_balance.pending_days if leave_balance else Decimal('0')
                     
                     # Calculate total and remaining days
                     total_days = Decimal(initial_balance) + accrued_days
-                    remaining_days = total_days - used_days
+                    remaining_days = total_days - used_days - pending_days
+                    
+                    # Update the balance object with calculated values
+                    leave_balance.total_days = total_days
+                    leave_balance.remaining_days = remaining_days
+                    
+                    # Calculate balance percentage based on used and pending days
+                    if total_days > 0:
+                        used_percentage = (used_days / total_days) * 100
+                        pending_percentage = (pending_days / total_days) * 100
+                        leave_balance.balance_percentage = min(100, used_percentage + pending_percentage)
+                    else:
+                        leave_balance.balance_percentage = 0
                     
                     # Add debug message
                     print(f"Leave calculation for {leave_type.code}:")
@@ -598,7 +558,7 @@ def leave_balance(request):
                     print(f"Working days: {len(attendance_logs)}, Fridays: {friday_count}, Holidays: {len(holiday_dates)}")
                     print(f"Total working days: {total_working_days}")
                     print(f"Daily rate: {daily_rate}, Accrued days: {accrued_days}")
-                    print(f"Initial balance: {initial_balance}, Used days: {used_days}")
+                    print(f"Initial balance: {initial_balance}, Used days: {used_days}, Pending days: {pending_days}")
                     print(f"Total days: {total_days}, Remaining days: {remaining_days}")
                     
                 except Exception as e:
@@ -607,17 +567,28 @@ def leave_balance(request):
                     total_days = 0
                     remaining_days = 0
                     used_days = 0
+                    pending_days = 0
             else:
                 # For all other leave types, simply use the allowed days and subtract used days
                 total_days = leave_type.days_allowed
                 used_days = leave_balance.used_days if leave_balance else 0
-                remaining_days = total_days - used_days
+                pending_days = leave_balance.pending_days if leave_balance else 0
+                remaining_days = total_days - used_days - pending_days
+                
+                # Calculate balance percentage based on used and pending days
+                if total_days > 0:
+                    used_percentage = (used_days / total_days) * 100
+                    pending_percentage = (pending_days / total_days) * 100
+                    leave_balance.balance_percentage = min(100, used_percentage + pending_percentage)
+                else:
+                    leave_balance.balance_percentage = 0
             
             balances.append({
                 'leave_type': leave_type,
                 'total_days': round(total_days, 2),
                 'used_days': round(used_days, 2),
-                'remaining_days': round(remaining_days, 2)
+                'pending_days': round(pending_days, 2),
+                'available_days': round(remaining_days, 2)
             })
 
     # Add context for template

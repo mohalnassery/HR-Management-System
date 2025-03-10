@@ -166,9 +166,55 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Handle offense acknowledgment
+    async function acknowledgeOffense(offenseId, employeeId) {
+        try {
+            const response = await fetch(`/employees/api/employees/${employeeId}/offenses/${offenseId}/acknowledge/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            });
 
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
-
+            const data = await response.json();
+            
+            // Update the UI to reflect the acknowledged status
+            const statusBadge = document.querySelector(`tr[data-offence-id="${offenseId}"] td:nth-child(4) .badge`);
+            if (statusBadge) {
+                statusBadge.classList.remove('bg-warning');
+                statusBadge.classList.add('bg-success');
+                statusBadge.textContent = 'Acknowledged';
+            }
+            
+            // Update the view modal if it's open
+            const modalStatusBadge = document.querySelector('#viewOffenceModal .offense-status');
+            if (modalStatusBadge) {
+                modalStatusBadge.classList.remove('bg-warning');
+                modalStatusBadge.classList.add('bg-success');
+                modalStatusBadge.textContent = 'Acknowledged';
+            }
+            
+            // Hide the acknowledge button
+            const acknowledgeBtn = document.querySelector('#acknowledgeOffenseBtn');
+            if (acknowledgeBtn) {
+                acknowledgeBtn.style.display = 'none';
+            }
+            
+            // Show success message
+            showAlert('Offense has been acknowledged successfully!', 'success');
+            
+            return data;
+        } catch (error) {
+            console.error('Error acknowledging offense:', error);
+            showAlert('Failed to acknowledge offense. Please try again.', 'danger');
+            throw error;
+        }
+    }
 
     function escapeRegex(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -513,152 +559,186 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // View offense details
+    async function viewOffence(offenceId) {
+        try {
+            const modal = document.getElementById('viewOffenceModal');
+            const modalBody = modal.querySelector('.modal-body');
+            
+            // Show loading spinner
+            modalBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+            const viewOffenceModal = new bootstrap.Modal(modal);
+            viewOffenceModal.show();
+            
+            // Get current employee ID from page context
+            const employeeId = document.getElementById('employeeId').value;
+            
+            // Fetch offense details
+            const response = await fetch(`/employees/api/employees/${employeeId}/offenses/${offenceId}/`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch offense details: ${response.status}`);
+            }
+            
+            const offense = await response.json();
+            const offenseDate = new Date(offense.offense_date);
+            
+            // Format monetary amount if present
+            let monetaryInfo = '';
+            if (offense.applied_penalty === 'MONETARY' && offense.monetary_amount) {
+                monetaryInfo = `
+                    <div class="mb-3">
+                        <h6>Monetary Amount</h6>
+                        <p>${offense.monetary_amount} BHD</p>
+                    </div>
+                    ${offense.is_active ? `
+                    <div class="mb-3">
+                        <h6>Remaining Amount</h6>
+                        <p>${offense.remaining_amount} BHD</p>
+                    </div>` : ''}
+                `;
+            }
+            
+            // Format status badge
+            const statusBadge = offense.is_active 
+                ? (offense.is_acknowledged 
+                    ? '<span class="badge bg-success offense-status">Acknowledged</span>' 
+                    : '<span class="badge bg-warning offense-status">Pending</span>')
+                : '<span class="badge bg-secondary offense-status">Inactive</span>';
+            
+            // Prepare acknowledge button - only show if active and not acknowledged
+            const acknowledgeButton = (offense.is_active && !offense.is_acknowledged) 
+                ? `<button type="button" class="btn btn-success" id="acknowledgeOffenseBtn">Acknowledge</button>` 
+                : '';
+            
+            // Build modal content
+            modalBody.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <h6>Offense Date</h6>
+                            <p>${offenseDate.toLocaleDateString()}</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Rule</h6>
+                            <p>${offense.rule.rule_id}: ${offense.rule.name}</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Group</h6>
+                            <p>${offense.rule.group_display}</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Offense Count</h6>
+                            <p>${offense.offense_count}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <h6>Original Penalty</h6>
+                            <p>${offense.original_penalty_display}</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <h6>Applied Penalty</h6>
+                            <p>${offense.applied_penalty_display}</p>
+                        </div>
+                        
+                        ${monetaryInfo}
+                        
+                        <div class="mb-3">
+                            <h6>Status</h6>
+                            <p>${statusBadge}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                ${offense.details ? `
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <h6>Details</h6>
+                        <p>${offense.details}</p>
+                    </div>
+                </div>` : ''}
+                
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Documents</h6>
+                        <div id="offenseDocuments">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add acknowledge button to modal footer
+            const modalFooter = modal.querySelector('.modal-footer');
+            const closeButton = modalFooter.querySelector('button');
+            modalFooter.innerHTML = '';
+            
+            if (acknowledgeButton) {
+                modalFooter.innerHTML = acknowledgeButton;
+            }
+            
+            modalFooter.appendChild(closeButton);
+            
+            // Load documents if available
+            loadOffenseDocuments(offenceId);
+            
+            // Setup event listener for acknowledge button
+            const acknowledgeBtn = document.getElementById('acknowledgeOffenseBtn');
+            if (acknowledgeBtn) {
+                acknowledgeBtn.addEventListener('click', async () => {
+                    acknowledgeBtn.disabled = true;
+                    acknowledgeBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                    
+                    try {
+                        await acknowledgeOffense(offenceId, employeeId);
+                        acknowledgeBtn.style.display = 'none';
+                    } catch (error) {
+                        acknowledgeBtn.disabled = false;
+                        acknowledgeBtn.innerHTML = 'Acknowledge';
+                    }
+                });
+            }
+            
+        } catch (error) {
+            console.error('Error viewing offense:', error);
+            showAlert('Failed to load offense details. Please try again.', 'danger');
+        }
+    }
+
+    function showAlert(message, type = 'info') {
+        const alertsContainer = document.getElementById('alerts-container');
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type} alert-dismissible fade show`;
+        alert.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        alertsContainer.appendChild(alert);
+        setTimeout(() => alert.remove(), 5000);
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
     // Initialize
     fetchAllRules();
 });
-
-// Utility Functions
-function addOffenceToTable(offense) {
-    const tbody = document.querySelector('#offencesTable tbody');
-    const tr = document.createElement('tr');
-    tr.dataset.offenceId = offense.id;
-
-    if (!offense.is_active) {
-        tr.classList.add('table-secondary');
-    }
-
-    const offenseDate = new Date(offense.offense_date);
-
-    tr.innerHTML = `
-        <td>${offense.rule.rule_id}</td>
-        <td>${offenseDate.toLocaleDateString()}</td>
-        <td>${offenseDate.getFullYear()}</td>
-        <td>${offense.rule.group_display}</td>
-        <td>${offense.rule.name}</td>
-        <td>${offense.offense_count}</td>
-        <td>${offense.original_penalty_display}</td>
-        <td>${offense.applied_penalty_display}</td>
-        <td>
-            ${offense.is_active ?
-                `<span class="badge ${offense.is_acknowledged ? 'bg-success' : 'bg-warning'}">
-                    ${offense.is_acknowledged ? 'Acknowledged' : 'Pending'}
-                </span>` :
-                '<span class="badge bg-secondary">Inactive</span>'
-            }
-        </td>
-        <td>
-            <button type="button" class="btn btn-sm btn-info view-offence" data-offence-id="${offense.id}" title="View Details">
-                <i class="fas fa-eye"></i>
-            </button>
-            ${offense.is_active ?
-                `<button type="button" class="btn btn-sm btn-primary add-document" data-offence-id="${offense.id}" title="Add Document">
-                    <i class="fas fa-file-upload"></i>
-                </button>` : ''
-            }
-        </td>
-    `;
-
-    tbody.insertBefore(tr, tbody.firstChild);
-}
-
-async function viewOffence(offenseId) {
-    try {
-        // Get offense details
-        const response = await fetch(`/employees/api/employee-offenses/${offenseId}/`);
-        const offense = await response.json();
-
-        // Update offense details
-        document.getElementById('viewRuleId').textContent = offense.rule.rule_id;
-        document.getElementById('viewRuleName').textContent = offense.rule.name;
-        document.getElementById('viewGroup').textContent = offense.rule.group_display;
-        document.getElementById('viewDescription').textContent = offense.rule.description;
-        document.getElementById('viewDate').textContent = new Date(offense.offense_date).toLocaleDateString();
-        document.getElementById('viewOriginalPenalty').textContent = offense.original_penalty_display;
-        document.getElementById('viewAppliedPenalty').textContent = offense.applied_penalty_display;
-        document.getElementById('viewStatus').innerHTML = offense.is_active ?
-            `<span class="badge ${offense.is_acknowledged ? 'bg-success' : 'bg-warning'}">
-                ${offense.is_acknowledged ? 'Acknowledged' : 'Pending'}
-            </span>` :
-            '<span class="badge bg-secondary">Inactive</span>';
-
-        // Get offense count and history
-        const year = new Date(offense.offense_date).getFullYear();
-        const countResponse = await fetch(`/employees/api/employee-offenses/${offense.employee}/count/?rule=${offense.rule.id}&year=${year}`);
-        if (!countResponse.ok) {
-            throw new Error(`HTTP error! status: ${countResponse.status}`);
-        }
-        const countData = await countResponse.json();
-
-        // Show previous offenses if any exist
-        const viewPreviousOffenses = document.getElementById('viewPreviousOffenses');
-        const viewPreviousOffensesList = document.getElementById('viewPreviousOffensesList');
-
-        if (countData.offenses && countData.offenses.length > 0) {
-            let offenseHtml = `<p class="mb-2">This is offense #${countData.count} for this rule in ${year}.</p>`;
-            offenseHtml += '<ul class="mb-0">';
-            countData.offenses.forEach((o, index) => {
-                const date = new Date(o.date).toLocaleDateString();
-                const isCurrent = o.date === offense.offense_date;
-                offenseHtml += `<li${isCurrent ? ' class="fw-bold"' : ''}>${date} - ${o.penalty}${isCurrent ? ' (Current)' : ''}</li>`;
-            });
-            offenseHtml += '</ul>';
-
-            viewPreviousOffensesList.innerHTML = offenseHtml;
-            viewPreviousOffenses.style.display = 'block';
-        } else {
-            viewPreviousOffenses.style.display = 'none';
-        }
-
-        // Update documents list
-        const documentsList = document.getElementById('viewDocumentsList');
-        if (offense.documents && offense.documents.length > 0) {
-            let docsHtml = '<ul class="list-unstyled mb-0">';
-            offense.documents.forEach(doc => {
-                docsHtml += `
-                    <li class="mb-2">
-                        <i class="fas fa-file me-2"></i>
-                        <a href="${doc.file_url}" target="_blank">${doc.name || 'Document'}</a>
-                        <small class="text-muted">(${doc.document_type_display})</small>
-                    </li>`;
-            });
-            docsHtml += '</ul>';
-            documentsList.innerHTML = docsHtml;
-        } else {
-            documentsList.innerHTML = '<p class="text-muted mb-0">No documents attached</p>';
-        }
-
-        // Show the modal
-        const viewOffenceModal = new bootstrap.Modal('#viewOffenceModal');
-        viewOffenceModal.show();
-    } catch (error) {
-        console.error('Error loading offense details:', error);
-        showAlert('Error loading offense details. Please try again.', 'danger');
-    }
-}
-
-function showAlert(message, type = 'info') {
-    const alertsContainer = document.getElementById('alerts-container');
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${type} alert-dismissible fade show`;
-    alert.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-    alertsContainer.appendChild(alert);
-    setTimeout(() => alert.remove(), 5000);
-}
-
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}

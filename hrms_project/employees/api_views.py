@@ -236,7 +236,16 @@ def employee_offenses(request, employee_id):
         employee = get_object_or_404(Employee, id=employee_id)
         
         if request.method == 'GET':
-            offenses = employee.employee_offence_records.all()
+            # Get active status filter from query params, if not provided show all
+            active_only = request.GET.get('active_only', '').lower() == 'true'
+            
+            # Start with all offenses for this employee
+            offenses = employee.employee_offence_records.all().select_related('rule')
+            
+            # Filter by active status if requested
+            if active_only:
+                offenses = offenses.filter(is_active=True)
+                
             serializer = EmployeeOffenceSerializer(offenses, many=True)
             return Response(serializer.data)
             
@@ -246,7 +255,8 @@ def employee_offenses(request, employee_id):
                 serializer.save(
                     employee=employee,
                     created_by=request.user,
-                    modified_by=request.user
+                    modified_by=request.user,
+                    is_active=True  # Explicitly set is_active to True
                 )
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -305,16 +315,21 @@ def add_offense_document(request, employee_id, offense_id):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_employee_offense_count(request, employee_id):
-    """Get the count of active offenses for an employee and rule"""
     try:
         rule_id = request.GET.get('rule')
-        year = request.GET.get('year')
+        year = int(request.GET.get('year', timezone.now().year))
         
-        if not rule_id or not year:
-            return Response({'error': 'Rule and year are required'}, status=status.HTTP_400_BAD_REQUEST)
+        # Handle case where rule_id is 'undefined' or invalid
+        if not rule_id or rule_id == 'undefined' or not rule_id.isdigit():
+            return Response({
+                'count': 0,
+                'suggested_penalty': None,
+                'offenses': []
+            })
         
-        # Get all active offenses for this rule, ordered by date
+        # Get active offenses for this employee and rule in the specified year
         offenses = EmployeeOffence.objects.filter(
             employee_id=employee_id,
             rule_id=rule_id,
@@ -322,36 +337,60 @@ def get_employee_offense_count(request, employee_id):
             is_active=True
         ).order_by('offense_date')
         
-        # Count how many times this rule has been violated
-        offense_count = offenses.count()
+        count = offenses.count()
         
-        # Get the rule details
-        rule = OffenseRule.objects.get(id=rule_id)
-        
-        # Determine which penalty to apply based on count
-        penalty = None
-        if offense_count == 0:
-            penalty = rule.first_penalty
-        elif offense_count == 1:
-            penalty = rule.second_penalty
-        elif offense_count == 2:
-            penalty = rule.third_penalty
-        elif offense_count >= 3:
-            penalty = rule.fourth_penalty
+        # Get the suggested penalty based on count
+        rule = OffenseRule.objects.get(pk=rule_id)
+        suggested_penalty = rule.get_penalty_for_count(count + 1)
         
         return Response({
-            'count': offense_count,
-            'suggested_penalty': penalty,
+            'count': count,
+            'suggested_penalty': suggested_penalty,
             'offenses': [{
-                'date': o.offense_date,
-                'penalty': o.applied_penalty
-            } for o in offenses]
+                'date': offense.offense_date,
+                'penalty': offense.get_applied_penalty_display()
+            } for offense in offenses]
         })
+    except (OffenseRule.DoesNotExist, ValueError):
+        return Response({'error': 'Invalid rule or year'}, status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def print_offense(request, pk):
+    try:
+        offense = EmployeeOffence.objects.get(pk=pk)
         
-    except OffenseRule.DoesNotExist:
-        return Response({'error': 'Rule not found'}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Generate PDF using your template
+        # This is just a placeholder - implement your actual PDF generation here
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="offense_{offense.id}.pdf"'
+        
+        # Create PDF
+        buffer = BytesIO()
+        p = canvas.Canvas(buffer)
+        
+        # Add content to PDF
+        p.drawString(100, 800, f"Offense Notice - {offense.rule.name}")
+        p.drawString(100, 780, f"Employee: {offense.employee.full_name}")
+        p.drawString(100, 760, f"Date: {offense.offense_date.strftime('%d/%m/%Y')}")
+        p.drawString(100, 740, f"Penalty: {offense.get_applied_penalty_display()}")
+        
+        if offense.monetary_amount:
+            p.drawString(100, 720, f"Amount: {offense.monetary_amount} BHD")
+            if offense.is_active:
+                p.drawString(100, 700, f"Remaining: {offense.remaining_amount} BHD")
+        
+        p.showPage()
+        p.save()
+        
+        # Get the value of the buffer and write it to the response
+        pdf = buffer.getvalue()
+        buffer.close()
+        response.write(pdf)
+        
+        return response
+    except EmployeeOffence.DoesNotExist:
+        return Response({'error': 'Offense not found'}, status=404)
 
 class OffenseRuleViewSet(viewsets.ModelViewSet):
     serializer_class = OffenseRuleSerializer
@@ -416,7 +455,7 @@ class EmployeeOffenseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return EmployeeOffence.objects.all()
+        return EmployeeOffence.objects.all().select_related('rule')
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
@@ -497,75 +536,21 @@ def record_offense_payment(request, pk):
     except EmployeeOffence.DoesNotExist:
         return Response({'error': 'Offense not found'}, status=404)
 
-@api_view(['GET'])
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def get_employee_offense_count(request, employee_id):
+def acknowledge_employee_offense(request, employee_id, offense_id):
+    """Acknowledge an employee offense"""
     try:
-        rule_id = request.GET.get('rule')
-        year = int(request.GET.get('year', timezone.now().year))
+        # Get the offense
+        offense = get_object_or_404(EmployeeOffence, id=offense_id, employee_id=employee_id)
         
-        if not rule_id:
-            return Response({'error': 'Rule ID is required'}, status=400)
+        # Set is_acknowledged to True
+        offense.is_acknowledged = True
+        offense.acknowledged_at = timezone.now()
+        offense.save()
         
-        # Get active offenses for this employee and rule in the specified year
-        offenses = EmployeeOffence.objects.filter(
-            employee_id=employee_id,
-            rule_id=rule_id,
-            offense_date__year=year,
-            is_active=True
-        ).order_by('offense_date')
-        
-        count = offenses.count()
-        
-        # Get the suggested penalty based on count
-        rule = OffenseRule.objects.get(pk=rule_id)
-        suggested_penalty = rule.get_penalty_for_count(count + 1)
-        
-        return Response({
-            'count': count,
-            'suggested_penalty': suggested_penalty,
-            'offenses': [{
-                'date': offense.offense_date,
-                'penalty': offense.get_applied_penalty_display()
-            } for offense in offenses]
-        })
-    except (OffenseRule.DoesNotExist, ValueError):
-        return Response({'error': 'Invalid rule or year'}, status=400)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def print_offense(request, pk):
-    try:
-        offense = EmployeeOffence.objects.get(pk=pk)
-        
-        # Generate PDF using your template
-        # This is just a placeholder - implement your actual PDF generation here
-        response = HttpResponse(content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="offense_{offense.id}.pdf"'
-        
-        # Create PDF
-        buffer = BytesIO()
-        p = canvas.Canvas(buffer)
-        
-        # Add content to PDF
-        p.drawString(100, 800, f"Offense Notice - {offense.rule.name}")
-        p.drawString(100, 780, f"Employee: {offense.employee.full_name}")
-        p.drawString(100, 760, f"Date: {offense.offense_date.strftime('%d/%m/%Y')}")
-        p.drawString(100, 740, f"Penalty: {offense.get_applied_penalty_display()}")
-        
-        if offense.monetary_amount:
-            p.drawString(100, 720, f"Amount: {offense.monetary_amount} BHD")
-            if offense.is_active:
-                p.drawString(100, 700, f"Remaining: {offense.remaining_amount} BHD")
-        
-        p.showPage()
-        p.save()
-        
-        # Get the value of the buffer and write it to the response
-        pdf = buffer.getvalue()
-        buffer.close()
-        response.write(pdf)
-        
-        return response
-    except EmployeeOffence.DoesNotExist:
-        return Response({'error': 'Offense not found'}, status=404)
+        # Return the updated offense
+        serializer = EmployeeOffenceSerializer(offense)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

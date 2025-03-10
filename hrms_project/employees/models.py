@@ -562,14 +562,28 @@ class EmployeeOffence(models.Model):
         return f"{self.employee} - {self.rule.name} ({self.offense_date})"
 
     def save(self, *args, **kwargs):
-        # If this is a new offense, set the offense count
+        # If this is a new offense, set the offense count and ensure is_active is True
         if not self.pk:
             self.offense_count = self.get_offense_count()
+            
+            # Explicitly ensure is_active is True for new offenses
+            self.is_active = True
             
             # If this is a monetary penalty, set the remaining amount
             if self.applied_penalty == 'MONETARY' and self.monetary_amount:
                 self.remaining_amount = self.monetary_amount
-
+                
+        # For existing offenses, only monetary offenses with zero remaining amount should be inactive
+        elif self.applied_penalty == 'MONETARY' and self.remaining_amount is not None:
+            # Only deactivate if the remaining amount is zero
+            if self.remaining_amount <= 0:
+                self.is_active = False
+                if not self.completed_date:
+                    self.completed_date = timezone.now()
+            else:
+                # Ensure it's active if there's still remaining amount
+                self.is_active = True
+        
         super().save(*args, **kwargs)
 
     def get_offense_count(self):

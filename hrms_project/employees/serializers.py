@@ -58,6 +58,9 @@ class OffenseRuleSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class EmployeeOffenceSerializer(serializers.ModelSerializer):
+    original_penalty_display = serializers.SerializerMethodField()
+    applied_penalty_display = serializers.SerializerMethodField()
+
     class Meta:
         model = EmployeeOffence
         fields = '__all__'
@@ -72,4 +75,43 @@ class EmployeeOffenceSerializer(serializers.ModelSerializer):
         if 'details' not in validated_data:
             validated_data['details'] = ''
             
+        # Ensure is_active is set to True for new offenses
+        if 'is_active' not in validated_data:
+            validated_data['is_active'] = True
+            
         return super().create(validated_data)
+    
+    def to_representation(self, instance):
+        """Enhance the serialized representation with additional fields and ensure proper active status"""
+        representation = super().to_representation(instance)
+        
+        # Ensure newly created offenses are shown as active
+        created_recently = False
+        if instance.created_at:
+            # Consider offenses created in the last hour as "recent"
+            created_recently = (timezone.now() - instance.created_at).total_seconds() < 3600
+            
+        # If offense was created recently, ensure it's displayed as active
+        if created_recently:
+            representation['is_active'] = True
+            
+        # Include rule details if available
+        if instance.rule:
+            representation['rule'] = {
+                'id': instance.rule.id,
+                'rule_id': instance.rule.rule_id,
+                'name': instance.rule.name,
+                'description': instance.rule.description,
+                'group': instance.rule.group,
+                'group_display': instance.rule.get_group_display()
+            }
+            
+        return representation
+    
+    def get_original_penalty_display(self, obj):
+        """Get the human-readable display for original_penalty"""
+        return obj.get_original_penalty_display()
+    
+    def get_applied_penalty_display(self, obj):
+        """Get the human-readable display for applied_penalty"""
+        return obj.get_applied_penalty_display()

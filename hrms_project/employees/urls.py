@@ -82,6 +82,9 @@ urlpatterns = [
     # count offenses
     path('api/employee-offenses/<int:employee_id>/count/', api_views.get_employee_offense_count, name='get_employee_offense_count'),
     
+    # Acknowledge an offense
+    path('api/employees/<int:employee_id>/offenses/<int:offense_id>/acknowledge/', api_views.acknowledge_employee_offense, name='acknowledge_employee_offense'),
+    
     # Offense Actions
     path('api/offenses/<int:pk>/status/', api_views.update_offense_status, name='offense_status_update'),
     path('api/offenses/<int:pk>/payment/', api_views.record_offense_payment, name='offense_payment'),

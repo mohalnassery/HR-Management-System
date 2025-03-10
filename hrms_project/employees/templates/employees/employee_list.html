@@ -39,6 +39,31 @@
     .table td, .table th {
         padding: 0.75rem;
     }
+    /* Add styles for column search inputs */
+    thead input {
+        width: 100%;
+        padding: 3px;
+        box-sizing: border-box;
+        font-size: 0.9em;
+    }
+    .column-search-row th {
+        padding: 8px 4px;
+    }
+    /* Search input styles */
+    .dataTables_filter {
+        display: none;
+    }
+    /* Hover effect for rows */
+    #employeeTable tbody tr:hover {
+        background-color: rgba(0, 123, 255, 0.1) !important;
+    }
+    /* Make sure checkboxes and action buttons don't trigger row click */
+    .clickable-cell {
+        cursor: pointer;
+    }
+    .non-clickable-cell {
+        cursor: default;
+    }
 </style>
 {% endblock %}
 
@@ -99,32 +124,48 @@
                         <th>CreatedOn</th>
                         <th>Actions</th>
                     </tr>
+                    <tr class="column-search-row">
+                        <th></th>
+                        <th><input type="text" placeholder="Search Employee #" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search First Name" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Last Name" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search CPR" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search PassNo" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Division" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Department" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Designation" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Join Date" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Rejoin Date" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Status" class="column-search form-control form-control-sm"/></th>
+                        <th><input type="text" placeholder="Search Created Date" class="column-search form-control form-control-sm"/></th>
+                        <th></th>
+                    </tr>
                 </thead>
                 <tbody>
                     {% for employee in employees %}
-                    <tr data-employee-id="{{ employee.id }}">
-                        <td>
+                    <tr data-employee-id="{{ employee.id }}" data-detail-url="{% url 'employees:employee_detail' employee.id %}">
+                        <td class="non-clickable-cell">
                             <input type="checkbox" class="form-check-input row-checkbox">
                         </td>
-                        <td>{{ employee.employee_number }}</td>
-                        <td>{{ employee.first_name }}</td>
-                        <td>{{ employee.last_name }}</td>
-                        <td>{{ employee.cpr_number|default:'-' }}</td>
-                        <td>{{ employee.passport_number|default:'-' }}</td>
-                        <td>{{ employee.division.name|default:'-' }}</td>
-                        <td>{{ employee.department.name|default:'-' }}</td>
-                        <td>{{ employee.designation|default:'-' }}</td>
-                        <td>{{ employee.joined_date|date:"d/m/Y"|default:'-' }}</td>
-                        <td>{{ employee.rejoined_date|date:"d/m/Y"|default:'-' }}</td>
-                        <td>
+                        <td class="clickable-cell">{{ employee.employee_number }}</td>
+                        <td class="clickable-cell">{{ employee.first_name }}</td>
+                        <td class="clickable-cell">{{ employee.last_name }}</td>
+                        <td class="clickable-cell">{{ employee.cpr_number|default:'-' }}</td>
+                        <td class="clickable-cell">{{ employee.passport_number|default:'-' }}</td>
+                        <td class="clickable-cell">{{ employee.division.name|default:'-' }}</td>
+                        <td class="clickable-cell">{{ employee.department.name|default:'-' }}</td>
+                        <td class="clickable-cell">{{ employee.designation|default:'-' }}</td>
+                        <td class="clickable-cell">{{ employee.joined_date|date:"d/m/Y"|default:'-' }}</td>
+                        <td class="clickable-cell">{{ employee.rejoined_date|date:"d/m/Y"|default:'-' }}</td>
+                        <td class="clickable-cell">
                             {% if employee.is_active %}
                                 <span class="badge bg-success">Active</span>
                             {% else %}
                                 <span class="badge bg-danger">Inactive</span>
                             {% endif %}
                         </td>
-                        <td>{{ employee.created_at|date:"d/m/Y"|default:'-' }}</td>
-                        <td>
+                        <td class="clickable-cell">{{ employee.created_at|date:"d/m/Y"|default:'-' }}</td>
+                        <td class="non-clickable-cell">
                             <div class="btn-group">
                                 <a href="{% url 'employees:employee_detail' employee.id %}" class="btn btn-sm btn-info">
                                     <i class="fas fa-eye"></i>
@@ -169,8 +210,9 @@ $(document).ready(function() {
         return true;
     });
 
+    // Initialize DataTable
     var table = $('#employeeTable').DataTable({
-        dom: 'Bfrtip',
+        dom: 'Bfrtip', // Button, filter, processing, table, pagination
         select: false,
         buttons: [
             {
@@ -184,9 +226,33 @@ $(document).ready(function() {
                 }
             }
         ],
-        order: [[1, 'asc']],
+        order: [[1, 'asc']], // Default sort by Employee #
         pageLength: 25,
-        lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]]
+        lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "All"]],
+        orderCellsTop: true, // Allow sorting to work only on the first header row
+        fixedHeader: true, // Keep header visible when scrolling
+    });
+
+    // Row click to view employee detail
+    $('#employeeTable').on('click', '.clickable-cell', function() {
+        var url = $(this).closest('tr').data('detail-url');
+        if (url) {
+            window.location.href = url;
+        }
+    });
+
+    // Apply column search - Setup each column
+    $('#employeeTable .column-search').on('keyup change', function() {
+        var colIdx = $(this).closest('th').index();
+        table
+            .column(colIdx)
+            .search(this.value)
+            .draw();
+    });
+
+    // Prevent search inputs from triggering sorting
+    $('.column-search').on('click', function(e) {
+        e.stopPropagation();
     });
 
     // Apply initial filter

@@ -223,6 +223,13 @@ class AttendanceLog(models.Model):
         null=True,
         blank=True
     )
+    leave = models.ForeignKey(
+        'Leave',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='attendance_logs'
+    )
     
     # Status tracking
     status = models.CharField(

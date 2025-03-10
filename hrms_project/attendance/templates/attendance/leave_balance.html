@@ -115,15 +115,28 @@
                         <h6 class="card-title">{{ balance.leave_type.name }}</h6>
                         <div class="progress mb-3" style="height: 20px;">
                             {% if balance.total_days > 0 %}
-                                {% widthratio balance.used_days balance.total_days 100 as percentage %}
-                                <div class="progress-bar {% if percentage > 75 %}bg-danger{% elif percentage > 50 %}bg-warning{% else %}bg-success{% endif %}"
+                                {% widthratio balance.used_days balance.total_days 100 as used_percentage %}
+                                {% widthratio balance.pending_days balance.total_days 100 as pending_percentage %}
+                                {% with total_percentage=used_percentage|add:pending_percentage %}
+                                <div class="progress-bar {% if total_percentage > 75 %}bg-danger{% elif total_percentage > 50 %}bg-warning{% else %}bg-success{% endif %}"
                                      role="progressbar"
-                                     style="width: {{ percentage }}%"
-                                     aria-valuenow="{{ percentage }}"
+                                     style="width: {{ used_percentage }}%"
+                                     aria-valuenow="{{ used_percentage }}"
                                      aria-valuemin="0"
                                      aria-valuemax="100">
-                                    {{ percentage }}%
+                                    {{ used_percentage }}%
                                 </div>
+                                {% if balance.pending_days > 0 %}
+                                <div class="progress-bar bg-secondary"
+                                     role="progressbar"
+                                     style="width: {{ pending_percentage }}%"
+                                     aria-valuenow="{{ pending_percentage }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    {{ pending_percentage }}%
+                                </div>
+                                {% endif %}
+                                {% endwith %}
                             {% else %}
                                 <div class="progress-bar bg-success"
                                      role="progressbar"

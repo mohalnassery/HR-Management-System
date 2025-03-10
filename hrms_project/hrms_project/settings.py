@@ -190,6 +190,9 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only for development
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "http://127.0.0.1:41158",
+    "http://127.0.0.1:42862",
+    "http://127.0.0.1:26688",
 ]
 
 # Cache Configuration
